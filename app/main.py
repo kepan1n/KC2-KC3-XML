@@ -44,9 +44,21 @@ def _grouped_fields():
     return groups
 
 
+def _find_sample_xlsx() -> Path | None:
+    candidates = sorted(BASE_DIR.glob("*.xlsx"))
+    return candidates[0] if candidates else None
+
+
 def load_state() -> dict:
     if not STATE_FILE.exists():
-        return {"defaults": {}, "disabled": []}
+        init_state = {"defaults": {}, "disabled": []}
+        sample = _find_sample_xlsx()
+        if sample:
+            try:
+                init_state["defaults"].update(prefill_from_first_sheet(sample))
+            except Exception:
+                pass
+        return init_state
     return json.loads(STATE_FILE.read_text(encoding="utf-8"))
 
 

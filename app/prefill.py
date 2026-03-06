@@ -21,13 +21,17 @@ def prefill_from_first_sheet(xlsx_path: Path) -> Dict[str, str]:
     data: Dict[str, str] = {}
 
     # Header-like fields from your sample layout
-    data["/Файл/@ВерсФорм"] = "5.03"
+    now = dt.datetime.now()
+    data["/Файл/@ВерсФорм"] = "1.00"
     data["/Файл/@ВерсПрог"] = "KC2-KC3-XML-webapp"
     data["/Файл/Документ/@КНД"] = "1115003"
+    data["/Файл/Документ/@ДатаИнфПодр"] = now.strftime("%d.%m.%Y")
+    data["/Файл/Документ/@ВремИнфПодр"] = now.strftime("%H.%M.%S")
 
     doc_num = ws.cell(23, 7).value
     doc_date = ws.cell(23, 8).value
     obj = ws.cell(15, 4).value
+    contractor = ws.cell(11, 4).value
 
     if doc_num is not None:
         data["/Файл/Документ/СвАктСдПр/@НомерДок"] = str(doc_num).strip()
@@ -35,6 +39,8 @@ def prefill_from_first_sheet(xlsx_path: Path) -> Dict[str, str]:
         data["/Файл/Документ/СвАктСдПр/@ДатаДок"] = _fmt_date(doc_date)
     if obj is not None:
         data["/Файл/Документ/СвАктСдПр/@НаимОб"] = str(obj).strip()
+    if contractor is not None:
+        data["/Файл/Документ/@НаимЭкСубСост"] = str(contractor).strip()
 
     # Contract number/date (row 17/18 in sample)
     contract_no = ws.cell(17, 10).value

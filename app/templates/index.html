@@ -33,21 +33,49 @@
                   <div class="text-xs whitespace-nowrap">{% if f.required %}<span class="text-red-600">обязательное</span>{% else %}опциональное{% endif %}</div>
                 </div>
 
+                {% if f.pattern or f.max_length %}
+                <div class="mt-1 text-[11px] text-slate-500">
+                  {% if f.pattern %}Формат: <span class="font-mono">{{ f.pattern }}</span>{% endif %}
+                  {% if f.max_length %} | Макс. длина: {{ f.max_length }}{% endif %}
+                </div>
+                {% endif %}
+
                 {% if f.repeatable %}
                 <div class="mt-2 space-y-2" id="rep-{{ loop.index0 }}-{{ gname|replace(' ','_')|replace('/','_') }}">
                   {% set current = defaults.get(f.path, []) %}
                   {% if current is string or current is none %}
-                    <input name="v::{{ f.path }}::0" value="{{ current or '' }}" class="w-full border rounded px-2 py-1 text-sm" />
+                    {% if f.enum_values %}
+                    <select name="v::{{ f.path }}::0" class="w-full border rounded px-2 py-1 text-sm">
+                      <option value="">-- выбрать --</option>
+                      {% for ev in f.enum_values %}<option value="{{ ev }}" {% if (current or '') == ev %}selected{% endif %}>{{ ev }}</option>{% endfor %}
+                    </select>
+                    {% else %}
+                    <input name="v::{{ f.path }}::0" value="{{ current or '' }}" placeholder="{{ f.doc[:80] if f.doc else 'Введите значение' }}" class="w-full border rounded px-2 py-1 text-sm" />
+                    {% endif %}
                   {% else %}
                     {% for item in current %}
-                      <input name="v::{{ f.path }}::{{ loop.index0 }}" value="{{ item }}" class="w-full border rounded px-2 py-1 text-sm" />
+                      {% if f.enum_values %}
+                      <select name="v::{{ f.path }}::{{ loop.index0 }}" class="w-full border rounded px-2 py-1 text-sm">
+                        <option value="">-- выбрать --</option>
+                        {% for ev in f.enum_values %}<option value="{{ ev }}" {% if item == ev %}selected{% endif %}>{{ ev }}</option>{% endfor %}
+                      </select>
+                      {% else %}
+                      <input name="v::{{ f.path }}::{{ loop.index0 }}" value="{{ item }}" placeholder="{{ f.doc[:80] if f.doc else 'Введите значение' }}" class="w-full border rounded px-2 py-1 text-sm" />
+                      {% endif %}
                     {% endfor %}
                   {% endif %}
                 </div>
-                <button type="button" class="mt-2 text-xs px-2 py-1 rounded bg-slate-200" onclick="addRepeat('{{ f.path }}', this)">+ добавить значение</button>
+                <button type="button" class="mt-2 text-xs px-2 py-1 rounded bg-slate-200" onclick="addRepeat('{{ f.path }}', this, {{ 'true' if f.enum_values else 'false' }}, {{ (f.enum_values or [])|tojson }})">+ добавить значение</button>
                 {% else %}
                 <div class="mt-2 flex gap-3 items-center">
-                  <input name="v::{{ f.path }}" value="{{ defaults.get(f.path, '') }}" class="flex-1 border rounded px-2 py-1 text-sm" />
+                  {% if f.enum_values %}
+                  <select name="v::{{ f.path }}" class="flex-1 border rounded px-2 py-1 text-sm">
+                    <option value="">-- выбрать --</option>
+                    {% for ev in f.enum_values %}<option value="{{ ev }}" {% if defaults.get(f.path, '') == ev %}selected{% endif %}>{{ ev }}</option>{% endfor %}
+                  </select>
+                  {% else %}
+                  <input name="v::{{ f.path }}" value="{{ defaults.get(f.path, '') }}" placeholder="{{ f.doc[:80] if f.doc else 'Введите значение' }}" class="flex-1 border rounded px-2 py-1 text-sm" />
+                  {% endif %}
                   {% if not f.required %}
                     <label class="text-xs flex items-center gap-1"><input type="checkbox" name="d::{{ f.path }}" {% if f.path in disabled %}checked{% endif %}/> отключить</label>
                   {% endif %}
@@ -99,9 +127,26 @@
   </div>
 
 <script>
-function addRepeat(path, btn){
+function addRepeat(path, btn, isEnum, enumValues){
   const box = btn.previousElementSibling;
-  const count = box.querySelectorAll('input').length;
+  const count = box.querySelectorAll('input,select').length;
+  if (isEnum) {
+    const sel = document.createElement('select');
+    sel.name = `v::${path}::${count}`;
+    sel.className = 'w-full border rounded px-2 py-1 text-sm';
+    const first = document.createElement('option');
+    first.value = '';
+    first.textContent = '-- выбрать --';
+    sel.appendChild(first);
+    (enumValues || []).forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      sel.appendChild(opt);
+    });
+    box.appendChild(sel);
+    return;
+  }
   const input = document.createElement('input');
   input.name = `v::${path}::${count}`;
   input.className = 'w-full border rounded px-2 py-1 text-sm';
