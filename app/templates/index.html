@@ -9,33 +9,54 @@
 <body class="bg-slate-50 text-slate-900">
   <div class="max-w-7xl mx-auto p-6">
     <h1 class="text-2xl font-bold mb-2">KC2/KC3 → XML (ON_AKTREZRABP)</h1>
-    <p class="text-sm text-slate-600 mb-6">Заполните поля. Любые незаполненные обязательные поля блокируют генерацию. После генерации выполняется XSD-валидация локально по вашей схеме.</p>
+    <p class="text-sm text-slate-600 mb-6">Форма строится из XSD. Можно отключать необязательные поля, сохранять реквизиты и генерировать XML с валидацией.</p>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div class="lg:col-span-2">
-        <form action="/generate" method="post" class="bg-white p-4 rounded-xl shadow space-y-3">
+        <form action="/generate" method="post" class="bg-white p-4 rounded-xl shadow space-y-4">
           <div class="flex items-center justify-between mb-2">
             <h2 class="font-semibold">Поля XSD ({{ fields|length }})</h2>
             <button class="px-4 py-2 rounded bg-blue-600 text-white">Сгенерировать XML и проверить</button>
           </div>
 
-          {% for f in fields %}
-          <div class="border rounded-lg p-3 {% if f.required %}border-red-200{% else %}border-slate-200{% endif %}">
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <div class="font-mono text-xs break-all">{{ f.path }}</div>
-                <div class="text-xs text-slate-500 mt-1">{{ f.doc or 'Описание отсутствует в XSD' }}</div>
-              </div>
-              <div class="text-xs whitespace-nowrap">{% if f.required %}<span class="text-red-600">обязательное</span>{% else %}опциональное{% endif %}</div>
-            </div>
+          {% for gname, gfields in groups.items() %}
+          <details class="border border-slate-200 rounded-lg" {% if loop.first %}open{% endif %}>
+            <summary class="cursor-pointer px-3 py-2 font-medium bg-slate-50 rounded-t-lg">{{ gname }} ({{ gfields|length }})</summary>
+            <div class="p-3 space-y-3">
+              {% for f in gfields %}
+              <div class="border rounded-lg p-3 {% if f.required %}border-red-200{% else %}border-slate-200{% endif %}">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="font-mono text-xs break-all">{{ f.path }}</div>
+                    <div class="text-xs text-slate-500 mt-1">{{ f.doc or 'Описание отсутствует в XSD' }}</div>
+                  </div>
+                  <div class="text-xs whitespace-nowrap">{% if f.required %}<span class="text-red-600">обязательное</span>{% else %}опциональное{% endif %}</div>
+                </div>
 
-            <div class="mt-2 flex gap-3 items-center">
-              <input name="v::{{ f.path }}" value="{{ defaults.get(f.path, '') }}" class="flex-1 border rounded px-2 py-1 text-sm" />
-              {% if not f.required %}
-                <label class="text-xs flex items-center gap-1"><input type="checkbox" name="d::{{ f.path }}" {% if f.path in disabled %}checked{% endif %}/> отключить</label>
-              {% endif %}
+                {% if f.repeatable %}
+                <div class="mt-2 space-y-2" id="rep-{{ loop.index0 }}-{{ gname|replace(' ','_')|replace('/','_') }}">
+                  {% set current = defaults.get(f.path, []) %}
+                  {% if current is string or current is none %}
+                    <input name="v::{{ f.path }}::0" value="{{ current or '' }}" class="w-full border rounded px-2 py-1 text-sm" />
+                  {% else %}
+                    {% for item in current %}
+                      <input name="v::{{ f.path }}::{{ loop.index0 }}" value="{{ item }}" class="w-full border rounded px-2 py-1 text-sm" />
+                    {% endfor %}
+                  {% endif %}
+                </div>
+                <button type="button" class="mt-2 text-xs px-2 py-1 rounded bg-slate-200" onclick="addRepeat('{{ f.path }}', this)">+ добавить значение</button>
+                {% else %}
+                <div class="mt-2 flex gap-3 items-center">
+                  <input name="v::{{ f.path }}" value="{{ defaults.get(f.path, '') }}" class="flex-1 border rounded px-2 py-1 text-sm" />
+                  {% if not f.required %}
+                    <label class="text-xs flex items-center gap-1"><input type="checkbox" name="d::{{ f.path }}" {% if f.path in disabled %}checked{% endif %}/> отключить</label>
+                  {% endif %}
+                </div>
+                {% endif %}
+              </div>
+              {% endfor %}
             </div>
-          </div>
+          </details>
           {% endfor %}
         </form>
       </div>
@@ -76,5 +97,16 @@
       </div>
     </div>
   </div>
+
+<script>
+function addRepeat(path, btn){
+  const box = btn.previousElementSibling;
+  const count = box.querySelectorAll('input').length;
+  const input = document.createElement('input');
+  input.name = `v::${path}::${count}`;
+  input.className = 'w-full border rounded px-2 py-1 text-sm';
+  box.appendChild(input);
+}
+</script>
 </body>
 </html>

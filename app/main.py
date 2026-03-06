@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-from fastapi import FastAPI, Request, Form, UploadFile, File
+from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -28,6 +28,22 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
 FIELDS = parse_xsd_fields(XSD_PATH)
 
 
+def _group_key(path: str) -> str:
+    p = [x for x in path.split('/') if x and not x.startswith('@')]
+    if len(p) >= 3:
+        return f"{p[1]} / {p[2]}"
+    if len(p) >= 2:
+        return p[1]
+    return "Прочее"
+
+
+def _grouped_fields():
+    groups = {}
+    for f in FIELDS:
+        groups.setdefault(_group_key(f.path), []).append(f)
+    return groups
+
+
 def load_state() -> dict:
     if not STATE_FILE.exists():
         return {"defaults": {}, "disabled": []}
@@ -46,6 +62,7 @@ async def index(request: Request):
         {
             "request": request,
             "fields": FIELDS,
+            "groups": _grouped_fields(),
             "defaults": state.get("defaults", {}),
             "disabled": set(state.get("disabled", [])),
             "result": None,
@@ -75,15 +92,31 @@ async def generate(request: Request):
 
     values = {}
     disabled = []
+    form_dict = dict(form)
     for f in FIELDS:
         key = f.path
-        val = form.get(f"v::{key}", "")
         is_disabled = form.get(f"d::{key}") == "on"
         if is_disabled and not f.required:
             disabled.append(key)
             continue
-        if val:
-            values[key] = str(val)
+
+        if f.repeatable:
+            arr = []
+            i = 0
+            while True:
+                k = f"v::{key}::{i}"
+                if k not in form_dict:
+                    break
+                v = str(form.get(k, "")).strip()
+                if v:
+                    arr.append(v)
+                i += 1
+            if arr:
+                values[key] = arr
+        else:
+            val = str(form.get(f"v::{key}", "")).strip()
+            if val:
+                values[key] = val
 
     # required check
     missing = [f.path for f in FIELDS if f.required and not values.get(f.path)]
@@ -95,6 +128,7 @@ async def generate(request: Request):
             {
                 "request": request,
                 "fields": FIELDS,
+                "groups": _grouped_fields(),
                 "defaults": {**state.get("defaults", {}), **values},
                 "disabled": set(disabled),
                 "result": None,
@@ -124,6 +158,7 @@ async def generate(request: Request):
         {
             "request": request,
             "fields": FIELDS,
+            "groups": _grouped_fields(),
             "defaults": values,
             "disabled": set(disabled),
             "result": {

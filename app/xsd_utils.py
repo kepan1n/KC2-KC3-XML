@@ -14,6 +14,11 @@ class FieldDef:
     kind: str  # element|attribute
     required: bool
     doc: str
+    max_occurs: str = "1"
+
+    @property
+    def repeatable(self) -> bool:
+        return self.kind == "element" and (self.max_occurs == "unbounded" or (self.max_occurs.isdigit() and int(self.max_occurs) > 1))
 
 
 def _doc(node: etree._Element) -> str:
@@ -41,11 +46,11 @@ def parse_xsd_fields(xsd_path: Path) -> List[FieldDef]:
 
     out: List[FieldDef] = []
 
-    def walk_element(el: etree._Element, path: str):
+    def walk_element(el: etree._Element, path: str, min_occurs: str = "1", max_occurs: str = "1"):
         ctype = resolve_complex_type(el)
         if ctype is None:
-            req = (el.get("minOccurs") or "1") != "0"
-            out.append(FieldDef(path=path, kind="element", required=req, doc=_doc(el)))
+            req = min_occurs != "0"
+            out.append(FieldDef(path=path, kind="element", required=req, doc=_doc(el), max_occurs=max_occurs))
             return
 
         attrs = ctype.xpath("./xs:attribute", namespaces=NS)
@@ -61,22 +66,27 @@ def parse_xsd_fields(xsd_path: Path) -> List[FieldDef]:
 
         children = ctype.xpath("./xs:sequence/xs:element", namespaces=NS)
         if not children:
-            req = (el.get("minOccurs") or "1") != "0"
-            out.append(FieldDef(path=path, kind="element", required=req, doc=_doc(el)))
+            req = min_occurs != "0"
+            out.append(FieldDef(path=path, kind="element", required=req, doc=_doc(el), max_occurs=max_occurs))
             return
 
         for ch in children:
             child_name = ch.get("name")
             if not child_name:
                 continue
-            walk_element(ch, f"{path}/{child_name}")
+            walk_element(
+                ch,
+                f"{path}/{child_name}",
+                min_occurs=ch.get("minOccurs") or "1",
+                max_occurs=ch.get("maxOccurs") or "1",
+            )
 
     root_el = root.xpath("./xs:element[@name='Файл']", namespaces=NS)[0]
     walk_element(root_el, "/Файл")
     return out
 
 
-def build_xml_from_values(values: Dict[str, str]) -> etree._Element:
+def build_xml_from_values(values: Dict[str, object]) -> etree._Element:
     root = etree.Element("Файл")
 
     def get_or_create(parent: etree._Element, tag: str) -> etree._Element:
@@ -87,19 +97,24 @@ def build_xml_from_values(values: Dict[str, str]) -> etree._Element:
         return c
 
     for path, raw_value in sorted(values.items()):
-        value = (raw_value or "").strip()
-        if not value:
-            continue
-        parts = [p for p in path.split("/") if p]
-        cur = root
-        # skip first part Файл
-        for part in parts[1:]:
-            if part.startswith("@"):
-                cur.set(part[1:], value)
-            else:
-                cur = get_or_create(cur, part)
-        if not parts[-1].startswith("@"):
-            cur.text = value
+        vals = raw_value if isinstance(raw_value, list) else [raw_value]
+        for one in vals:
+            value = (str(one) if one is not None else "").strip()
+            if not value:
+                continue
+            parts = [p for p in path.split("/") if p]
+            cur = root
+            for i, part in enumerate(parts[1:], start=1):
+                is_last = i == len(parts) - 1
+                if part.startswith("@"):
+                    cur.set(part[1:], value)
+                else:
+                    if is_last and len(vals) > 1:
+                        cur = etree.SubElement(cur, part)
+                    else:
+                        cur = get_or_create(cur, part)
+            if not parts[-1].startswith("@"):
+                cur.text = value
 
     return root
 
