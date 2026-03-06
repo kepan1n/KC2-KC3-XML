@@ -31,6 +31,13 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
 FIELDS = parse_xsd_fields(XSD_PATH)
 FIELDS_BY_PATH = {f.path: f for f in FIELDS}
 
+ID_BUILDER_DEFAULTS = {
+    "id_op_pol": "000",
+    "code_pol": "0000000000",
+    "id_op_otpr": "000",
+    "code_otpr": "0000000000",
+}
+
 
 def _group_key(path: str) -> str:
     p = [x for x in path.split('/') if x and not x.startswith('@')]
@@ -60,7 +67,7 @@ def _profile_names() -> list[str]:
 
 def load_state() -> dict:
     if not STATE_FILE.exists():
-        init_state = {"defaults": {}, "disabled": []}
+        init_state = {"defaults": {}, "disabled": [], "id_builder": dict(ID_BUILDER_DEFAULTS)}
         sample = _find_sample_xlsx()
         if sample:
             try:
@@ -68,7 +75,10 @@ def load_state() -> dict:
             except Exception:
                 pass
         return init_state
-    return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    st = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    if "id_builder" not in st:
+        st["id_builder"] = dict(ID_BUILDER_DEFAULTS)
+    return st
 
 
 def save_state(state: dict):
@@ -83,10 +93,12 @@ def _is_valid_kpp(v: str) -> bool:
     return bool(re.fullmatch(r"\d{9}", v))
 
 
-def _autogen_file_id(values: dict) -> str:
+def _autogen_file_id(id_builder: dict) -> str:
     d = datetime.now().strftime("%Y%m%d")
-    suffix = datetime.now().strftime("%H%M%S")
-    return f"ON_AKTREZRABP_0000000000_0000000000_{d}_{suffix}"
+    guid = datetime.now().strftime("%H%M%S%f")
+    a = f"{id_builder.get('id_op_pol','000')}{id_builder.get('code_pol','0000000000')}"
+    o = f"{id_builder.get('id_op_otpr','000')}{id_builder.get('code_otpr','0000000000')}"
+    return f"ON_AKTREZRABP_{a}_{o}_{d}_{guid}"
 
 
 def _field_validation_errors(values: dict) -> list[str]:
@@ -111,7 +123,7 @@ def _field_validation_errors(values: dict) -> list[str]:
     return errs
 
 
-def _render(request: Request, defaults: dict, disabled: set[str], result=None, errors=None):
+def _render(request: Request, defaults: dict, disabled: set[str], id_builder: dict | None = None, result=None, errors=None):
     minimal_mode = request.query_params.get("mode") == "minimal"
     return templates.TemplateResponse(
         "index.html",
@@ -125,6 +137,7 @@ def _render(request: Request, defaults: dict, disabled: set[str], result=None, e
             "errors": errors or [],
             "minimal_mode": minimal_mode,
             "profiles": _profile_names(),
+            "id_builder": id_builder or dict(ID_BUILDER_DEFAULTS),
         },
     )
 
@@ -132,7 +145,7 @@ def _render(request: Request, defaults: dict, disabled: set[str], result=None, e
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     state = load_state()
-    return _render(request, state.get("defaults", {}), set(state.get("disabled", [])))
+    return _render(request, state.get("defaults", {}), set(state.get("disabled", [])), state.get("id_builder", dict(ID_BUILDER_DEFAULTS)))
 
 
 @app.post("/prefill", response_class=HTMLResponse)
@@ -155,7 +168,7 @@ async def save_profile(request: Request, profile_name: str = Form(...)):
     state = load_state()
     safe = re.sub(r"[^a-zA-Z0-9_\-а-яА-Я]", "_", profile_name).strip("_") or "default"
     (PROFILES_DIR / f"{safe}.json").write_text(
-        json.dumps({"defaults": state.get("defaults", {}), "disabled": state.get("disabled", [])}, ensure_ascii=False, indent=2),
+        json.dumps({"defaults": state.get("defaults", {}), "disabled": state.get("disabled", []), "id_builder": state.get("id_builder", dict(ID_BUILDER_DEFAULTS))}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     return RedirectResponse(url="/", status_code=303)
@@ -176,6 +189,13 @@ async def generate(request: Request):
     values = {}
     disabled = []
     form_dict = dict(form)
+
+    id_builder = {
+        "id_op_pol": str(form.get("id::id_op_pol", "000")).strip() or "000",
+        "code_pol": str(form.get("id::code_pol", "0000000000")).strip() or "0000000000",
+        "id_op_otpr": str(form.get("id::id_op_otpr", "000")).strip() or "000",
+        "code_otpr": str(form.get("id::code_otpr", "0000000000")).strip() or "0000000000",
+    }
     for f in FIELDS:
         key = f.path
         is_disabled = form.get(f"d::{key}") == "on"
@@ -201,16 +221,31 @@ async def generate(request: Request):
             if val:
                 values[key] = val
 
-    if not values.get("/Файл/@ИдФайл"):
-        values["/Файл/@ИдФайл"] = _autogen_file_id(values)
+    # hard constraints from format
+    values["/Файл/@ВерсФорм"] = "1.00"
+    values["/Файл/Документ/@КНД"] = "1110335"
+    values["/Файл/@ИдФайл"] = _autogen_file_id(id_builder)
+
+    # business conditional rules (v1)
+    extra_required = []
+    if values.get("/Файл/Документ/НастрФормДок/@ПрСведРасчСогл") == "1":
+        extra_required += [
+            "/Файл/Документ/СвОРасч/@СумУдержВсегоОтч",
+            "/Файл/Документ/СвОРасч/@СумТребВсегоОтч",
+        ]
+    if values.get("/Файл/Документ/НастрФормДок/@ПрНакИтог") == "1":
+        extra_required += [
+            "/Файл/Документ/ВсегоАктСНач/@СтТовБезНДСВсего",
+        ]
 
     missing = [f.path for f in FIELDS if f.required and not values.get(f.path)]
+    missing += [p for p in extra_required if not values.get(p)]
     val_errors = _field_validation_errors(values)
 
     if missing or val_errors:
         state = load_state()
         errs = [f"Не заполнено обязательное поле: {m}" for m in missing[:50]] + val_errors[:50]
-        return _render(request, {**state.get("defaults", {}), **values}, set(disabled), None, errs)
+        return _render(request, {**state.get("defaults", {}), **values}, set(disabled), id_builder, None, errs)
 
     root = build_xml_from_values(values)
     xml_path = OUT_DIR / f"on_aktrezrabp_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml"
@@ -226,6 +261,7 @@ async def generate(request: Request):
     state = {
         "defaults": values,
         "disabled": disabled,
+        "id_builder": id_builder,
     }
     save_state(state)
 
@@ -233,6 +269,7 @@ async def generate(request: Request):
         request,
         values,
         set(disabled),
+        id_builder,
         result={"file": xml_path.name, "valid": len(errors) == 0},
         errors=errors,
     )

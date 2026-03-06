@@ -24,7 +24,7 @@ def prefill_from_first_sheet(xlsx_path: Path) -> Dict[str, str]:
     now = dt.datetime.now()
     data["/Файл/@ВерсФорм"] = "1.00"
     data["/Файл/@ВерсПрог"] = "KC2-KC3-XML-webapp"
-    data["/Файл/Документ/@КНД"] = "1115003"
+    data["/Файл/Документ/@КНД"] = "1110335"
     data["/Файл/Документ/@ДатаИнфПодр"] = now.strftime("%d.%m.%Y")
     data["/Файл/Документ/@ВремИнфПодр"] = now.strftime("%H.%M.%S")
 
