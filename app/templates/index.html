@@ -5,11 +5,33 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KC2/KC3 XML Generator</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .hint-wrap { position: relative; display: inline-flex; align-items: center; }
+    .hint-pop {
+      display: none;
+      position: absolute;
+      z-index: 30;
+      left: 1.6rem;
+      top: -0.2rem;
+      width: min(520px, 78vw);
+      max-height: 280px;
+      overflow: auto;
+      white-space: pre-wrap;
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 12px;
+      line-height: 1.35;
+      box-shadow: 0 10px 24px rgba(2, 6, 23, .35);
+    }
+    .hint-wrap:hover .hint-pop { display: block; }
+  </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
   <div class="max-w-7xl mx-auto p-6">
     <h1 class="text-2xl font-bold mb-2">KC2/KC3 → XML (ON_AKTREZRABP)</h1>
-    <p class="text-sm text-slate-600 mb-3">Форма строится из XSD. Можно отключать необязательные поля, сохранять реквизиты и генерировать XML с валидацией.</p>
+    <p class="text-sm text-slate-600 mb-3">Форма строится из XSD. Можно отключать необязательные поля, сохранять реквизиты и генерировать XML с валидацией. У полей есть подсказка <b>?</b> — выдержки из документа ФНС.</p>
     <div class="mb-6 flex gap-2 text-sm">
       <a class="px-3 py-1 rounded border {{ 'bg-blue-600 text-white border-blue-600' if not minimal_mode else 'bg-white' }}" href="/">Полная форма</a>
       <a class="px-3 py-1 rounded border {{ 'bg-blue-600 text-white border-blue-600' if minimal_mode else 'bg-white' }}" href="/?mode=minimal">Мастер (только обязательные)</a>
@@ -78,7 +100,13 @@
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
                     <div class="font-mono text-xs break-all">{{ f.path }}</div>
-                    <div class="text-xs text-slate-500 mt-1">{{ f.doc or 'Описание отсутствует в XSD' }}</div>
+                    <div class="text-xs text-slate-500 mt-1 flex items-start gap-2">
+                      <span>{{ f.doc or 'Описание отсутствует в XSD' }}</span>
+                      <span class="hint-wrap">
+                        <span class="inline-flex w-5 h-5 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-[11px] font-bold cursor-help">?</span>
+                        <span class="hint-pop">{{ field_hints.get(f.path) or doc_fallback }}</span>
+                      </span>
+                    </div>
                   </div>
                   <div class="text-xs whitespace-nowrap">{% if f.required %}<span class="text-red-600">обязательное</span>{% else %}опциональное{% endif %}</div>
                 </div>

@@ -12,9 +12,10 @@ from fastapi.templating import Jinja2Templates
 
 from .xsd_utils import parse_xsd_fields, build_xml_from_values, validate_xml
 from .prefill import prefill_from_first_sheet
+from .help_texts import build_embedded_hints
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-XSD_PATH = BASE_DIR / "ON_AKTREZRABP.xsd"
+XSD_PATH = BASE_DIR / "nalog docs" / "ON_AKTREZRABP_1_971_01_01_00_03.xsd"
 DATA_DIR = BASE_DIR / "data"
 OUT_DIR = BASE_DIR / "output"
 STATE_FILE = DATA_DIR / "defaults.json"
@@ -30,6 +31,11 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "app" / "templates"))
 
 FIELDS = parse_xsd_fields(XSD_PATH)
 FIELDS_BY_PATH = {f.path: f for f in FIELDS}
+FIELD_HINTS = build_embedded_hints(
+    [f.path for f in FIELDS],
+    xsd_docs={f.path: (f.doc or "") for f in FIELDS},
+)
+DOC_FALLBACK = "Подсказка встроена в приложение и не зависит от чтения DOCX во время работы."
 
 ID_BUILDER_DEFAULTS = {
     "id_op_pol": "000",
@@ -138,6 +144,8 @@ def _render(request: Request, defaults: dict, disabled: set[str], id_builder: di
             "minimal_mode": minimal_mode,
             "profiles": _profile_names(),
             "id_builder": id_builder or dict(ID_BUILDER_DEFAULTS),
+            "field_hints": FIELD_HINTS,
+            "doc_fallback": DOC_FALLBACK,
         },
     )
 
