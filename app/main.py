@@ -44,6 +44,14 @@ ID_BUILDER_DEFAULTS = {
     "code_otpr": "0000000000",
 }
 
+MANUAL_SETTING_PATHS = [
+    "/Файл/Документ/НастрФормДок/@ПрНДСВИтог",
+    "/Файл/Документ/НастрФормДок/@ПрНакИтог",
+    "/Файл/Документ/НастрФормДок/@ПрИндЦен",
+    "/Файл/Документ/НастрФормДок/@ПрСведРасчСогл",
+    "/Файл/Документ/НастрФормДок/@СтепАгрег",
+]
+
 
 def _group_key(path: str) -> str:
     p = [x for x in path.split('/') if x and not x.startswith('@')]
@@ -129,6 +137,55 @@ def _field_validation_errors(values: dict) -> list[str]:
     return errs
 
 
+def _now_date() -> str:
+    return datetime.now().strftime("%d.%m.%Y")
+
+
+def _now_time() -> str:
+    return datetime.now().strftime("%H.%M.%S")
+
+
+def _conditional_required(values: dict) -> list[tuple[str, str]]:
+    req: list[tuple[str, str]] = []
+
+    pr_nds = values.get("/Файл/Документ/НастрФормДок/@ПрНДСВИтог")
+    pr_nak = values.get("/Файл/Документ/НастрФормДок/@ПрНакИтог")
+    pr_ras = values.get("/Файл/Документ/НастрФормДок/@ПрСведРасчСогл")
+    kod_okv = values.get("/Файл/Документ/СвАктСдПр/ДенИзм/@КодОКВ")
+
+    if pr_ras == "1":
+        req.extend([
+            ("/Файл/Документ/СвОРасч/@СумУдержВсегоОтч", "ПрСведРасчСогл=1: требуется раздел СвОРасч (сумма удержаний за отчетный период)"),
+            ("/Файл/Документ/СвОРасч/@СумТребВсегоОтч", "ПрСведРасчСогл=1: требуется раздел СвОРасч (сумма требований за отчетный период)"),
+            ("/Файл/Документ/СвОРасч/@ВсегоКОплатОтч", "ПрСведРасчСогл=1: требуется итог к оплате за отчетный период"),
+        ])
+
+    if pr_nak in {"1", "2"}:
+        req.extend([
+            ("/Файл/Документ/ВсегоАктСНач/@СтТовБезНДСВсего", "ПрНакИтог=1/2: обязателен блок итогов с начала строительства"),
+        ])
+
+    if pr_nds == "1":
+        req.extend([
+            ("/Файл/Документ/ВсегоАктОтч/@СтТовУчНалВсего", "ПрНДСВИтог=1: требуется итоговая стоимость с налогом"),
+            ("/Файл/Документ/ВсегоАктОтч/СумПоСтавке/@НалСт", "ПрНДСВИтог=1: требуется детализация по ставке НДС"),
+            ("/Файл/Документ/ВсегоАктОтч/СумПоСтавке/@НалБаза", "ПрНДСВИтог=1: требуется налоговая база по ставке"),
+        ])
+
+    if kod_okv and kod_okv != "643":
+        req.extend([
+            ("/Файл/Документ/ВсегоАктОтч/@СтУчНалВсВалДог", "Валюта договора не 643: требуется итог в валюте договора"),
+            ("/Файл/Документ/ВсегоАктОтч/@СумНалВсВалДог", "Валюта договора не 643: требуется сумма налога в валюте договора"),
+        ])
+        if pr_nak in {"1", "2"}:
+            req.extend([
+                ("/Файл/Документ/ВсегоАктСНач/@СтУчНалВсВалДог", "Валюта договора не 643 + ПрНакИтог: требуется итог в валюте с начала строительства"),
+                ("/Файл/Документ/ВсегоАктСНач/@СумНалВсВалДог", "Валюта договора не 643 + ПрНакИтог: требуется сумма налога в валюте с начала строительства"),
+            ])
+
+    return req
+
+
 def _render(request: Request, defaults: dict, disabled: set[str], id_builder: dict | None = None, result=None, errors=None):
     minimal_mode = request.query_params.get("mode") == "minimal"
     return templates.TemplateResponse(
@@ -204,8 +261,17 @@ async def generate(request: Request):
         "id_op_otpr": str(form.get("id::id_op_otpr", "000")).strip() or "000",
         "code_otpr": str(form.get("id::code_otpr", "0000000000")).strip() or "0000000000",
     }
+    # Сначала забираем ключевые настройки документа из верхнего блока UI
+    for p in MANUAL_SETTING_PATHS:
+        v = str(form.get(f"v::{p}", "")).strip()
+        if v:
+            values[p] = v
+
     for f in FIELDS:
         key = f.path
+        if key in MANUAL_SETTING_PATHS:
+            continue
+
         is_disabled = form.get(f"d::{key}") == "on"
         if is_disabled and not f.required:
             disabled.append(key)
@@ -232,31 +298,28 @@ async def generate(request: Request):
     # hard constraints from format
     values["/Файл/@ВерсФорм"] = "1.00"
     values["/Файл/Документ/@КНД"] = "1110335"
+    values["/Файл/Документ/@ДатаИнфПодр"] = values.get("/Файл/Документ/@ДатаИнфПодр") or _now_date()
+    values["/Файл/Документ/@ВремИнфПодр"] = values.get("/Файл/Документ/@ВремИнфПодр") or _now_time()
     values["/Файл/@ИдФайл"] = _autogen_file_id(id_builder)
 
-    # business conditional rules (v1)
-    extra_required = []
-    if values.get("/Файл/Документ/НастрФормДок/@ПрСведРасчСогл") == "1":
-        extra_required += [
-            "/Файл/Документ/СвОРасч/@СумУдержВсегоОтч",
-            "/Файл/Документ/СвОРасч/@СумТребВсегоОтч",
-        ]
-    if values.get("/Файл/Документ/НастрФормДок/@ПрНакИтог") == "1":
-        extra_required += [
-            "/Файл/Документ/ВсегоАктСНач/@СтТовБезНДСВсего",
-        ]
+    # business conditional rules (v1 -> расширенная версия)
+    conditional = _conditional_required(values)
 
-    missing = [f.path for f in FIELDS if f.required and not values.get(f.path)]
-    missing += [p for p in extra_required if not values.get(p)]
+    missing_required = [f.path for f in FIELDS if f.required and not values.get(f.path)]
+    missing_conditional = [(p, reason) for p, reason in conditional if not values.get(p)]
     val_errors = _field_validation_errors(values)
 
-    if missing or val_errors:
+    if missing_required or missing_conditional or val_errors:
         state = load_state()
-        errs = [f"Не заполнено обязательное поле: {m}" for m in missing[:50]] + val_errors[:50]
+        errs = [f"Не заполнено обязательное поле: {m}" for m in missing_required[:50]]
+        errs += [f"Не заполнено условно-обязательное поле: {p} — {reason}" for p, reason in missing_conditional[:50]]
+        errs += val_errors[:50]
         return _render(request, {**state.get("defaults", {}), **values}, set(disabled), id_builder, None, errs)
 
     root = build_xml_from_values(values)
-    xml_path = OUT_DIR / f"on_aktrezrabp_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml"
+    file_id = str(values.get("/Файл/@ИдФайл", "on_aktrezrabp"))
+    safe_file_id = re.sub(r"[^A-Za-z0-9_\-.]", "_", file_id)
+    xml_path = OUT_DIR / f"{safe_file_id}.xml"
     xml_path.write_bytes(
         (
             b'<?xml version="1.0" encoding="windows-1251"?>\n'

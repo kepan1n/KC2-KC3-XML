@@ -61,7 +61,7 @@
           </select>
         </label>
       </div>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-2 text-sm">
         <label class="text-xs">ПрНакИтог
           <select name="v::/Файл/Документ/НастрФормДок/@ПрНакИтог" form="main-form" class="w-full border rounded px-2 py-1">
             <option value="">--</option>
@@ -79,6 +79,13 @@
         </label>
         <label class="text-xs">ПрИндЦен
           <input name="v::/Файл/Документ/НастрФормДок/@ПрИндЦен" form="main-form" value="{{ defaults.get('/Файл/Документ/НастрФормДок/@ПрИндЦен','') }}" class="w-full border rounded px-2 py-1" />
+        </label>
+        <label class="text-xs">СтепАгрег
+          <select name="v::/Файл/Документ/НастрФормДок/@СтепАгрег" form="main-form" class="w-full border rounded px-2 py-1">
+            <option value="">--</option>
+            <option value="НаимКонстрРеш" {% if defaults.get('/Файл/Документ/НастрФормДок/@СтепАгрег','')=='НаимКонстрРеш' %}selected{% endif %}>НаимКонстрРеш</option>
+            <option value="НаимРаб" {% if defaults.get('/Файл/Документ/НастрФормДок/@СтепАгрег','')=='НаимРаб' %}selected{% endif %}>НаимРаб</option>
+          </select>
         </label>
       </div>
     </div>
