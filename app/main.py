@@ -170,6 +170,33 @@ def _now_time() -> str:
     return datetime.now().strftime("%H.%M.%S")
 
 
+OPTIONAL_BRANCH_PREFIXES = [
+    "/Файл/Документ/СвАктСдПр/ИспрАктСдПр",
+    "/Файл/Документ/СвАктСдПр/ИнфПолФХЖ1",
+    "/Файл/Документ/СвПродПер/ИнфПолФХЖ3",
+    "/Файл/Документ/ПодписантПодр/Подписант/СвДоверБум",
+]
+
+
+def _is_branch_activated(values: dict, prefix: str) -> bool:
+    return any(k.startswith(prefix) and str(v).strip() for k, v in values.items())
+
+
+def _effective_required_paths(values: dict) -> list[str]:
+    req: list[str] = []
+    for f in FIELDS:
+        if not f.required:
+            continue
+        skip = False
+        for pref in OPTIONAL_BRANCH_PREFIXES:
+            if f.path.startswith(pref) and not _is_branch_activated(values, pref):
+                skip = True
+                break
+        if not skip:
+            req.append(f.path)
+    return req
+
+
 def _conditional_required(values: dict) -> list[tuple[str, str]]:
     req: list[tuple[str, str]] = []
 
@@ -177,6 +204,15 @@ def _conditional_required(values: dict) -> list[tuple[str, str]]:
     pr_nak = values.get("/Файл/Документ/НастрФормДок/@ПрНакИтог")
     pr_ras = values.get("/Файл/Документ/НастрФормДок/@ПрСведРасчСогл")
     kod_okv = values.get("/Файл/Документ/СвАктСдПр/ДенИзм/@КодОКВ")
+
+    # Якорные поля ключевых разделов верхнего уровня документа
+    req.extend([
+        ("/Файл/Документ/СвАктСдПр/@НомерДок", "Требуется базовый блок СвАктСдПр"),
+        ("/Файл/Документ/СвПродПер/СвПер/@СодОпер", "Требуется блок СвПродПер (содержание операции)"),
+        ("/Файл/Документ/ВсегоАктОтч/@СтТовБезНДСВсего", "Требуется блок итогов ВсегоАктОтч"),
+        ("/Файл/Документ/ПодписантПодр/Подписант/ФИО/@Фамилия", "Требуется блок подписанта подрядчика"),
+        ("/Файл/Документ/ПодписантПодр/Подписант/ФИО/@Имя", "Требуется блок подписанта подрядчика"),
+    ])
 
     if pr_ras == "1":
         req.extend([
@@ -344,7 +380,8 @@ async def generate(request: Request):
     # business conditional rules (v1 -> расширенная версия)
     conditional = _conditional_required(values)
 
-    missing_required = [f.path for f in FIELDS if f.required and not values.get(f.path)]
+    effective_required = _effective_required_paths(values)
+    missing_required = [p for p in effective_required if not values.get(p)]
     missing_conditional = [(p, reason) for p, reason in conditional if not values.get(p)]
     val_errors = _field_validation_errors(values)
 
