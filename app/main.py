@@ -44,6 +44,12 @@ ID_BUILDER_DEFAULTS = {
     "code_otpr": "0000000000",
 }
 
+SYSTEM_LOCKED_PATHS = {
+    "/Файл/@ИдФайл",
+    "/Файл/@ВерсФорм",
+    "/Файл/Документ/@КНД",
+}
+
 MANUAL_SETTING_PATHS = [
     "/Файл/Документ/НастрФормДок/@ПрНДСВИтог",
     "/Файл/Документ/НастрФормДок/@ПрНакИтог",
@@ -64,7 +70,7 @@ def _group_key(path: str) -> str:
 
 def _grouped_fields(minimal_only: bool = False):
     groups = {}
-    items = [f for f in FIELDS if (f.required if minimal_only else True)]
+    items = [f for f in FIELDS if f.path not in SYSTEM_LOCKED_PATHS and (f.required if minimal_only else True)]
     for f in items:
         groups.setdefault(_group_key(f.path), []).append(f)
     return groups
@@ -107,12 +113,31 @@ def _is_valid_kpp(v: str) -> bool:
     return bool(re.fullmatch(r"\d{9}", v))
 
 
+def _validate_id_builder(id_builder: dict) -> list[str]:
+    errs: list[str] = []
+    checks = [
+        ("id_op_pol", r"\d{3}", "ИдОперПол должен быть ровно 3 цифры"),
+        ("code_pol", r"\d{10}", "КодПол должен быть ровно 10 цифр"),
+        ("id_op_otpr", r"\d{3}", "ИдОперОтпр должен быть ровно 3 цифры"),
+        ("code_otpr", r"\d{10}", "КодОтпр должен быть ровно 10 цифр"),
+    ]
+    for key, pattern, msg in checks:
+        v = str(id_builder.get(key, "")).strip()
+        if not re.fullmatch(pattern, v):
+            errs.append(msg)
+    return errs
+
+
 def _autogen_file_id(id_builder: dict) -> str:
     d = datetime.now().strftime("%Y%m%d")
     guid = datetime.now().strftime("%H%M%S%f")
     a = f"{id_builder.get('id_op_pol','000')}{id_builder.get('code_pol','0000000000')}"
     o = f"{id_builder.get('id_op_otpr','000')}{id_builder.get('code_otpr','0000000000')}"
     return f"ON_AKTREZRABP_{a}_{o}_{d}_{guid}"
+
+
+def _is_valid_file_id(file_id: str) -> bool:
+    return bool(re.fullmatch(r"ON_AKTREZRABP_\d{13}_\d{13}_\d{8}_[A-Za-z0-9]{6,}", file_id or ""))
 
 
 def _field_validation_errors(values: dict) -> list[str]:
@@ -188,6 +213,8 @@ def _conditional_required(values: dict) -> list[tuple[str, str]]:
 
 def _render(request: Request, defaults: dict, disabled: set[str], id_builder: dict | None = None, result=None, errors=None):
     minimal_mode = request.query_params.get("mode") == "minimal"
+    id_builder = id_builder or dict(ID_BUILDER_DEFAULTS)
+    id_preview = _autogen_file_id(id_builder)
     return templates.TemplateResponse(
         "index.html",
         {
@@ -200,7 +227,8 @@ def _render(request: Request, defaults: dict, disabled: set[str], id_builder: di
             "errors": errors or [],
             "minimal_mode": minimal_mode,
             "profiles": _profile_names(),
-            "id_builder": id_builder or dict(ID_BUILDER_DEFAULTS),
+            "id_builder": id_builder,
+            "id_preview": id_preview,
             "field_hints": FIELD_HINTS,
             "doc_fallback": DOC_FALLBACK,
         },
@@ -269,7 +297,7 @@ async def generate(request: Request):
 
     for f in FIELDS:
         key = f.path
-        if key in MANUAL_SETTING_PATHS:
+        if key in MANUAL_SETTING_PATHS or key in SYSTEM_LOCKED_PATHS:
             continue
 
         is_disabled = form.get(f"d::{key}") == "on"
@@ -300,7 +328,18 @@ async def generate(request: Request):
     values["/Файл/Документ/@КНД"] = "1110335"
     values["/Файл/Документ/@ДатаИнфПодр"] = values.get("/Файл/Документ/@ДатаИнфПодр") or _now_date()
     values["/Файл/Документ/@ВремИнфПодр"] = values.get("/Файл/Документ/@ВремИнфПодр") or _now_time()
-    values["/Файл/@ИдФайл"] = _autogen_file_id(id_builder)
+
+    id_builder_errors = _validate_id_builder(id_builder)
+    manual_mode = str(form.get("id::manual_mode", "")).lower() in {"on", "1", "true"}
+    manual_file_id = str(form.get("id::manual_file_id", "")).strip()
+    if manual_mode and manual_file_id:
+        values["/Файл/@ИдФайл"] = manual_file_id
+    else:
+        values["/Файл/@ИдФайл"] = _autogen_file_id(id_builder)
+
+    id_format_errors: list[str] = []
+    if not _is_valid_file_id(values.get("/Файл/@ИдФайл", "")):
+        id_format_errors.append("ИдФайл не соответствует шаблону ON_AKTREZRABP_<13цфр>_<13цфр>_<YYYYMMDD>_<GUID>")
 
     # business conditional rules (v1 -> расширенная версия)
     conditional = _conditional_required(values)
@@ -309,10 +348,12 @@ async def generate(request: Request):
     missing_conditional = [(p, reason) for p, reason in conditional if not values.get(p)]
     val_errors = _field_validation_errors(values)
 
-    if missing_required or missing_conditional or val_errors:
+    if missing_required or missing_conditional or val_errors or id_builder_errors or id_format_errors:
         state = load_state()
         errs = [f"Не заполнено обязательное поле: {m}" for m in missing_required[:50]]
         errs += [f"Не заполнено условно-обязательное поле: {p} — {reason}" for p, reason in missing_conditional[:50]]
+        errs += id_builder_errors
+        errs += id_format_errors
         errs += val_errors[:50]
         return _render(request, {**state.get("defaults", {}), **values}, set(disabled), id_builder, None, errs)
 

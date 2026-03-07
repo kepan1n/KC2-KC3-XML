@@ -46,6 +46,19 @@
         <input name="id::code_otpr" form="main-form" value="{{ id_builder.code_otpr }}" placeholder="КодОтпр" class="border rounded px-2 py-1" />
       </div>
       <div class="text-xs text-slate-500 mb-2">ИдФайл формируется автоматически по шаблону ON_AKTREZRABP_A_O_YYYYMMDD_GUID.</div>
+      <label class="block text-xs mb-2">Предпросмотр ИдФайл
+        <input value="{{ id_preview }}" readonly class="w-full border rounded px-2 py-1 bg-slate-100 font-mono text-[11px]" />
+      </label>
+      <details class="mb-2">
+        <summary class="text-xs cursor-pointer text-slate-600">Расширенные настройки (ручной ИдФайл)</summary>
+        <div class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
+          <label class="text-xs flex items-center gap-2">
+            <input type="checkbox" name="id::manual_mode" form="main-form" />
+            использовать ручной ИдФайл
+          </label>
+          <input name="id::manual_file_id" form="main-form" placeholder="ON_AKTREZRABP_..." class="border rounded px-2 py-1 text-xs font-mono" />
+        </div>
+      </details>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm mb-2">
         <label class="text-xs">КНД
           <input value="1110335" readonly class="w-full border rounded px-2 py-1 bg-slate-100" />
