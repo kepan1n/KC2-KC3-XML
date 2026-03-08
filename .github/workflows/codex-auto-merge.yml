@@ -1,0 +1,16 @@
+name: Codex Auto Merge
+
+on:
+  pull_request:
+    types: [opened]
+
+jobs:
+  auto-merge:
+    if: github.actor == 'openai-codex'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: peter-evans/enable-pull-request-automerge@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          merge-method: squash
