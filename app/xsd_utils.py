@@ -6,6 +6,8 @@ from typing import Dict, List, Optional, Tuple
 from lxml import etree
 
 NS = {"xs": "http://www.w3.org/2001/XMLSchema"}
+ORDER_INDEX: Dict[str, int] = {}
+order_index: Dict[str, int] = ORDER_INDEX
 
 
 @dataclass
@@ -74,6 +76,18 @@ def parse_xsd_fields(xsd_path: Path) -> List[FieldDef]:
         return inl[0] if inl else None
 
     out: List[FieldDef] = []
+    parsed_order_index: Dict[str, int] = {}
+
+    def save_sequence_order(parent_path: str, children: List[etree._Element]) -> None:
+        pos = 0
+        for ch in children:
+            child_name = ch.get("name")
+            if not child_name:
+                continue
+            child_path = f"{parent_path}/{child_name}"
+            if child_path not in parsed_order_index:
+                parsed_order_index[child_path] = pos
+            pos += 1
 
     def walk_element(el: etree._Element, path: str, min_occurs: str = "1", max_occurs: str = "1"):
         ctype = resolve_complex_type(el)
@@ -107,6 +121,7 @@ def parse_xsd_fields(xsd_path: Path) -> List[FieldDef]:
                     yield from iter_child_elements(ch)
 
         children = list(iter_child_elements(ctype))
+        save_sequence_order(path, children)
         if not children:
             req = min_occurs != "0"
             enum_vals, pattern, max_len = _restrictions(resolve_simple_type(el))
@@ -126,20 +141,41 @@ def parse_xsd_fields(xsd_path: Path) -> List[FieldDef]:
 
     root_el = root.xpath("./xs:element[@name='Файл']", namespaces=NS)[0]
     walk_element(root_el, "/Файл")
+    ORDER_INDEX.clear()
+    ORDER_INDEX.update(parsed_order_index)
     return out
 
 
-def build_xml_from_values(values: Dict[str, object]) -> etree._Element:
+def build_xml_from_values(values: Dict[str, object], order_index: Optional[Dict[str, int]] = None) -> etree._Element:
     root = etree.Element("Файл")
+    index = ORDER_INDEX if order_index is None else order_index
 
-    def get_or_create(parent: etree._Element, tag: str) -> etree._Element:
+    def _child_rank(parent_path: str, tag: str) -> int:
+        return index.get(f"{parent_path}/{tag}", 10**9)
+
+    def _insert_child(parent: etree._Element, parent_path: str, tag: str) -> etree._Element:
+        new_el = etree.Element(tag)
+        new_rank = _child_rank(parent_path, tag)
+        inserted = False
+        for i, child in enumerate(list(parent)):
+            if not isinstance(child.tag, str):
+                continue
+            if _child_rank(parent_path, child.tag) > new_rank:
+                parent.insert(i, new_el)
+                inserted = True
+                break
+        if not inserted:
+            parent.append(new_el)
+        return new_el
+
+    def get_or_create(parent: etree._Element, parent_path: str, tag: str) -> etree._Element:
         for c in parent:
             if c.tag == tag:
                 return c
-        c = etree.SubElement(parent, tag)
+        c = _insert_child(parent, parent_path, tag)
         return c
 
-    for path, raw_value in sorted(values.items()):
+    for path, raw_value in values.items():
         vals = raw_value if isinstance(raw_value, list) else [raw_value]
         for one in vals:
             value = (str(one) if one is not None else "").strip()
@@ -147,15 +183,18 @@ def build_xml_from_values(values: Dict[str, object]) -> etree._Element:
                 continue
             parts = [p for p in path.split("/") if p]
             cur = root
+            cur_path = "/Файл"
             for i, part in enumerate(parts[1:], start=1):
                 is_last = i == len(parts) - 1
                 if part.startswith("@"):
                     cur.set(part[1:], value)
                 else:
+                    next_path = f"{cur_path}/{part}"
                     if is_last and len(vals) > 1:
-                        cur = etree.SubElement(cur, part)
+                        cur = _insert_child(cur, cur_path, part)
                     else:
-                        cur = get_or_create(cur, part)
+                        cur = get_or_create(cur, cur_path, part)
+                    cur_path = next_path
             if not parts[-1].startswith("@"):
                 cur.text = value
 
