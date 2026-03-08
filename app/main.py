@@ -247,6 +247,36 @@ def _conditional_required(values: dict) -> list[tuple[str, str]]:
     return req
 
 
+def _impossible_combinations(values: dict) -> list[str]:
+    errs: list[str] = []
+
+    pr_nds = values.get("/Файл/Документ/НастрФормДок/@ПрНДСВИтог")
+    pr_nak = values.get("/Файл/Документ/НастрФормДок/@ПрНакИтог")
+    pr_ras = values.get("/Файл/Документ/НастрФормДок/@ПрСведРасчСогл")
+
+    if pr_nds and pr_nds not in {"0", "1"}:
+        errs.append("ПрНДСВИтог допускает только 0 или 1")
+    if pr_nak and pr_nak not in {"0", "1", "2"}:
+        errs.append("ПрНакИтог допускает только 0, 1 или 2")
+    if pr_ras and pr_ras not in {"0", "1"}:
+        errs.append("ПрСведРасчСогл допускает только 0 или 1")
+
+    if pr_nds == "1" and values.get("/Файл/Документ/ВсегоАктОтч/@ОтсСумНДС"):
+        errs.append("ПрНДСВИтог=1: поле ОтсСумНДС не должно заполняться (используются числовые суммы НДС)")
+
+    if pr_nak == "0":
+        forbidden_nak = [k for k in values.keys() if k.startswith("/Файл/Документ/ВсегоАктСНач")]
+        if forbidden_nak:
+            errs.append("ПрНакИтог=0: блок ВсегоАктСНач не должен быть заполнен")
+
+    if pr_ras == "0":
+        forbidden_ras = [k for k in values.keys() if k.startswith("/Файл/Документ/СвОРасч")]
+        if forbidden_ras:
+            errs.append("ПрСведРасчСогл=0: блок СвОРасч не должен быть заполнен")
+
+    return errs
+
+
 def _render(request: Request, defaults: dict, disabled: set[str], id_builder: dict | None = None, result=None, errors=None):
     minimal_mode = request.query_params.get("mode") == "minimal"
     id_builder = id_builder or dict(ID_BUILDER_DEFAULTS)
@@ -384,13 +414,15 @@ async def generate(request: Request):
     missing_required = [p for p in effective_required if not values.get(p)]
     missing_conditional = [(p, reason) for p, reason in conditional if not values.get(p)]
     val_errors = _field_validation_errors(values)
+    combo_errors = _impossible_combinations(values)
 
-    if missing_required or missing_conditional or val_errors or id_builder_errors or id_format_errors:
+    if missing_required or missing_conditional or val_errors or id_builder_errors or id_format_errors or combo_errors:
         state = load_state()
         errs = [f"Не заполнено обязательное поле: {m}" for m in missing_required[:50]]
         errs += [f"Не заполнено условно-обязательное поле: {p} — {reason}" for p, reason in missing_conditional[:50]]
         errs += id_builder_errors
         errs += id_format_errors
+        errs += combo_errors
         errs += val_errors[:50]
         return _render(request, {**state.get("defaults", {}), **values}, set(disabled), id_builder, None, errs)
 
