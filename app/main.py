@@ -221,6 +221,14 @@ def _conditional_required(values: dict) -> list[tuple[str, str]]:
             ("/Файл/Документ/СвОРасч/@ВсегоКОплатОтч", "ПрСведРасчСогл=1: требуется итог к оплате за отчетный период"),
         ])
 
+    has_vidrab = any(k.startswith("/Файл/Документ/НаимИСт/ВидРаб") and str(v).strip() for k, v in values.items())
+    if has_vidrab:
+        req.extend([
+            ("/Файл/Документ/НаимИСт/ВидРаб/@ТипЗатр", "Для режима ВидРаб требуется ТипЗатр"),
+            ("/Файл/Документ/НаимИСт/ВидРаб/@ОКЕИ_Стройка", "Для режима ВидРаб требуется ОКЕИ_Стройка"),
+            ("/Файл/Документ/НаимИСт/ВидРаб/@НаимЕдИзм", "Для режима ВидРаб требуется НаимЕдИзм"),
+        ])
+
     if pr_nak in {"1", "2"}:
         req.extend([
             ("/Файл/Документ/ВсегоАктСНач/@СтТовБезНДСВсего", "ПрНакИтог=1/2: обязателен блок итогов с начала строительства"),
@@ -253,6 +261,7 @@ def _impossible_combinations(values: dict) -> list[str]:
     pr_nds = values.get("/Файл/Документ/НастрФормДок/@ПрНДСВИтог")
     pr_nak = values.get("/Файл/Документ/НастрФормДок/@ПрНакИтог")
     pr_ras = values.get("/Файл/Документ/НастрФормДок/@ПрСведРасчСогл")
+    pr_gos = values.get("/Файл/Документ/СвАктСдПр/ОсновСтроит/@ПрГосМун")
 
     naim_touched = any(k.startswith("/Файл/Документ/НаимИСт/") and str(v).strip() for k, v in values.items())
     has_vidrab = any(k.startswith("/Файл/Документ/НаимИСт/ВидРаб") and str(v).strip() for k, v in values.items())
@@ -271,6 +280,13 @@ def _impossible_combinations(values: dict) -> list[str]:
 
     if naim_touched and (not has_rasres) and (not has_vidrab) and (not has_razdel):
         errs.append("НаимИСт: при отсутствии РасшифРес должен быть заполнен хотя бы один из элементов ВидРаб или Раздел")
+
+    okei_stroyka = str(values.get("/Файл/Документ/НаимИСт/ВидРаб/@ОКЕИ_Стройка", "")).strip()
+    naim_ed = str(values.get("/Файл/Документ/НаимИСт/ВидРаб/@НаимЕдИзм", "")).strip()
+    if okei_stroyka == "0000" and not naim_ed:
+        errs.append("ВидРаб: при ОКЕИ_Стройка=0000 обязательно заполнить НаимЕдИзм")
+    if pr_gos == "1" and okei_stroyka == "0000":
+        errs.append("ВидРаб: при ПрГосМун=1 код ОКЕИ_Стройка=0000 недопустим")
 
     if pr_nds == "1" and values.get("/Файл/Документ/ВсегоАктОтч/@ОтсСумНДС"):
         errs.append("ПрНДСВИтог=1: поле ОтсСумНДС не должно заполняться (используются числовые суммы НДС)")

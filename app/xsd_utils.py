@@ -98,7 +98,15 @@ def parse_xsd_fields(xsd_path: Path) -> List[FieldDef]:
                 )
             )
 
-        children = ctype.xpath("./xs:sequence/xs:element", namespaces=NS)
+        def iter_child_elements(node: etree._Element):
+            for ch in node:
+                tag = ch.tag
+                if tag == f"{{{NS['xs']}}}element":
+                    yield ch
+                elif tag in {f"{{{NS['xs']}}}sequence", f"{{{NS['xs']}}}choice", f"{{{NS['xs']}}}all"}:
+                    yield from iter_child_elements(ch)
+
+        children = list(iter_child_elements(ctype))
         if not children:
             req = min_occurs != "0"
             enum_vals, pattern, max_len = _restrictions(resolve_simple_type(el))
