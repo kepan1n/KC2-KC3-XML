@@ -254,12 +254,23 @@ def _impossible_combinations(values: dict) -> list[str]:
     pr_nak = values.get("/Файл/Документ/НастрФормДок/@ПрНакИтог")
     pr_ras = values.get("/Файл/Документ/НастрФормДок/@ПрСведРасчСогл")
 
+    naim_touched = any(k.startswith("/Файл/Документ/НаимИСт/") and str(v).strip() for k, v in values.items())
+    has_vidrab = any(k.startswith("/Файл/Документ/НаимИСт/ВидРаб") and str(v).strip() for k, v in values.items())
+    has_razdel = any(k.startswith("/Файл/Документ/НаимИСт/Раздел") and str(v).strip() for k, v in values.items())
+    has_rasres = any(k.startswith("/Файл/Документ/НаимИСт/РасшифРес") and str(v).strip() for k, v in values.items())
+
     if pr_nds and pr_nds not in {"0", "1"}:
         errs.append("ПрНДСВИтог допускает только 0 или 1")
     if pr_nak and pr_nak not in {"0", "1", "2"}:
         errs.append("ПрНакИтог допускает только 0, 1 или 2")
     if pr_ras and pr_ras not in {"0", "1"}:
         errs.append("ПрСведРасчСогл допускает только 0 или 1")
+
+    if naim_touched and has_rasres and (has_vidrab or has_razdel):
+        errs.append("НаимИСт: при наличии РасшифРес элементы ВидРаб и Раздел должны отсутствовать")
+
+    if naim_touched and (not has_rasres) and (not has_vidrab) and (not has_razdel):
+        errs.append("НаимИСт: при отсутствии РасшифРес должен быть заполнен хотя бы один из элементов ВидРаб или Раздел")
 
     if pr_nds == "1" and values.get("/Файл/Документ/ВсегоАктОтч/@ОтсСумНДС"):
         errs.append("ПрНДСВИтог=1: поле ОтсСумНДС не должно заполняться (используются числовые суммы НДС)")
