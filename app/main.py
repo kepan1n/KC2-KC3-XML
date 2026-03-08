@@ -288,8 +288,24 @@ def _impossible_combinations(values: dict) -> list[str]:
     if pr_gos == "1" and okei_stroyka == "0000":
         errs.append("ВидРаб: при ПрГосМун=1 код ОКЕИ_Стройка=0000 недопустим")
 
-    if pr_nds == "1" and values.get("/Файл/Документ/ВсегоАктОтч/@ОтсСумНДС"):
+    has_sum_nds_total = bool(str(values.get("/Файл/Документ/ВсегоАктОтч/СумНалВсего", "")).strip())
+    has_nds_percent = bool(str(values.get("/Файл/Документ/ВсегоАктОтч/ОтсСумНДС", "")).strip())
+    has_sum_by_rate = any(k.startswith("/Файл/Документ/ВсегоАктОтч/СумПоСтавке") and str(v).strip() for k, v in values.items())
+
+    if has_sum_nds_total and has_nds_percent:
+        errs.append("ВсегоАктОтч: одновременно заполнять СумНалВсего и ОтсСумНДС нельзя")
+
+    if pr_nds == "0" and not (has_sum_nds_total or has_nds_percent):
+        errs.append("ПрНДСВИтог=0: заполните либо СумНалВсего, либо ОтсСумНДС")
+
+    if pr_nds == "0" and has_sum_by_rate:
+        errs.append("ПрНДСВИтог=0: блок СумПоСтавке не должен заполняться")
+
+    if pr_nds == "1" and has_nds_percent:
         errs.append("ПрНДСВИтог=1: поле ОтсСумНДС не должно заполняться (используются числовые суммы НДС)")
+
+    if pr_nds == "1" and not (has_sum_nds_total or has_sum_by_rate):
+        errs.append("ПрНДСВИтог=1: заполните СумНалВсего и/или детализацию СумПоСтавке")
 
     if pr_nak == "0":
         forbidden_nak = [k for k in values.keys() if k.startswith("/Файл/Документ/ВсегоАктСНач")]
