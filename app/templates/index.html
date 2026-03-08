@@ -69,8 +69,8 @@
         <label class="text-xs">ПрНДСВИтог
           <select name="v::/Файл/Документ/НастрФормДок/@ПрНДСВИтог" form="main-form" class="w-full border rounded px-2 py-1">
             <option value="">--</option>
-            <option value="0" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНДСВИтог','')=='0' %}selected{% endif %}>0</option>
-            <option value="1" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНДСВИтог','')=='1' %}selected{% endif %}>1</option>
+            <option value="0" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНДСВИтог','')=='0' %}selected{% endif %}>0 — НДС не в итоговой разбивке по ставкам</option>
+            <option value="1" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНДСВИтог','')=='1' %}selected{% endif %}>1 — НДС в итоге (суммы/ставки)</option>
           </select>
         </label>
       </div>
@@ -78,16 +78,16 @@
         <label class="text-xs">ПрНакИтог
           <select name="v::/Файл/Документ/НастрФормДок/@ПрНакИтог" form="main-form" class="w-full border rounded px-2 py-1">
             <option value="">--</option>
-            <option value="0" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНакИтог','')=='0' %}selected{% endif %}>0</option>
-            <option value="1" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНакИтог','')=='1' %}selected{% endif %}>1</option>
-            <option value="2" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНакИтог','')=='2' %}selected{% endif %}>2</option>
+            <option value="0" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНакИтог','')=='0' %}selected{% endif %}>0 — без накопительного итога</option>
+            <option value="1" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНакИтог','')=='1' %}selected{% endif %}>1 — включить итоги с начала строительства</option>
+            <option value="2" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНакИтог','')=='2' %}selected{% endif %}>2 — альтернативный режим накопительного итога (по XSD/приказу)</option>
           </select>
         </label>
         <label class="text-xs">ПрСведРасчСогл
           <select name="v::/Файл/Документ/НастрФормДок/@ПрСведРасчСогл" form="main-form" class="w-full border rounded px-2 py-1">
             <option value="">--</option>
-            <option value="0" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрСведРасчСогл','')=='0' %}selected{% endif %}>0</option>
-            <option value="1" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрСведРасчСогл','')=='1' %}selected{% endif %}>1</option>
+            <option value="0" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрСведРасчСогл','')=='0' %}selected{% endif %}>0 — без блока сведений о расчетах (СвОРасч)</option>
+            <option value="1" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрСведРасчСогл','')=='1' %}selected{% endif %}>1 — включить блок СвОРасч</option>
           </select>
         </label>
         <label class="text-xs">ПрИндЦен
@@ -100,6 +100,9 @@
             <option value="НаимРаб" {% if defaults.get('/Файл/Документ/НастрФормДок/@СтепАгрег','')=='НаимРаб' %}selected{% endif %}>НаимРаб</option>
           </select>
         </label>
+      </div>
+      <div class="mt-2 text-xs text-slate-500">
+        <b>Расшифровка кодов:</b> 0 — режим выключен/базовый, 1 — режим включен, 2 — альтернативный режим по формату ФНС (используйте по требованиям конкретного кейса).
       </div>
     </div>
 
