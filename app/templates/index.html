@@ -26,167 +26,170 @@
       box-shadow: 0 10px 24px rgba(2, 6, 23, .35);
     }
     .hint-wrap:hover .hint-pop { display: block; }
+    .tab-btn.active { background: #2563eb; color: #fff; border-color: #2563eb; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
   <div class="max-w-7xl mx-auto p-6">
     <h1 class="text-2xl font-bold mb-2">KC2/KC3 → XML (ON_AKTREZRABP)</h1>
-    <p class="text-sm text-slate-600 mb-3">Форма строится из XSD. Можно отключать необязательные поля, сохранять реквизиты и генерировать XML с валидацией. У полей есть подсказка <b>?</b> — выдержки из документа ФНС.</p>
-    <div class="mb-6 flex gap-2 text-sm">
-      <a class="px-3 py-1 rounded border {{ 'bg-blue-600 text-white border-blue-600' if not minimal_mode else 'bg-white' }}" href="/">Полная форма</a>
-      <a class="px-3 py-1 rounded border {{ 'bg-blue-600 text-white border-blue-600' if minimal_mode else 'bg-white' }}" href="/?mode=minimal">Мастер (только обязательные)</a>
-    </div>
-
-    <div class="bg-white p-4 rounded-xl shadow mb-6">
-      <h2 class="font-semibold mb-3">Конструктор ИдФайл и ключевые настройки</h2>
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3 text-sm">
-        <input name="id::id_op_pol" form="main-form" value="{{ id_builder.id_op_pol }}" placeholder="ИдОперПол" class="border rounded px-2 py-1" />
-        <input name="id::code_pol" form="main-form" value="{{ id_builder.code_pol }}" placeholder="КодПол" class="border rounded px-2 py-1" />
-        <input name="id::id_op_otpr" form="main-form" value="{{ id_builder.id_op_otpr }}" placeholder="ИдОперОтпр" class="border rounded px-2 py-1" />
-        <input name="id::code_otpr" form="main-form" value="{{ id_builder.code_otpr }}" placeholder="КодОтпр" class="border rounded px-2 py-1" />
-      </div>
-      <div class="text-xs text-slate-500 mb-2">ИдФайл формируется автоматически по шаблону ON_AKTREZRABP_A_O_YYYYMMDD_GUID.</div>
-      <label class="block text-xs mb-2">Предпросмотр ИдФайл
-        <input value="{{ id_preview }}" readonly class="w-full border rounded px-2 py-1 bg-slate-100 font-mono text-[11px]" />
-      </label>
-      <details class="mb-2">
-        <summary class="text-xs cursor-pointer text-slate-600">Расширенные настройки (ручной ИдФайл)</summary>
-        <div class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2">
-          <label class="text-xs flex items-center gap-2">
-            <input type="checkbox" name="id::manual_mode" form="main-form" />
-            использовать ручной ИдФайл
-          </label>
-          <input name="id::manual_file_id" form="main-form" placeholder="ON_AKTREZRABP_..." class="border rounded px-2 py-1 text-xs font-mono" />
-        </div>
-      </details>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm mb-2">
-        <label class="text-xs">КНД
-          <input value="1110335" readonly class="w-full border rounded px-2 py-1 bg-slate-100" />
-        </label>
-        <label class="text-xs">ВерсФорм
-          <input value="1.00" readonly class="w-full border rounded px-2 py-1 bg-slate-100" />
-        </label>
-        <label class="text-xs">ПрНДСВИтог
-          <select name="v::/Файл/Документ/НастрФормДок/@ПрНДСВИтог" form="main-form" class="w-full border rounded px-2 py-1">
-            <option value="">--</option>
-            <option value="0" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНДСВИтог','')=='0' %}selected{% endif %}>0 — НДС не в итоговой разбивке по ставкам</option>
-            <option value="1" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНДСВИтог','')=='1' %}selected{% endif %}>1 — НДС в итоге (суммы/ставки)</option>
-          </select>
-        </label>
-      </div>
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-2 text-sm">
-        <label class="text-xs">ПрНакИтог
-          <select name="v::/Файл/Документ/НастрФормДок/@ПрНакИтог" form="main-form" class="w-full border rounded px-2 py-1">
-            <option value="">--</option>
-            <option value="0" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНакИтог','')=='0' %}selected{% endif %}>0 — без накопительного итога</option>
-            <option value="1" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНакИтог','')=='1' %}selected{% endif %}>1 — включить итоги с начала строительства</option>
-            <option value="2" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНакИтог','')=='2' %}selected{% endif %}>2 — альтернативный режим накопительного итога (по XSD/приказу)</option>
-          </select>
-        </label>
-        <label class="text-xs">ПрСведРасчСогл
-          <select name="v::/Файл/Документ/НастрФормДок/@ПрСведРасчСогл" form="main-form" class="w-full border rounded px-2 py-1">
-            <option value="">--</option>
-            <option value="0" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрСведРасчСогл','')=='0' %}selected{% endif %}>0 — без блока сведений о расчетах (СвОРасч)</option>
-            <option value="1" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрСведРасчСогл','')=='1' %}selected{% endif %}>1 — включить блок СвОРасч</option>
-          </select>
-        </label>
-        <label class="text-xs">ПрИндЦен
-          <input name="v::/Файл/Документ/НастрФормДок/@ПрИндЦен" form="main-form" value="{{ defaults.get('/Файл/Документ/НастрФормДок/@ПрИндЦен','') }}" class="w-full border rounded px-2 py-1" />
-        </label>
-        <label class="text-xs">СтепАгрег
-          <select name="v::/Файл/Документ/НастрФормДок/@СтепАгрег" form="main-form" class="w-full border rounded px-2 py-1">
-            <option value="">--</option>
-            <option value="НаимКонстрРеш" {% if defaults.get('/Файл/Документ/НастрФормДок/@СтепАгрег','')=='НаимКонстрРеш' %}selected{% endif %}>НаимКонстрРеш</option>
-            <option value="НаимРаб" {% if defaults.get('/Файл/Документ/НастрФормДок/@СтепАгрег','')=='НаимРаб' %}selected{% endif %}>НаимРаб</option>
-          </select>
-        </label>
-      </div>
-      <div class="mt-2 text-xs text-slate-500">
-        <b>Расшифровка кодов:</b> 0 — режим выключен/базовый, 1 — режим включен, 2 — альтернативный режим по формату ФНС (используйте по требованиям конкретного кейса).
-      </div>
-    </div>
+    <p class="text-sm text-slate-600 mb-3">Опросник включает только нужные ветки. Дальше можно работать в человеческой форме или в полной XSD-форме.</p>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div class="lg:col-span-2">
+      <div class="lg:col-span-2 space-y-4">
+        <div class="bg-white p-3 rounded-xl shadow flex gap-2 text-sm">
+          <button class="tab-btn active px-3 py-1 rounded border" type="button" data-tab="questionnaire">Опросник</button>
+          <button class="tab-btn px-3 py-1 rounded border" type="button" data-tab="human">Человеческая форма</button>
+          <button class="tab-btn px-3 py-1 rounded border" type="button" data-tab="xsd">Расширенная XSD форма</button>
+        </div>
+
         <form id="main-form" action="/generate" method="post" class="bg-white p-4 rounded-xl shadow space-y-4">
           <div class="flex items-center justify-between mb-2">
-            <h2 class="font-semibold">Поля XSD ({{ fields|length }})</h2>
+            <h2 class="font-semibold">Генерация XML</h2>
             <button class="px-4 py-2 rounded bg-blue-600 text-white">Сгенерировать XML и проверить</button>
           </div>
 
-          {% for gname, gfields in groups.items() %}
-          <details class="border border-slate-200 rounded-lg" {% if loop.first %}open{% endif %}>
-            <summary class="cursor-pointer px-3 py-2 font-medium bg-slate-50 rounded-t-lg">{{ gname }} ({{ gfields|length }})</summary>
-            <div class="p-3 space-y-3">
-              {% for f in gfields %}
-              <div class="border rounded-lg p-3 {% if f.required %}border-red-200{% else %}border-slate-200{% endif %}">
-                <div class="flex items-start justify-between gap-3">
-                  <div class="min-w-0">
-                    <div class="font-mono text-xs break-all">{{ f.path }}</div>
-                    <div class="text-xs text-slate-500 mt-1 flex items-start gap-2">
-                      <span>{{ f.doc or 'Описание отсутствует в XSD' }}</span>
-                      <span class="hint-wrap">
-                        <span class="inline-flex w-5 h-5 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-[11px] font-bold cursor-help">?</span>
-                        <span class="hint-pop">{{ field_hints.get(f.path) or doc_fallback }}</span>
-                      </span>
-                    </div>
-                  </div>
-                  <div class="text-xs whitespace-nowrap">{% if f.required %}<span class="text-red-600">обязательное</span>{% else %}опциональное{% endif %}</div>
-                </div>
-
-                {% if f.pattern or f.max_length %}
-                <div class="mt-1 text-[11px] text-slate-500">
-                  {% if f.pattern %}Формат: <span class="font-mono">{{ f.pattern }}</span>{% endif %}
-                  {% if f.max_length %} | Макс. длина: {{ f.max_length }}{% endif %}
-                </div>
-                {% endif %}
-
-                {% if f.repeatable %}
-                <div class="mt-2 space-y-2" id="rep-{{ loop.index0 }}-{{ gname|replace(' ','_')|replace('/','_') }}">
-                  {% set current = defaults.get(f.path, []) %}
-                  {% if current is string or current is none %}
-                    {% if f.enum_values %}
-                    <select name="v::{{ f.path }}::0" class="w-full border rounded px-2 py-1 text-sm">
-                      <option value="">-- выбрать --</option>
-                      {% for ev in f.enum_values %}<option value="{{ ev }}" {% if (current or '') == ev %}selected{% endif %}>{{ ev }}</option>{% endfor %}
-                    </select>
-                    {% else %}
-                    <input name="v::{{ f.path }}::0" value="{{ current or '' }}" placeholder="{{ f.doc[:80] if f.doc else 'Введите значение' }}" class="w-full border rounded px-2 py-1 text-sm" />
-                    {% endif %}
-                  {% else %}
-                    {% for item in current %}
-                      {% if f.enum_values %}
-                      <select name="v::{{ f.path }}::{{ loop.index0 }}" class="w-full border rounded px-2 py-1 text-sm">
-                        <option value="">-- выбрать --</option>
-                        {% for ev in f.enum_values %}<option value="{{ ev }}" {% if item == ev %}selected{% endif %}>{{ ev }}</option>{% endfor %}
-                      </select>
-                      {% else %}
-                      <input name="v::{{ f.path }}::{{ loop.index0 }}" value="{{ item }}" placeholder="{{ f.doc[:80] if f.doc else 'Введите значение' }}" class="w-full border rounded px-2 py-1 text-sm" />
-                      {% endif %}
-                    {% endfor %}
-                  {% endif %}
-                </div>
-                <button type="button" class="mt-2 text-xs px-2 py-1 rounded bg-slate-200" onclick="addRepeat('{{ f.path }}', this, {{ 'true' if f.enum_values else 'false' }}, {{ (f.enum_values or [])|tojson }})">+ добавить значение</button>
-                {% else %}
-                <div class="mt-2 flex gap-3 items-center">
-                  {% if f.enum_values %}
-                  <select name="v::{{ f.path }}" class="flex-1 border rounded px-2 py-1 text-sm">
-                    <option value="">-- выбрать --</option>
-                    {% for ev in f.enum_values %}<option value="{{ ev }}" {% if defaults.get(f.path, '') == ev %}selected{% endif %}>{{ ev }}</option>{% endfor %}
+          <section id="tab-questionnaire" class="tab-pane active space-y-4">
+            <div class="border rounded-lg p-3">
+              <h3 class="font-medium mb-2">1) Режимы документа</h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                <label class="text-xs">НДС отражается в итоге?
+                  <select name="v::/Файл/Документ/НастрФормДок/@ПрНДСВИтог" class="w-full border rounded px-2 py-1">
+                    <option value="0" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНДСВИтог','0')=='0' %}selected{% endif %}>Нет (0)</option>
+                    <option value="1" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНДСВИтог','')=='1' %}selected{% endif %}>Да (1)</option>
                   </select>
-                  {% else %}
-                  <input name="v::{{ f.path }}" value="{{ defaults.get(f.path, '') }}" placeholder="{{ f.doc[:80] if f.doc else 'Введите значение' }}" class="flex-1 border rounded px-2 py-1 text-sm" />
-                  {% endif %}
-                  {% if not f.required %}
-                    <label class="text-xs flex items-center gap-1"><input type="checkbox" name="d::{{ f.path }}" {% if f.path in disabled %}checked{% endif %}/> отключить</label>
-                  {% endif %}
-                </div>
-                {% endif %}
+                </label>
+                <label class="text-xs">Нужен накопительный итог с начала строительства?
+                  <select name="v::/Файл/Документ/НастрФормДок/@ПрНакИтог" class="w-full border rounded px-2 py-1">
+                    <option value="0" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНакИтог','0')=='0' %}selected{% endif %}>Нет (0)</option>
+                    <option value="1" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНакИтог','')=='1' %}selected{% endif %}>Да (1)</option>
+                    <option value="2" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрНакИтог','')=='2' %}selected{% endif %}>Да, спец-режим (2)</option>
+                  </select>
+                </label>
+                <label class="text-xs">Нужен раздел расчётов/удержаний?
+                  <select name="v::/Файл/Документ/НастрФормДок/@ПрСведРасчСогл" class="w-full border rounded px-2 py-1">
+                    <option value="0" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрСведРасчСогл','0')=='0' %}selected{% endif %}>Нет (0)</option>
+                    <option value="1" {% if defaults.get('/Файл/Документ/НастрФормДок/@ПрСведРасчСогл','')=='1' %}selected{% endif %}>Да (1)</option>
+                  </select>
+                </label>
+                <label class="text-xs">Уровень строк (СтепАгрег)
+                  <select name="v::/Файл/Документ/НастрФормДок/@СтепАгрег" class="w-full border rounded px-2 py-1">
+                    <option value="">--</option>
+                    <option value="НаимКонстрРеш" {% if defaults.get('/Файл/Документ/НастрФормДок/@СтепАгрег','')=='НаимКонстрРеш' %}selected{% endif %}>НаимКонстрРеш</option>
+                    <option value="НаимРаб" {% if defaults.get('/Файл/Документ/НастрФормДок/@СтепАгрег','')=='НаимРаб' %}selected{% endif %}>НаимРаб</option>
+                  </select>
+                </label>
               </div>
+            </div>
+
+            <div class="border rounded-lg p-3">
+              <h3 class="font-medium mb-2">2) Какой тип строк заполняем?</h3>
+              <label class="text-xs">Режим НаимИСт
+                <select id="line-mode" class="w-full border rounded px-2 py-1 mt-1">
+                  <option value="vidrab">ВидРаб</option>
+                  <option value="razdel">Раздел</option>
+                  <option value="rasres">РасшифРес</option>
+                </select>
+              </label>
+              <div class="text-xs text-slate-500 mt-2">Скрываем лишние ветки и автоматически отключаем их поля в "человеческой форме".</div>
+            </div>
+
+            <div class="border rounded-lg p-3">
+              <h3 class="font-medium mb-2">3) Конструктор ИдФайл</h3>
+              <div class="grid grid-cols-1 md:grid-cols-4 gap-2 mb-2 text-sm">
+                <input name="id::id_op_pol" value="{{ id_builder.id_op_pol }}" placeholder="ИдОперПол" class="border rounded px-2 py-1" />
+                <input name="id::code_pol" value="{{ id_builder.code_pol }}" placeholder="КодПол" class="border rounded px-2 py-1" />
+                <input name="id::id_op_otpr" value="{{ id_builder.id_op_otpr }}" placeholder="ИдОперОтпр" class="border rounded px-2 py-1" />
+                <input name="id::code_otpr" value="{{ id_builder.code_otpr }}" placeholder="КодОтпр" class="border rounded px-2 py-1" />
+              </div>
+              <div class="text-xs text-slate-500">Предпросмотр: {{ id_preview }}</div>
+            </div>
+          </section>
+
+          <section id="tab-human" class="tab-pane space-y-3">
+            <div class="text-sm text-slate-600">Быстрая форма. Показываем только нужные ветки и объясняем, почему поля обязательны.</div>
+
+            {% for card in human_cards %}
+            <div class="border rounded-lg p-3" data-show="{{ card.show }}" data-reason="{{ card.reason }}">
+              {% if card.fields|length > 1 %}
+              <div class="font-medium text-xs mb-2">{{ card.reason }}</div>
+              {% endif %}
+              {% for hf in card.fields %}
+              <div class="font-mono text-xs">{{ hf.path }}</div>
+              <div class="text-xs text-slate-500 mb-1 required-reason">Почему обязательно: {{ conditional_reasons.get(hf.path, card.reason) }}</div>
+              <input
+                name="v::{{ hf.path }}"
+                value="{{ defaults.get(hf.path, '') }}"
+                placeholder="{{ hf.placeholder }}"
+                class="w-full border rounded px-2 py-1 text-sm mb-2 human-required"
+                data-path="{{ hf.path }}"
+                data-reason="{{ conditional_reasons.get(hf.path, card.reason) }}"
+              />
               {% endfor %}
             </div>
-          </details>
-          {% endfor %}
+            {% endfor %}
+
+            <div class="bg-slate-50 border rounded-lg p-3">
+              <div class="font-medium text-sm mb-1">Чеклист перед Generate</div>
+              <div id="checklist-summary" class="text-xs text-slate-600">Проверьте обязательные поля…</div>
+              <ul id="checklist-missing" class="text-xs text-amber-700 list-disc pl-5 mt-1 space-y-1"></ul>
+            </div>
+          </section>
+
+          <section id="tab-xsd" class="tab-pane space-y-4">
+            {% for gname, gfields in groups.items() %}
+            <details class="border border-slate-200 rounded-lg" {% if loop.first %}open{% endif %}>
+              <summary class="cursor-pointer px-3 py-2 font-medium bg-slate-50 rounded-t-lg">{{ gname }} ({{ gfields|length }})</summary>
+              <div class="p-3 space-y-3">
+                {% for f in gfields %}
+                <div class="border rounded-lg p-3 {% if f.required %}border-red-200{% else %}border-slate-200{% endif %}">
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                      <div class="font-mono text-xs break-all">{{ f.path }}</div>
+                      <div class="text-xs text-slate-500 mt-1 flex items-start gap-2">
+                        <span>{{ f.doc or 'Описание отсутствует в XSD' }}</span>
+                        <span class="hint-wrap">
+                          <span class="inline-flex w-5 h-5 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-[11px] font-bold cursor-help">?</span>
+                          <span class="hint-pop">{{ field_hints.get(f.path) or doc_fallback }}</span>
+                        </span>
+                      </div>
+                    </div>
+                    <div class="text-xs whitespace-nowrap">{% if f.required %}<span class="text-red-600">обязательное</span>{% else %}опциональное{% endif %}</div>
+                  </div>
+
+                  {% if f.repeatable %}
+                  <div class="mt-2 space-y-2">
+                    {% set current = defaults.get(f.path, []) %}
+                    {% if current is string or current is none %}
+                      <input name="v::{{ f.path }}::0" value="{{ current or '' }}" class="w-full border rounded px-2 py-1 text-sm" />
+                    {% else %}
+                      {% for item in current %}
+                      <input name="v::{{ f.path }}::{{ loop.index0 }}" value="{{ item }}" class="w-full border rounded px-2 py-1 text-sm" />
+                      {% endfor %}
+                    {% endif %}
+                  </div>
+                  {% else %}
+                  <div class="mt-2 flex gap-3 items-center">
+                    {% if f.enum_values %}
+                    <select name="v::{{ f.path }}" class="flex-1 border rounded px-2 py-1 text-sm">
+                      <option value="">-- выбрать --</option>
+                      {% for ev in f.enum_values %}<option value="{{ ev }}" {% if defaults.get(f.path, '') == ev %}selected{% endif %}>{{ ev }}</option>{% endfor %}
+                    </select>
+                    {% else %}
+                    <input name="v::{{ f.path }}" value="{{ defaults.get(f.path, '') }}" class="flex-1 border rounded px-2 py-1 text-sm" />
+                    {% endif %}
+                    {% if not f.required %}
+                      <label class="text-xs flex items-center gap-1"><input type="checkbox" name="d::{{ f.path }}" {% if f.path in disabled %}checked{% endif %}/> отключить</label>
+                    {% endif %}
+                  </div>
+                  {% endif %}
+                </div>
+                {% endfor %}
+              </div>
+            </details>
+            {% endfor %}
+          </section>
         </form>
       </div>
 
@@ -244,31 +247,93 @@
   </div>
 
 <script>
-function addRepeat(path, btn, isEnum, enumValues){
-  const box = btn.previousElementSibling;
-  const count = box.querySelectorAll('input,select').length;
-  if (isEnum) {
-    const sel = document.createElement('select');
-    sel.name = `v::${path}::${count}`;
-    sel.className = 'w-full border rounded px-2 py-1 text-sm';
-    const first = document.createElement('option');
-    first.value = '';
-    first.textContent = '-- выбрать --';
-    sel.appendChild(first);
-    (enumValues || []).forEach(v => {
-      const opt = document.createElement('option');
-      opt.value = v;
-      opt.textContent = v;
-      sel.appendChild(opt);
+function updateHumanVisibility() {
+  const nds = document.querySelector('[name="v::/Файл/Документ/НастрФормДок/@ПрНДСВИтог"]')?.value || '0';
+  const nak = document.querySelector('[name="v::/Файл/Документ/НастрФормДок/@ПрНакИтог"]')?.value || '0';
+  const ras = document.querySelector('[name="v::/Файл/Документ/НастрФормДок/@ПрСведРасчСогл"]')?.value || '0';
+  const line = document.getElementById('line-mode')?.value || 'vidrab';
+
+  document.querySelectorAll('[data-show]').forEach(el => {
+    const rule = el.getAttribute('data-show');
+    let visible = rule === 'always';
+    if (rule === 'nds=1') visible = nds === '1';
+    if (rule === 'nak=1|2') visible = nak === '1' || nak === '2';
+    if (rule === 'ras=1') visible = ras === '1';
+    if (rule === 'line=vidrab') visible = line === 'vidrab';
+    if (rule === 'line=razdel') visible = line === 'razdel';
+    if (rule === 'line=rasres') visible = line === 'rasres';
+
+    el.style.display = visible ? '' : 'none';
+    el.querySelectorAll('input,select,textarea').forEach(inp => {
+      if (inp.closest('#tab-human')) inp.disabled = !visible;
     });
-    box.appendChild(sel);
+
+    const reasonNode = el.querySelector('.required-reason');
+    if (reasonNode) {
+      reasonNode.textContent = `Почему обязательно: ${el.getAttribute('data-reason') || 'по правилам формата'}`;
+    }
+  });
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(x => x.classList.remove('active'));
+    btn.classList.add('active');
+    const id = btn.dataset.tab;
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.getElementById(`tab-${id}`)?.classList.add('active');
+  });
+});
+
+document.querySelectorAll('[name="v::/Файл/Документ/НастрФормДок/@ПрНДСВИтог"], [name="v::/Файл/Документ/НастрФормДок/@ПрНакИтог"], [name="v::/Файл/Документ/НастрФормДок/@ПрСведРасчСогл"], #line-mode').forEach(el => {
+  el.addEventListener('change', updateHumanVisibility);
+});
+
+
+function updateChecklist() {
+  const missing = [];
+  document.querySelectorAll('#tab-human .human-required').forEach(inp => {
+    const visible = inp.offsetParent !== null && !inp.disabled;
+    if (!visible) return;
+    if (!String(inp.value || '').trim()) {
+      missing.push({ path: inp.dataset.path || inp.name, reason: inp.dataset.reason || 'обязательно по правилам' });
+    }
+  });
+
+  const summary = document.getElementById('checklist-summary');
+  const list = document.getElementById('checklist-missing');
+  if (!summary || !list) return;
+
+  list.innerHTML = '';
+  if (missing.length === 0) {
+    summary.textContent = '✅ Ключевые поля в человеческой форме заполнены.';
     return;
   }
-  const input = document.createElement('input');
-  input.name = `v::${path}::${count}`;
-  input.className = 'w-full border rounded px-2 py-1 text-sm';
-  box.appendChild(input);
+
+  summary.textContent = `⚠️ Не заполнено полей: ${missing.length}`;
+  missing.slice(0, 8).forEach(item => {
+    const li = document.createElement('li');
+    li.textContent = `${item.path} — ${item.reason}`;
+    list.appendChild(li);
+  });
 }
+
+document.querySelectorAll('#tab-human input, #tab-human select, #tab-human textarea').forEach(el => {
+  el.addEventListener('input', updateChecklist);
+  el.addEventListener('change', updateChecklist);
+});
+
+document.getElementById('main-form')?.addEventListener('submit', (e) => {
+  updateChecklist();
+  const summary = document.getElementById('checklist-summary');
+  if (summary && summary.textContent.includes('Не заполнено')) {
+    if (!confirm('Есть незаполненные поля в чеклисте. Всё равно сгенерировать XML?')) {
+      e.preventDefault();
+    }
+  }
+});
+
+updateChecklist();
 </script>
 </body>
 </html>

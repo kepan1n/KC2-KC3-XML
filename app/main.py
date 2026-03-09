@@ -13,6 +13,7 @@ from fastapi.templating import Jinja2Templates
 from .xsd_utils import parse_xsd_fields, build_xml_from_values, validate_xml
 from .prefill import prefill_from_first_sheet
 from .help_texts import build_embedded_hints
+from .human_form import HUMAN_CARDS
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 XSD_PATH = BASE_DIR / "nalog docs" / "ON_AKTREZRABP_1_971_01_01_00_03.xsd"
@@ -324,6 +325,7 @@ def _render(request: Request, defaults: dict, disabled: set[str], id_builder: di
     minimal_mode = request.query_params.get("mode") == "minimal"
     id_builder = id_builder or dict(ID_BUILDER_DEFAULTS)
     id_preview = _autogen_file_id(id_builder)
+    conditional_reasons = {p: reason for p, reason in _conditional_required(defaults)}
     return templates.TemplateResponse(
         "index.html",
         {
@@ -340,6 +342,8 @@ def _render(request: Request, defaults: dict, disabled: set[str], id_builder: di
             "id_preview": id_preview,
             "field_hints": FIELD_HINTS,
             "doc_fallback": DOC_FALLBACK,
+            "human_cards": HUMAN_CARDS,
+            "conditional_reasons": conditional_reasons,
         },
     )
 
