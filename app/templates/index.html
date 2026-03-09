@@ -49,6 +49,7 @@
             <h2 class="font-semibold">Генерация XML</h2>
             <button class="px-4 py-2 rounded bg-blue-600 text-white">Сгенерировать XML и проверить</button>
           </div>
+          <div id="draft-status" class="text-xs text-slate-500">Черновик формы сохраняется автоматически в браузере.</div>
 
           <section id="tab-questionnaire" class="tab-pane active space-y-4">
             <div class="border rounded-lg p-3">
@@ -231,13 +232,27 @@
         </div>
 
         <div class="bg-white p-4 rounded-xl shadow">
+          <h2 class="font-semibold mb-2">Backend-чеклист правил</h2>
+          {% if conditional_pairs %}
+            <ul class="text-xs text-slate-700 list-disc pl-5 space-y-1 max-h-[22vh] overflow-auto">
+              {% for path, reason in conditional_pairs %}
+                <li><span class="font-mono">{{ path }}</span> — {{ reason }}</li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <div class="text-sm text-slate-500">Для текущего набора флагов условных требований нет.</div>
+          {% endif %}
+        </div>
+
+        <div class="bg-white p-4 rounded-xl shadow">
           <h2 class="font-semibold mb-2">Ошибки/предупреждения</h2>
           {% if errors %}
             <ul class="text-xs text-red-700 list-disc pl-5 space-y-1 max-h-[40vh] overflow-auto">
               {% for e in errors %}
-                <li>{{ e }}</li>
+                <li class="error-item cursor-pointer hover:underline" data-error="{{ e }}">{{ e }}</li>
               {% endfor %}
             </ul>
+            <div class="text-[11px] text-slate-500 mt-2">Клик по ошибке попробует прокрутить к нужному полю.</div>
           {% else %}
             <div class="text-sm text-slate-500">Нет ошибок</div>
           {% endif %}
@@ -323,8 +338,59 @@ document.querySelectorAll('#tab-human input, #tab-human select, #tab-human texta
   el.addEventListener('change', updateChecklist);
 });
 
+const DRAFT_KEY = 'kc2kc3_form_draft_v1';
+
+function saveDraft() {
+  const form = document.getElementById('main-form');
+  if (!form) return;
+  const data = {};
+  form.querySelectorAll('input[name], select[name], textarea[name]').forEach(el => {
+    if (el.type === 'checkbox') data[el.name] = !!el.checked;
+    else data[el.name] = el.value;
+  });
+  localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+  const st = document.getElementById('draft-status');
+  if (st) st.textContent = `Черновик сохранён: ${new Date().toLocaleTimeString()}`;
+}
+
+function loadDraft() {
+  const raw = localStorage.getItem(DRAFT_KEY);
+  if (!raw) return;
+  try {
+    const data = JSON.parse(raw);
+    const form = document.getElementById('main-form');
+    if (!form) return;
+    Object.entries(data).forEach(([name, value]) => {
+      const el = form.querySelector(`[name="${CSS.escape(name)}"]`);
+      if (!el) return;
+      if (el.type === 'checkbox') el.checked = !!value;
+      else el.value = value ?? '';
+    });
+    const st = document.getElementById('draft-status');
+    if (st) st.textContent = 'Черновик восстановлен из браузера.';
+  } catch (_) {}
+}
+
+function wireErrorAnchors() {
+  document.querySelectorAll('.error-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const msg = item.dataset.error || '';
+      const m = msg.match(/\/(Файл\/[^: ]+)/);
+      if (!m) return;
+      const path = '/' + m[1];
+      const target = document.querySelector(`[name="v::${CSS.escape(path)}"]`) || document.querySelector(`[data-path="${CSS.escape(path)}"]`);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.classList.add('ring-2', 'ring-amber-400');
+        setTimeout(() => target.classList.remove('ring-2', 'ring-amber-400'), 1400);
+      }
+    });
+  });
+}
+
 document.getElementById('main-form')?.addEventListener('submit', (e) => {
   updateChecklist();
+  saveDraft();
   const summary = document.getElementById('checklist-summary');
   if (summary && summary.textContent.includes('Не заполнено')) {
     if (!confirm('Есть незаполненные поля в чеклисте. Всё равно сгенерировать XML?')) {
@@ -333,7 +399,15 @@ document.getElementById('main-form')?.addEventListener('submit', (e) => {
   }
 });
 
+document.querySelectorAll('#main-form input, #main-form select, #main-form textarea').forEach(el => {
+  el.addEventListener('input', saveDraft);
+  el.addEventListener('change', saveDraft);
+});
+
+loadDraft();
+updateHumanVisibility();
 updateChecklist();
+wireErrorAnchors();
 </script>
 </body>
 </html>

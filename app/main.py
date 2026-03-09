@@ -325,7 +325,8 @@ def _render(request: Request, defaults: dict, disabled: set[str], id_builder: di
     minimal_mode = request.query_params.get("mode") == "minimal"
     id_builder = id_builder or dict(ID_BUILDER_DEFAULTS)
     id_preview = _autogen_file_id(id_builder)
-    conditional_reasons = {p: reason for p, reason in _conditional_required(defaults)}
+    conditional_pairs = _conditional_required(defaults)
+    conditional_reasons = {p: reason for p, reason in conditional_pairs}
     return templates.TemplateResponse(
         "index.html",
         {
@@ -344,6 +345,7 @@ def _render(request: Request, defaults: dict, disabled: set[str], id_builder: di
             "doc_fallback": DOC_FALLBACK,
             "human_cards": HUMAN_CARDS,
             "conditional_reasons": conditional_reasons,
+            "conditional_pairs": conditional_pairs,
         },
     )
 
