@@ -42,6 +42,7 @@
         <div class="bg-white p-3 rounded-xl shadow flex gap-2 text-sm">
           <button class="tab-btn active px-3 py-1 rounded border" type="button" data-tab="questionnaire">Опросник</button>
           <button class="tab-btn px-3 py-1 rounded border" type="button" data-tab="human">Человеческая форма</button>
+          <button class="tab-btn px-3 py-1 rounded border" type="button" data-tab="excel">Форма как в Excel</button>
           <button class="tab-btn px-3 py-1 rounded border" type="button" data-tab="xsd">Расширенная XSD форма</button>
         </div>
 
@@ -162,6 +163,76 @@
               <div class="font-medium text-sm mb-1">Чеклист перед Generate</div>
               <div id="checklist-summary" class="text-xs text-slate-600">Проверьте обязательные поля…</div>
               <ul id="checklist-missing" class="text-xs text-amber-700 list-disc pl-5 mt-1 space-y-1"></ul>
+            </div>
+          </section>
+
+          <section id="tab-excel" class="tab-pane space-y-4">
+            <div class="text-sm text-slate-600">Режим ввода, визуально приближенный к шаблону «пример заполнения.xlsx».</div>
+
+            <div class="border rounded-lg overflow-hidden">
+              <div class="bg-slate-100 px-3 py-2 font-medium text-sm">Шапка документа (как в КС-2)</div>
+              <div class="p-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                <label>Застройщик
+                  <input name="v::/Файл/Документ/СвАктСдПр/СвИнфСтор/СвЗаказ/@НаимОрг" value="{{ defaults.get('/Файл/Документ/СвАктСдПр/СвИнфСтор/СвЗаказ/@НаимОрг', '') }}" class="w-full border rounded px-2 py-1" placeholder="Наименование/адрес" />
+                </label>
+                <label>Технический заказчик
+                  <input name="v::/Файл/Документ/СвАктСдПр/СвИнфСтор/СвЗаказТех/@НаимОрг" value="{{ defaults.get('/Файл/Документ/СвАктСдПр/СвИнфСтор/СвЗаказТех/@НаимОрг', '') }}" class="w-full border rounded px-2 py-1" placeholder="Наименование/адрес" />
+                </label>
+                <label>Генподрядчик
+                  <input name="v::/Файл/Документ/СвАктСдПр/СвИнфСтор/СвПодряд/@НаимОрг" value="{{ defaults.get('/Файл/Документ/СвАктСдПр/СвИнфСтор/СвПодряд/@НаимОрг', '') }}" class="w-full border rounded px-2 py-1" placeholder="Наименование/адрес" />
+                </label>
+                <label>Стройка
+                  <input name="v::/Файл/Документ/СвАктСдПр/ОснСостАкт/@НаимСтр" value="{{ defaults.get('/Файл/Документ/СвАктСдПр/ОснСостАкт/@НаимСтр', '') }}" class="w-full border rounded px-2 py-1" placeholder="Наименование стройки" />
+                </label>
+                <label class="md:col-span-2">Объект
+                  <input name="v::/Файл/Документ/СвАктСдПр/ОснСостАкт/@НаимОб" value="{{ defaults.get('/Файл/Документ/СвАктСдПр/ОснСостАкт/@НаимОб', '') }}" class="w-full border rounded px-2 py-1" placeholder="Наименование объекта" />
+                </label>
+              </div>
+            </div>
+
+            <div class="border rounded-lg overflow-hidden">
+              <div class="bg-slate-100 px-3 py-2 font-medium text-sm">Реквизиты акта</div>
+              <div class="p-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                <label>Номер документа
+                  <input name="v::/Файл/Документ/СвАктСдПр/@НомерДок" value="{{ defaults.get('/Файл/Документ/СвАктСдПр/@НомерДок', '') }}" class="w-full border rounded px-2 py-1 human-required" data-path="/Файл/Документ/СвАктСдПр/@НомерДок" data-reason="Требуется базовый блок СвАктСдПр" />
+                </label>
+                <label>Дата документа
+                  <input name="v::/Файл/Документ/СвАктСдПр/@ДатаДок" value="{{ defaults.get('/Файл/Документ/СвАктСдПр/@ДатаДок', '') }}" class="w-full border rounded px-2 py-1" placeholder="дд.мм.гггг" />
+                </label>
+                <label>Отчётный период
+                  <input name="v::/Файл/Документ/СвАктСдПр/@ОтчПериод" value="{{ defaults.get('/Файл/Документ/СвАктСдПр/@ОтчПериод', '') }}" class="w-full border rounded px-2 py-1" placeholder="Напр.: март 2026" />
+                </label>
+              </div>
+            </div>
+
+            <div class="border rounded-lg overflow-hidden">
+              <div class="bg-slate-100 px-3 py-2 font-medium text-sm">Итоговые суммы</div>
+              <div class="p-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                <label>Стоимость без НДС
+                  <input name="v::/Файл/Документ/ВсегоАктОтч/@СтТовБезНДСВсего" value="{{ defaults.get('/Файл/Документ/ВсегоАктОтч/@СтТовБезНДСВсего', '') }}" class="w-full border rounded px-2 py-1 human-required" data-path="/Файл/Документ/ВсегоАктОтч/@СтТовБезНДСВсего" data-reason="Требуется блок итогов ВсегоАктОтч" />
+                </label>
+                <label>Сумма НДС
+                  <input name="v::/Файл/Документ/ВсегоАктОтч/СумПоСтавке/@СумНал" value="{{ defaults.get('/Файл/Документ/ВсегоАктОтч/СумПоСтавке/@СумНал', '') }}" class="w-full border rounded px-2 py-1" />
+                </label>
+                <label>Стоимость с НДС
+                  <input name="v::/Файл/Документ/ВсегоАктОтч/@СтТовУчНалВсего" value="{{ defaults.get('/Файл/Документ/ВсегоАктОтч/@СтТовУчНалВсего', '') }}" class="w-full border rounded px-2 py-1" />
+                </label>
+              </div>
+            </div>
+
+            <div class="border rounded-lg overflow-hidden">
+              <div class="bg-slate-100 px-3 py-2 font-medium text-sm">Подписант подрядчика</div>
+              <div class="p-3 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                <label>Фамилия
+                  <input name="v::/Файл/Документ/ПодписантПодр/Подписант/ФИО/@Фамилия" value="{{ defaults.get('/Файл/Документ/ПодписантПодр/Подписант/ФИО/@Фамилия', '') }}" class="w-full border rounded px-2 py-1 human-required" data-path="/Файл/Документ/ПодписантПодр/Подписант/ФИО/@Фамилия" data-reason="Требуется блок подписанта подрядчика" />
+                </label>
+                <label>Имя
+                  <input name="v::/Файл/Документ/ПодписантПодр/Подписант/ФИО/@Имя" value="{{ defaults.get('/Файл/Документ/ПодписантПодр/Подписант/ФИО/@Имя', '') }}" class="w-full border rounded px-2 py-1 human-required" data-path="/Файл/Документ/ПодписантПодр/Подписант/ФИО/@Имя" data-reason="Требуется блок подписанта подрядчика" />
+                </label>
+                <label>Отчество
+                  <input name="v::/Файл/Документ/ПодписантПодр/Подписант/ФИО/@Отчество" value="{{ defaults.get('/Файл/Документ/ПодписантПодр/Подписант/ФИО/@Отчество', '') }}" class="w-full border rounded px-2 py-1" />
+                </label>
+              </div>
             </div>
           </section>
 
@@ -343,7 +414,7 @@ document.querySelectorAll('[name="v::/Файл/Документ/НастрФор
 
 function updateChecklist() {
   const missing = [];
-  document.querySelectorAll('#tab-human .human-required').forEach(inp => {
+  document.querySelectorAll('#tab-human .human-required, #tab-excel .human-required').forEach(inp => {
     const visible = inp.offsetParent !== null && !inp.disabled;
     if (!visible) return;
     if (!String(inp.value || '').trim()) {
@@ -369,7 +440,7 @@ function updateChecklist() {
   });
 }
 
-document.querySelectorAll('#tab-human input, #tab-human select, #tab-human textarea').forEach(el => {
+document.querySelectorAll('#tab-human input, #tab-human select, #tab-human textarea, #tab-excel input, #tab-excel select, #tab-excel textarea').forEach(el => {
   el.addEventListener('input', updateChecklist);
   el.addEventListener('change', updateChecklist);
 });
