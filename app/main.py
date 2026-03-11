@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import difflib
 from pathlib import Path
 from datetime import datetime
 
@@ -139,6 +140,23 @@ def _autogen_file_id(id_builder: dict) -> str:
 
 def _is_valid_file_id(file_id: str) -> bool:
     return bool(re.fullmatch(r"ON_AKTREZRABP_\d{13}_\d{13}_\d{8}_[A-Za-z0-9]{6,}", file_id or ""))
+
+
+def _latest_xml_file(exclude_name: str | None = None) -> Path | None:
+    files = sorted(OUT_DIR.glob("*.xml"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for p in files:
+        if exclude_name and p.name == exclude_name:
+            continue
+        return p
+    return None
+
+
+def _xml_text_for_diff(path: Path) -> list[str]:
+    try:
+        txt = path.read_text(encoding="windows-1251", errors="ignore")
+    except Exception:
+        txt = path.read_text(encoding="utf-8", errors="ignore")
+    return txt.splitlines()
 
 
 def _field_validation_errors(values: dict) -> list[str]:
@@ -321,7 +339,7 @@ def _impossible_combinations(values: dict) -> list[str]:
     return errs
 
 
-def _render(request: Request, defaults: dict, disabled: set[str], id_builder: dict | None = None, result=None, errors=None):
+def _render(request: Request, defaults: dict, disabled: set[str], id_builder: dict | None = None, result=None, errors=None, xml_diff: list[str] | None = None):
     minimal_mode = request.query_params.get("mode") == "minimal"
     id_builder = id_builder or dict(ID_BUILDER_DEFAULTS)
     id_preview = _autogen_file_id(id_builder)
@@ -346,6 +364,7 @@ def _render(request: Request, defaults: dict, disabled: set[str], id_builder: di
             "human_cards": HUMAN_CARDS,
             "conditional_reasons": conditional_reasons,
             "conditional_pairs": conditional_pairs,
+            "xml_diff": xml_diff or [],
         },
     )
 
@@ -488,6 +507,19 @@ async def generate(request: Request):
 
     errors = validate_xml(root, XSD_PATH)
 
+    prev_xml = _latest_xml_file(exclude_name=xml_path.name)
+    xml_diff: list[str] = []
+    if prev_xml:
+        xml_diff = list(
+            difflib.unified_diff(
+                _xml_text_for_diff(prev_xml),
+                _xml_text_for_diff(xml_path),
+                fromfile=prev_xml.name,
+                tofile=xml_path.name,
+                lineterm="",
+            )
+        )
+
     state = {
         "defaults": values,
         "disabled": disabled,
@@ -502,6 +534,7 @@ async def generate(request: Request):
         id_builder,
         result={"file": xml_path.name, "valid": len(errors) == 0},
         errors=errors,
+        xml_diff=xml_diff,
     )
 
 

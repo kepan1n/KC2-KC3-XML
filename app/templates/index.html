@@ -253,6 +253,15 @@
               <div class="text-red-700 font-medium">❌ Есть ошибки валидации</div>
             {% endif %}
             <a class="text-blue-600 underline text-sm" href="/download/{{ result.file }}">Скачать {{ result.file }}</a>
+
+            <details class="mt-3 border rounded p-2">
+              <summary class="cursor-pointer text-xs font-medium">Сравнение с предыдущим XML (diff)</summary>
+              {% if xml_diff %}
+                <pre class="mt-2 text-[11px] bg-slate-50 border rounded p-2 overflow-auto max-h-[220px]">{{ xml_diff | join('\n') }}</pre>
+              {% else %}
+                <div class="mt-2 text-xs text-slate-500">Изменений нет или предыдущий XML не найден.</div>
+              {% endif %}
+            </details>
           {% else %}
             <div class="text-sm text-slate-500">Пока ничего не сгенерировано</div>
           {% endif %}

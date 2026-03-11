@@ -81,6 +81,14 @@
 
 ## Запуск
 
+### В одну команду
+
+```bash
+cd /home/konstantin/.openclaw/workspace/KC2-KC3-XML && ./install.sh
+```
+
+### Вручную
+
 ```bash
 cd /home/konstantin/KC2-KC3-XML
 python3 -m venv .venv
