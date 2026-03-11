@@ -29,6 +29,7 @@
     .tab-btn.active { background: #2563eb; color: #fff; border-color: #2563eb; }
     .tab-pane { display: none; }
     .tab-pane.active { display: block; }
+    .wizard-step.active { background: #dbeafe; border-color: #60a5fa; color: #1d4ed8; }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-900">
@@ -51,7 +52,33 @@
           </div>
           <div id="draft-status" class="text-xs text-slate-500">Черновик формы сохраняется автоматически в браузере.</div>
 
+          <div class="border rounded-lg p-3 bg-slate-50 space-y-2">
+            <div class="flex items-center justify-between gap-3">
+              <div class="text-sm font-medium">Пошаговый режим заполнения</div>
+              <div id="wizard-progress-text" class="text-xs text-slate-600">Шаг 1 из 5</div>
+            </div>
+            <div class="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+              <div id="wizard-progress-bar" class="h-full bg-blue-600" style="width:20%"></div>
+            </div>
+            <div id="wizard-steps" class="flex flex-wrap gap-2 text-xs"></div>
+            <div class="flex gap-2">
+              <button id="wizard-prev" type="button" class="px-2 py-1 text-xs rounded border">← Назад</button>
+              <button id="wizard-next" type="button" class="px-2 py-1 text-xs rounded bg-blue-600 text-white">Дальше →</button>
+            </div>
+            <div id="wizard-remaining" class="text-xs text-amber-700"></div>
+          </div>
+
           <section id="tab-questionnaire" class="tab-pane active space-y-4">
+            <div class="border rounded-lg p-3 bg-blue-50">
+              <h3 class="font-medium mb-2">Быстрые сценарные шаблоны</h3>
+              <div class="flex flex-wrap gap-2 text-xs">
+                <button type="button" class="template-btn px-2 py-1 rounded border bg-white" data-template="basic">Базовый</button>
+                <button type="button" class="template-btn px-2 py-1 rounded border bg-white" data-template="nds">С НДС</button>
+                <button type="button" class="template-btn px-2 py-1 rounded border bg-white" data-template="nak">Накопительный</button>
+                <button type="button" class="template-btn px-2 py-1 rounded border bg-white" data-template="currency">Валютный</button>
+              </div>
+              <div id="template-status" class="text-[11px] text-slate-600 mt-2">Шаблон подставляет режимы и тип строки в 1 клик.</div>
+            </div>
             <div class="border rounded-lg p-3">
               <h3 class="font-medium mb-2">1) Режимы документа</h3>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
@@ -404,10 +431,199 @@ document.querySelectorAll('#main-form input, #main-form select, #main-form texta
   el.addEventListener('change', saveDraft);
 });
 
+function applyValueByName(name, value) {
+  const el = document.querySelector(`[name="${CSS.escape(name)}"]`);
+  if (!el) return;
+  if (el.type === 'checkbox') el.checked = !!value;
+  else el.value = value ?? '';
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+const TEMPLATE_PRESETS = {
+  basic: {
+    'v::/Файл/Документ/НастрФормДок/@ПрНДСВИтог': '0',
+    'v::/Файл/Документ/НастрФормДок/@ПрНакИтог': '0',
+    'v::/Файл/Документ/НастрФормДок/@ПрСведРасчСогл': '0',
+  },
+  nds: {
+    'v::/Файл/Документ/НастрФормДок/@ПрНДСВИтог': '1',
+    'v::/Файл/Документ/НастрФормДок/@ПрНакИтог': '0',
+    'v::/Файл/Документ/НастрФормДок/@ПрСведРасчСогл': '0',
+  },
+  nak: {
+    'v::/Файл/Документ/НастрФормДок/@ПрНДСВИтог': '0',
+    'v::/Файл/Документ/НастрФормДок/@ПрНакИтог': '1',
+    'v::/Файл/Документ/НастрФормДок/@ПрСведРасчСогл': '0',
+  },
+  currency: {
+    'v::/Файл/Документ/НастрФормДок/@ПрНДСВИтог': '1',
+    'v::/Файл/Документ/НастрФормДок/@ПрНакИтог': '1',
+    'v::/Файл/Документ/НастрФормДок/@ПрСведРасчСогл': '1',
+    'v::/Файл/Документ/СвАктСдПр/ДенИзм/@КодОКВ': '840',
+  },
+};
+
+function wireTemplates() {
+  document.querySelectorAll('.template-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.template;
+      const preset = TEMPLATE_PRESETS[key];
+      if (!preset) return;
+      Object.entries(preset).forEach(([name, value]) => applyValueByName(name, value));
+      if (key === 'basic' || key === 'nds' || key === 'nak' || key === 'currency') {
+        const lineMode = document.getElementById('line-mode');
+        if (lineMode) lineMode.value = 'vidrab';
+      }
+      updateHumanVisibility();
+      updateChecklist();
+      saveDraft();
+      const st = document.getElementById('template-status');
+      if (st) st.textContent = `Шаблон «${btn.textContent.trim()}» применён.`;
+    });
+  });
+}
+
+function attachMasks() {
+  const amountHints = ['Сум', 'СтТов', 'НалБаза', 'КолТов', 'ВсегоКОплат', 'Удерж', 'Треб'];
+  document.querySelectorAll('#main-form input[name^="v::"]').forEach(inp => {
+    const name = inp.name || '';
+    const path = name.replace(/^v::/, '');
+
+    if (path.includes('ИНН')) {
+      inp.inputMode = 'numeric';
+      inp.addEventListener('input', () => {
+        inp.value = inp.value.replace(/\D+/g, '').slice(0, 12);
+      });
+    }
+
+    if (path.includes('КПП')) {
+      inp.inputMode = 'numeric';
+      inp.addEventListener('input', () => {
+        inp.value = inp.value.replace(/\D+/g, '').slice(0, 9);
+      });
+    }
+
+    if (/(^|\/)@?Дата/.test(path)) {
+      inp.inputMode = 'numeric';
+      inp.placeholder = inp.placeholder || 'дд.мм.гггг';
+      inp.addEventListener('input', () => {
+        const d = inp.value.replace(/\D+/g, '').slice(0, 8);
+        const p = [];
+        if (d.slice(0, 2)) p.push(d.slice(0, 2));
+        if (d.slice(2, 4)) p.push(d.slice(2, 4));
+        if (d.slice(4, 8)) p.push(d.slice(4, 8));
+        inp.value = p.join('.');
+      });
+    }
+
+    if (path.endsWith('/@НалСт')) {
+      inp.addEventListener('input', () => {
+        inp.value = inp.value.toUpperCase().replace(/[^0-9/А-ЯA-Z .-]/g, '');
+      });
+    }
+
+    if (amountHints.some(h => path.includes(h))) {
+      inp.inputMode = 'decimal';
+      inp.addEventListener('input', () => {
+        const cleaned = inp.value.replace(/,/g, '.').replace(/[^0-9.]/g, '');
+        const firstDot = cleaned.indexOf('.');
+        inp.value = firstDot === -1 ? cleaned : cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, '');
+      });
+      inp.addEventListener('blur', () => {
+        const v = inp.value.trim();
+        if (!v) return;
+        const n = Number(v);
+        if (!Number.isNaN(n)) inp.value = n.toFixed(2);
+      });
+    }
+  });
+}
+
+const WIZARD_STEPS = [
+  { id: 'requisites', label: 'Реквизиты', tab: 'human', fields: ['v::/Файл/Документ/СвАктСдПр/@НомерДок'] },
+  { id: 'modes', label: 'Режимы', tab: 'questionnaire', fields: ['v::/Файл/Документ/НастрФормДок/@ПрНДСВИтог', 'v::/Файл/Документ/НастрФормДок/@ПрНакИтог', 'v::/Файл/Документ/НастрФормДок/@ПрСведРасчСогл'] },
+  { id: 'lines', label: 'Строки', tab: 'questionnaire', fields: ['line-mode'] },
+  { id: 'totals', label: 'Итоги', tab: 'human', fields: ['v::/Файл/Документ/ВсегоАктОтч/@СтТовБезНДСВсего'] },
+  { id: 'sign', label: 'Подпись', tab: 'human', fields: ['v::/Файл/Документ/ПодписантПодр/Подписант/ФИО/@Фамилия', 'v::/Файл/Документ/ПодписантПодр/Подписант/ФИО/@Имя'] },
+];
+let wizardIndex = 0;
+
+function stepDone(step) {
+  return step.fields.every(name => {
+    const el = name === 'line-mode' ? document.getElementById('line-mode') : document.querySelector(`[name="${CSS.escape(name)}"]`);
+    if (!el) return false;
+    if (el.disabled || el.offsetParent === null) return false;
+    return String(el.value || '').trim().length > 0;
+  });
+}
+
+function switchTab(tabName) {
+  document.querySelectorAll('.tab-btn').forEach(x => x.classList.toggle('active', x.dataset.tab === tabName));
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.getElementById(`tab-${tabName}`)?.classList.add('active');
+}
+
+function renderWizard() {
+  const total = WIZARD_STEPS.length;
+  const current = WIZARD_STEPS[wizardIndex];
+  const doneCount = WIZARD_STEPS.filter(stepDone).length;
+  const bar = document.getElementById('wizard-progress-bar');
+  const text = document.getElementById('wizard-progress-text');
+  const stepsBox = document.getElementById('wizard-steps');
+  const remaining = document.getElementById('wizard-remaining');
+
+  if (bar) bar.style.width = `${Math.max(10, (doneCount / total) * 100)}%`;
+  if (text) text.textContent = `Шаг ${wizardIndex + 1} из ${total}`;
+
+  if (stepsBox) {
+    stepsBox.innerHTML = '';
+    WIZARD_STEPS.forEach((s, idx) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `wizard-step px-2 py-1 rounded border ${idx === wizardIndex ? 'active' : ''}`;
+      b.textContent = `${stepDone(s) ? '✅' : '•'} ${s.label}`;
+      b.addEventListener('click', () => {
+        wizardIndex = idx;
+        switchTab(s.tab);
+        renderWizard();
+      });
+      stepsBox.appendChild(b);
+    });
+  }
+
+  if (remaining) {
+    const left = WIZARD_STEPS.filter(s => !stepDone(s)).map(s => s.label);
+    remaining.textContent = left.length ? `Осталось: ${left.join(' → ')}` : '✅ Все шаги заполнены.';
+  }
+
+  if (current) switchTab(current.tab);
+}
+
+function wireWizard() {
+  document.getElementById('wizard-prev')?.addEventListener('click', () => {
+    wizardIndex = Math.max(0, wizardIndex - 1);
+    renderWizard();
+  });
+  document.getElementById('wizard-next')?.addEventListener('click', () => {
+    wizardIndex = Math.min(WIZARD_STEPS.length - 1, wizardIndex + 1);
+    renderWizard();
+  });
+
+  document.querySelectorAll('#main-form input, #main-form select, #main-form textarea').forEach(el => {
+    el.addEventListener('input', renderWizard);
+    el.addEventListener('change', renderWizard);
+  });
+}
+
 loadDraft();
+attachMasks();
+wireTemplates();
 updateHumanVisibility();
 updateChecklist();
 wireErrorAnchors();
+wireWizard();
+renderWizard();
 </script>
 </body>
 </html>
