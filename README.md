@@ -87,10 +87,24 @@
 cd /home/konstantin/.openclaw/workspace/KC2-KC3-XML && ./install.sh
 ```
 
+`install.sh` работает и в non-interactive окружении (без запроса порта). При необходимости порт можно задать явно:
+
+```bash
+PORT=8090 ./install.sh
+```
+
+### Через Makefile
+
+```bash
+cd /home/konstantin/.openclaw/workspace/KC2-KC3-XML
+make install
+make run
+```
+
 ### Вручную
 
 ```bash
-cd /home/konstantin/KC2-KC3-XML
+cd /home/konstantin/.openclaw/workspace/KC2-KC3-XML
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -98,6 +112,13 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
 ```
 
 Открыть в браузере: `http://localhost:8080`
+
+### Проверка сценариев
+
+```bash
+make check        # бизнес-проверки сценариев (должно проходить)
+make check-xsd    # строгая XSD-валидация сценариев
+```
 
 ---
 
