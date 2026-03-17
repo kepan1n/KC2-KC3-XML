@@ -10,6 +10,7 @@ const refs = {
   saveLocal: document.getElementById('save-local'),
   exportJson: document.getElementById('export-json'),
   addSheet: document.getElementById('add-ks2-sheet'),
+  toggleSidebar: document.getElementById('toggle-sidebar'),
   scaleDown: document.getElementById('scale-down'),
   scaleReset: document.getElementById('scale-reset'),
   scaleUp: document.getElementById('scale-up'),
@@ -71,6 +72,10 @@ function bindGlobalEvents() {
     flash('Добавлен новый лист КС-2.');
   });
 
+  refs.toggleSidebar?.addEventListener('click', () => {
+    app.state.ui.sidebarOpen = !(app.state.ui.sidebarOpen ?? true);
+    render();
+  });
   refs.scaleDown?.addEventListener('click', () => shiftScale(-1));
   refs.scaleUp?.addEventListener('click', () => shiftScale(1));
   refs.scaleReset?.addEventListener('click', () => {
@@ -193,6 +198,7 @@ function prepareState(raw) {
   data.ui.activePane ??= 'requisites';
   data.ui.scale = normalizeScale(data.ui.scale ?? 100);
   data.ui.compactRows = data.ui.compactRows ?? true;
+  data.ui.sidebarOpen = data.ui.sidebarOpen ?? true;
   data.common ??= {};
   data.holdbacks ??= { rows: [] };
   data.holdbacks.rows ??= [];
@@ -268,9 +274,11 @@ function render() {
 function applyUiPreferences() {
   document.body.dataset.scale = String(normalizeScale(app.state.ui.scale));
   document.body.dataset.density = app.state.ui.compactRows ? 'compact' : 'comfortable';
+  document.body.dataset.sidebar = app.state.ui.sidebarOpen ? 'open' : 'closed';
 
   if (refs.scaleReset) refs.scaleReset.textContent = `${normalizeScale(app.state.ui.scale)}%`;
   if (refs.densityCompact) refs.densityCompact.checked = Boolean(app.state.ui.compactRows);
+  if (refs.toggleSidebar) refs.toggleSidebar.textContent = app.state.ui.sidebarOpen ? 'Скрыть меню' : 'Показать меню';
 }
 
 function shiftScale(direction) {
@@ -444,7 +452,7 @@ function renderKs2Pane(sheetIndex) {
         </select>
       </td>
       <td><textarea data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.note">${escapeHtml(row.note)}</textarea></td>
-      <td class="actions-cell"><button class="mini danger" data-action="delete-row" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">Удалить</button></td>
+      <td class="actions-cell"><button class="icon-button danger" title="Удалить строку" aria-label="Удалить строку" data-action="delete-row" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">×</button></td>
     </tr>
   `).join('');
 
@@ -457,7 +465,7 @@ function renderKs2Pane(sheetIndex) {
         </div>
         <div class="inline-actions">
           <button class="secondary" data-action="duplicate-sheet" data-sheet-index="${sheetIndex}">Дублировать лист</button>
-          <button class="danger" data-action="delete-sheet" data-sheet-index="${sheetIndex}">Удалить лист</button>
+          <button class="icon-button danger" title="Удалить лист" aria-label="Удалить лист" data-action="delete-sheet" data-sheet-index="${sheetIndex}">×</button>
         </div>
       </div>
 
@@ -619,7 +627,7 @@ function renderHoldbacksPane() {
         <td>${formatMoney(computed.retentionAmount)}</td>
         <td>${formatMoney(computed.payableAmount)}</td>
         <td><textarea data-path="holdbacks.rows.${index}.comment">${escapeHtml(row.comment)}</textarea></td>
-        <td><button class="mini danger" data-action="delete-holdback-row" data-hold-index="${index}">Удалить</button></td>
+        <td><button class="icon-button danger" title="Удалить строку" aria-label="Удалить строку" data-action="delete-holdback-row" data-hold-index="${index}">×</button></td>
       </tr>
     `;
   }).join('');
@@ -646,7 +654,22 @@ function renderHoldbacksPane() {
       </div>
 
       <div class="table-wrapper">
-        <table class="table">
+        <table class="table table-holdbacks">
+          <colgroup>
+            <col class="hold-col-name" />
+            <col class="hold-col-money" />
+            <col class="hold-col-money" />
+            <col class="hold-col-money" />
+            <col class="hold-col-doc" />
+            <col class="hold-col-money" />
+            <col class="hold-col-money" />
+            <col class="hold-col-money" />
+            <col class="hold-col-percent" />
+            <col class="hold-col-money" />
+            <col class="hold-col-money" />
+            <col class="hold-col-comment" />
+            <col class="hold-col-actions" />
+          </colgroup>
           <thead>
             <tr>
               <th>Наименование</th>
@@ -755,7 +778,7 @@ function renderXmlPane() {
                   <td><input data-path="xmlExtras.traceableGoods.${index}.unitCode" value="${escapeAttr(row.unitCode)}" /></td>
                   <td><input data-path="xmlExtras.traceableGoods.${index}.unitName" value="${escapeAttr(row.unitName)}" /></td>
                   <td><input data-path="xmlExtras.traceableGoods.${index}.quantity" data-value-type="number" value="${formatEditableNumber(row.quantity)}" /></td>
-                  <td><button class="mini danger" data-action="delete-trace-row" data-trace-index="${index}">Удалить</button></td>
+                  <td><button class="icon-button danger" title="Удалить строку" aria-label="Удалить строку" data-action="delete-trace-row" data-trace-index="${index}">×</button></td>
                 </tr>
               `).join('')}
             </tbody>

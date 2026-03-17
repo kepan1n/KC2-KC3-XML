@@ -28,9 +28,10 @@ button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
 
 .app-shell {
-  max-width: 1680px;
+  max-width: none;
+  width: 100%;
   margin: 0 auto;
-  padding: 24px;
+  padding: 12px;
 }
 
 .topbar, .statusbar, .sidebar, .content > .panel, .footer-note {
@@ -41,10 +42,10 @@ button { cursor: pointer; }
 }
 
 .topbar {
-  padding: 24px 28px;
+  padding: 18px 20px;
   display: flex;
   justify-content: space-between;
-  gap: 20px;
+  gap: 16px;
   align-items: flex-start;
 }
 
@@ -144,18 +145,24 @@ button.secondary {
 }
 
 .statusbar {
-  margin-top: 16px;
-  padding: 14px 20px;
+  margin-top: 12px;
+  padding: 10px 14px;
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   align-items: center;
+}
+.statusbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 #stats { color: var(--muted); font-size: 14px; }
 #flash { color: var(--success); font-weight: 600; min-height: 20px; }
 
 .workspace-scale {
-  margin-top: 16px;
+  margin-top: 12px;
   transform: scale(var(--page-scale));
   transform-origin: top left;
   width: calc(100% / var(--page-scale));
@@ -164,14 +171,22 @@ button.secondary {
 .workspace {
   display: grid;
   grid-template-columns: 280px 1fr;
-  gap: 16px;
+  gap: 12px;
+}
+
+body[data-sidebar="closed"] .workspace {
+  grid-template-columns: 1fr;
 }
 
 .sidebar {
-  padding: 18px;
+  padding: 14px;
   align-self: start;
   position: sticky;
-  top: 20px;
+  top: 12px;
+}
+
+body[data-sidebar="closed"] .sidebar {
+  display: none;
 }
 
 .nav-section + .nav-section { margin-top: 18px; }
@@ -213,7 +228,7 @@ button.secondary {
 
 .content { min-width: 0; }
 .panel {
-  padding: 22px;
+  padding: 16px;
 }
 .panel-header {
   display: flex;
@@ -354,21 +369,21 @@ button.secondary {
 }
 
 .table-ks2 {
-  min-width: 1320px;
+  min-width: 1360px;
 }
 .table-ks2 .ks2-col-type { width: 76px; }
 .table-ks2 .ks2-col-code { width: 82px; }
-.table-ks2 .ks2-col-line { width: 50px; }
-.table-ks2 .ks2-col-estimate { width: 56px; }
-.table-ks2 .ks2-col-name { width: 440px; }
-.table-ks2 .ks2-col-unit { width: 72px; }
-.table-ks2 .ks2-col-qty { width: 92px; }
-.table-ks2 .ks2-col-price { width: 118px; }
-.table-ks2 .ks2-col-amount { width: 126px; }
-.table-ks2 .ks2-col-consumption { width: 58px; }
-.table-ks2 .ks2-col-category { width: 118px; }
-.table-ks2 .ks2-col-note { width: 190px; }
-.table-ks2 .ks2-col-actions { width: 88px; }
+.table-ks2 .ks2-col-line { width: 58px; }
+.table-ks2 .ks2-col-estimate { width: 54px; }
+.table-ks2 .ks2-col-name { width: 520px; }
+.table-ks2 .ks2-col-unit { width: 68px; }
+.table-ks2 .ks2-col-qty { width: 88px; }
+.table-ks2 .ks2-col-price { width: 112px; }
+.table-ks2 .ks2-col-amount { width: 122px; }
+.table-ks2 .ks2-col-consumption { width: 50px; }
+.table-ks2 .ks2-col-category { width: 110px; }
+.table-ks2 .ks2-col-note { width: 160px; }
+.table-ks2 .ks2-col-actions { width: 56px; }
 
 .table-ks2 th:nth-child(3),
 .table-ks2 th:nth-child(4),
@@ -383,15 +398,43 @@ button.secondary {
   min-height: calc(var(--table-textarea-min) + 4px);
 }
 
+.table-holdbacks {
+  min-width: 1500px;
+}
+.table-holdbacks .hold-col-name { width: 420px; }
+.table-holdbacks .hold-col-money { width: 120px; }
+.table-holdbacks .hold-col-doc { width: 170px; }
+.table-holdbacks .hold-col-percent { width: 54px; }
+.table-holdbacks .hold-col-comment { width: 180px; }
+.table-holdbacks .hold-col-actions { width: 56px; }
+.table-holdbacks th:nth-child(9),
+.table-holdbacks td:nth-child(9) {
+  text-align: center;
+}
+
 .number-cell {
-  min-width: 92px;
+  min-width: 88px;
 }
 .amount-cell {
   white-space: nowrap;
   font-weight: 700;
 }
 .actions-cell {
-  min-width: 88px;
+  min-width: 56px;
+}
+
+.icon-button {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 700;
 }
 
 body[data-density="compact"] {
@@ -490,7 +533,7 @@ body[data-scale="115"] {
 }
 
 @media (max-width: 860px) {
-  .topbar, .statusbar, .panel-header, .toolbar-wrap { flex-direction: column; }
+  .topbar, .statusbar, .panel-header, .toolbar-wrap, .statusbar-left { flex-direction: column; }
   .view-controls { justify-content: flex-start; }
   .field { grid-column: span 12; }
   .field.half { grid-column: span 12; }
