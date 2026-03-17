@@ -550,15 +550,27 @@ function renderRequisitesPane() {
       </div>
 
       <div class="section-block">
-        <h3>Повторяющиеся подписи документов</h3>
-        <p>Сами подписи настраиваются здесь, а показ шапок и подписей переключается кнопками сверху рядом с управлением меню.</p>
+        <h3>Подписанты и нижние блоки документов</h3>
+        <p>Эти поля дублируются внизу КС-2, КС-3 и листа удержаний. Показ самих подписей включается кнопкой сверху.</p>
         <div class="form-grid">
-          ${renderInput('Левая подпись — заголовок', 'common.contractorSignLabel', c.contractorSignLabel, 'string', 'quarter')}
-          ${renderInput('Правая подпись — заголовок', 'common.customerSignLabel', c.customerSignLabel, 'string', 'quarter')}
-          ${renderTextarea('Левая подпись — должность / организация', 'common.contractorSignerPosition', c.contractorSignerPosition, 'half')}
-          ${renderInput('Левая подпись — ФИО', 'common.contractorSignerName', c.contractorSignerName, 'string', 'quarter')}
-          ${renderTextarea('Правая подпись — должность / организация', 'common.customerSignerPosition', c.customerSignerPosition, 'half')}
-          ${renderInput('Правая подпись — ФИО', 'common.customerSignerName', c.customerSignerName, 'string', 'quarter')}
+          ${renderInput('КС-2: Сдал — заголовок', 'common.contractorSignLabel', c.contractorSignLabel, 'string', 'quarter')}
+          ${renderTextarea('КС-2: Сдал — должность', 'common.contractorSignerPosition', c.contractorSignerPosition, 'half')}
+          ${renderInput('КС-2: Сдал — ФИО', 'common.contractorSignerName', c.contractorSignerName, 'string', 'quarter')}
+
+          ${renderInput('КС-2: Принял — заголовок', 'common.customerSignLabel', c.customerSignLabel, 'string', 'quarter')}
+          ${renderTextarea('КС-2: Принял — должность', 'common.ks2AcceptedPosition', c.ks2AcceptedPosition, 'half')}
+          ${renderInput('КС-2: Принял — ФИО', 'common.ks2AcceptedName', c.ks2AcceptedName, 'string', 'quarter')}
+
+          ${renderInput('КС-2: Проверил — заголовок', 'common.ks2CheckedLabel', c.ks2CheckedLabel, 'string', 'quarter')}
+          ${renderTextarea('КС-2: Проверил — должность', 'common.ks2CheckedPosition', c.ks2CheckedPosition, 'half')}
+          ${renderInput('КС-2: Проверил — ФИО', 'common.ks2CheckedName', c.ks2CheckedName, 'string', 'quarter')}
+
+          ${renderTextarea('КС-3 / Удержания: Застройщик — должность', 'common.ks3DeveloperPosition', c.ks3DeveloperPosition, 'half')}
+          ${renderInput('КС-3 / Удержания: Застройщик — ФИО', 'common.ks3DeveloperName', c.ks3DeveloperName, 'string', 'quarter')}
+          ${renderTextarea('КС-3 / Удержания: Техзаказчик — должность', 'common.ks3TechCustomerPosition', c.ks3TechCustomerPosition, 'half')}
+          ${renderInput('КС-3 / Удержания: Техзаказчик — ФИО', 'common.ks3TechCustomerName', c.ks3TechCustomerName, 'string', 'quarter')}
+          ${renderTextarea('КС-3 / Удержания: Генподрядчик — должность', 'common.ks3ContractorPosition', c.ks3ContractorPosition, 'half')}
+          ${renderInput('КС-3 / Удержания: Генподрядчик — ФИО', 'common.ks3ContractorName', c.ks3ContractorName, 'string', 'quarter')}
         </div>
       </div>
     </div>
@@ -642,27 +654,71 @@ function renderExcelSimpleLine(label, value, hint = '') {
   `;
 }
 
-function renderDocumentSignatures(common) {
+function renderSignatureRow(label, position, name) {
   return `
-    <div class="signature-frame">
-      <div class="signature-card">
-        <div class="signature-label">${escapeHtml(common.contractorSignLabel || 'Сдал')}</div>
-        <div class="signature-position">${escapeHtml(common.contractorSignerPosition || '')}</div>
-        <div class="signature-line-row">
-          <span class="signature-line"></span>
-          <span class="signature-name">${escapeHtml(common.contractorSignerName || '')}</span>
-        </div>
-        <div class="signature-hint">(подпись) · (расшифровка подписи)</div>
+    <div class="signature-row-block">
+      <div class="signature-role">${escapeHtml(label)}</div>
+      <div class="signature-position-wide">${escapeHtml(position || '')}</div>
+      <div class="signature-mark">(должность)</div>
+      <div class="signature-sign-line"></div>
+      <div class="signature-mark">(подпись)</div>
+      <div class="signature-name-wide">${escapeHtml(name || '')}</div>
+      <div class="signature-mark">(расшифровка подписи)</div>
+      <div class="signature-stamp">М.П.</div>
+    </div>
+  `;
+}
+
+function renderKs2TotalsBlock(sheet, totals) {
+  return `
+    <div class="excel-totals-block">
+      <div class="excel-total-line">
+        <span>ВСЕГО по Акту:</span>
+        <strong>${formatMoney(totals.gross)}</strong>
       </div>
-      <div class="signature-card">
-        <div class="signature-label">${escapeHtml(common.customerSignLabel || 'Принял')}</div>
-        <div class="signature-position">${escapeHtml(common.customerSignerPosition || '')}</div>
-        <div class="signature-line-row">
-          <span class="signature-line"></span>
-          <span class="signature-name">${escapeHtml(common.customerSignerName || '')}</span>
-        </div>
-        <div class="signature-hint">(подпись) · (расшифровка подписи)</div>
+      <div class="excel-total-line">
+        <span>в том числе НДС (${sheet.vatRate}%)</span>
+        <strong>${formatMoney(totals.vat)}</strong>
       </div>
+    </div>
+  `;
+}
+
+function renderKs3TotalsBlock(totals, vat) {
+  return `
+    <div class="excel-totals-block">
+      <div class="excel-total-line"><span>Итого:</span><strong>${formatMoney(totals.forPeriod)}</strong></div>
+      <div class="excel-total-line"><span>Сумма НДС</span><strong>${formatMoney(vat)}</strong></div>
+      <div class="excel-total-line"><span>Всего с учетом НДС</span><strong>${formatMoney(totals.forPeriod + vat)}</strong></div>
+    </div>
+  `;
+}
+
+function renderHoldbacksTotalsBlock(totals) {
+  return `
+    <div class="excel-totals-block">
+      <div class="excel-total-line"><span>Всего:</span><strong>${formatMoney(totals.ks2Amount)}</strong></div>
+      <div class="excel-total-line"><span>в том числе НДС 22%</span><strong>${formatMoney(round2(totals.ks2Amount * 22 / 122))}</strong></div>
+    </div>
+  `;
+}
+
+function renderKs2SignatureTable(common) {
+  return `
+    <div class="signature-table">
+      ${renderSignatureRow(common.contractorSignLabel || 'Сдал', common.contractorSignerPosition, common.contractorSignerName)}
+      ${renderSignatureRow(common.customerSignLabel || 'Принял', common.ks2AcceptedPosition, common.ks2AcceptedName)}
+      ${renderSignatureRow(common.ks2CheckedLabel || 'Проверил', common.ks2CheckedPosition, common.ks2CheckedName)}
+    </div>
+  `;
+}
+
+function renderKs3SignatureTable(common) {
+  return `
+    <div class="signature-table">
+      ${renderSignatureRow('Застройщик', common.ks3DeveloperPosition, common.ks3DeveloperName)}
+      ${renderSignatureRow('Технический Заказчик', common.ks3TechCustomerPosition, common.ks3TechCustomerName)}
+      ${renderSignatureRow('Генподрядчик', common.ks3ContractorPosition, common.ks3ContractorName)}
     </div>
   `;
 }
@@ -836,7 +892,8 @@ function renderKs2Pane(sheetIndex) {
         </div>
       </div>
 
-      ${app.state.common.showDocumentSignatures ? renderDocumentSignatures(app.state.common) : ''}
+      ${renderKs2TotalsBlock(sheet, totals)}
+      ${app.state.common.showDocumentSignatures ? renderKs2SignatureTable(app.state.common) : ''}
     </div>
   `;
 }
@@ -861,7 +918,7 @@ function renderKs3Pane() {
         </div>
       </div>
 
-      ${renderExcelDocFrame({
+      ${app.state.common.showDocumentHeaders ? renderExcelDocFrame({
         formTitle: '№ КС-3 · Справка о стоимости выполненных работ и затрат',
         formCode: app.state.common.okudKs3,
         common: app.state.common,
@@ -871,7 +928,7 @@ function renderKs3Pane() {
         periodFrom: ks3.periodFrom,
         periodTo: ks3.periodTo,
         objectLabel: 'Объект',
-      })}
+      }) : ''}
 
       <div class="form-grid">
         ${renderInput('Номер справки', 'ks3.documentNumber', ks3.documentNumber, 'string', 'quarter')}
@@ -920,7 +977,8 @@ function renderKs3Pane() {
         <div class="summary-card"><span>Сумма НДС</span><strong>${formatMoney(vat)}</strong></div>
       </div>
 
-      ${app.state.common.showDocumentSignatures ? renderDocumentSignatures(app.state.common) : ''}
+      ${renderKs3TotalsBlock(totals, vat)}
+      ${app.state.common.showDocumentSignatures ? renderKs3SignatureTable(app.state.common) : ''}
     </div>
   `;
 }
@@ -968,14 +1026,16 @@ function renderHoldbacksPane() {
         <button class="mini" data-action="add-holdback-row">+ Добавить строку</button>
       </div>
 
-      <div class="excel-frame excel-frame-tight">
-        <div class="excel-frame-title">Расчет суммы погашения авансов и гарантийного удержания</div>
-        <div class="excel-frame-subtitle">за период ${escapeHtml(app.state.ks3?.periodTo || '')}</div>
-        <div class="excel-basis-row">
-          <span class="excel-basis-label">Объект:</span>
-          <div class="excel-basis-value">${escapeHtml(app.state.common.objectName || app.state.common.constructionObject || '')}</div>
+      ${app.state.common.showDocumentHeaders ? `
+        <div class="excel-frame excel-frame-tight">
+          <div class="excel-frame-title">Расчет суммы погашения авансов и гарантийного удержания</div>
+          <div class="excel-frame-subtitle">за период ${escapeHtml(app.state.ks3?.periodTo || '')}</div>
+          <div class="excel-basis-row">
+            <span class="excel-basis-label">Объект:</span>
+            <div class="excel-basis-value">${escapeHtml(app.state.common.objectName || app.state.common.constructionObject || '')}</div>
+          </div>
         </div>
-      </div>
+      ` : ''}
 
       <div class="table-wrapper">
         <table class="table table-holdbacks" data-table-id="holdbacks">
@@ -1025,6 +1085,9 @@ function renderHoldbacksPane() {
         <div class="summary-card"><span>Удержания</span><strong>${formatMoney(totals.retentionAmount)}</strong></div>
         <div class="summary-card"><span>Итого к оплате</span><strong>${formatMoney(totals.payableAmount)}</strong></div>
       </div>
+
+      ${renderHoldbacksTotalsBlock(totals)}
+      ${app.state.common.showDocumentSignatures ? renderKs3SignatureTable(app.state.common) : ''}
     </div>
   `;
 }
