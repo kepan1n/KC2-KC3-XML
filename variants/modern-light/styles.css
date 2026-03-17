@@ -751,6 +751,25 @@ body[data-sidebar="closed"] .sidebar {
   min-height: calc(var(--table-textarea-min) + 4px);
 }
 
+.holdback-section-row td {
+  background: white;
+}
+
+.holdback-subitem-row td {
+  background: #fbfcfe;
+}
+
+.subitem-label {
+  color: var(--muted);
+  font-weight: 700;
+  padding-left: 8px;
+}
+
+.mini-readonly {
+  min-height: 34px;
+  background: #f4f7fb;
+}
+
 .table-holdbacks {
   min-width: 1500px;
 }

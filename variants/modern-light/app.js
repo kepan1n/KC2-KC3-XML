@@ -210,15 +210,57 @@ function handleContentClick(event) {
   }
 
   if (action === 'add-holdback-row') {
-    clearTransientRowUi();
-    app.state.holdbacks.rows.push(createBlankHoldbackRow());
+    app.state.holdbacks.rows.push(createBlankHoldbackRow('section'));
     render();
     return;
   }
 
-  if (action === 'delete-holdback-row') {
-    clearTransientRowUi();
-    app.state.holdbacks.rows.splice(Number(holdIndex), 1);
+  if (action === 'open-holdback-menu') {
+    const idx = Number(holdIndex);
+    app.state.ui.holdbackDeleteConfirm = null;
+    app.state.ui.holdbackActionMenu = app.state.ui.holdbackActionMenu === idx ? null : idx;
+    render();
+    return;
+  }
+
+  if (action === 'insert-holdback-section') {
+    const idx = Number(holdIndex);
+    app.state.holdbacks.rows.splice(idx + 1, 0, createBlankHoldbackRow('section'));
+    app.state.ui.holdbackActionMenu = null;
+    render();
+    return;
+  }
+
+  if (action === 'insert-holdback-subitem') {
+    const idx = Number(holdIndex);
+    let insertAt = idx + 1;
+    while (insertAt < app.state.holdbacks.rows.length && (app.state.holdbacks.rows[insertAt].kind || 'section') === 'subitem') {
+      insertAt += 1;
+    }
+    app.state.holdbacks.rows.splice(insertAt, 0, createBlankHoldbackRow('subitem'));
+    app.state.ui.holdbackActionMenu = null;
+    render();
+    return;
+  }
+
+  if (action === 'request-holdback-delete') {
+    const idx = Number(holdIndex);
+    app.state.ui.holdbackActionMenu = null;
+    app.state.ui.holdbackDeleteConfirm = idx;
+    render();
+    return;
+  }
+
+  if (action === 'cancel-holdback-delete') {
+    app.state.ui.holdbackDeleteConfirm = null;
+    render();
+    return;
+  }
+
+  if (action === 'confirm-holdback-delete') {
+    const idx = Number(holdIndex);
+    app.state.holdbacks.rows.splice(idx, 1);
+    app.state.ui.holdbackDeleteConfirm = null;
     render();
     return;
   }
@@ -322,11 +364,13 @@ function prepareState(raw) {
   });
 
   data.holdbacks.rows = (data.holdbacks.rows || []).map((row) => {
+    const kind = row.kind || row.type || 'section';
     const ks2Amount = numberOrZero(row.ks2Amount);
     const retentionAmount = numberOrZero(row.retentionAmount);
     const retentionRate = row.retentionRate ?? (ks2Amount ? round2((retentionAmount / ks2Amount) * 100) : 3);
     return {
       ...row,
+      kind,
       name: row.name ?? '',
       advanceDoc: row.advanceDoc ?? '',
       comment: row.comment ?? '',
@@ -1155,16 +1199,17 @@ function renderKs2Pane(sheetIndex) {
   `;
 }
 
-function renderHoldbackRowActions(rowIndex) {
+function renderHoldbackRowActions(rowIndex, rowKind) {
   const menuOpen = app.state.ui.holdbackActionMenu === rowIndex;
   const confirmDelete = app.state.ui.holdbackDeleteConfirm === rowIndex;
   return `
     <div class="row-action-stack">
-      <button class="stack-button add" title="Действия" aria-label="Действия" data-action="open-holdback-menu" data-hold-index="${rowIndex}">+</button>
+      <button class="stack-button add" title="Добавить" aria-label="Добавить" data-action="open-holdback-menu" data-hold-index="${rowIndex}">+</button>
       <button class="stack-button danger" title="Удалить строку" aria-label="Удалить строку" data-action="request-holdback-delete" data-hold-index="${rowIndex}">×</button>
       ${menuOpen ? `
         <div class="row-action-menu">
-          <button class="row-action-menu-btn" data-action="insert-holdback-row" data-hold-index="${rowIndex}">Добавить строку ниже</button>
+          <button class="row-action-menu-btn" data-action="insert-holdback-section" data-hold-index="${rowIndex}">Добавить раздел ниже</button>
+          <button class="row-action-menu-btn" data-action="insert-holdback-subitem" data-hold-index="${rowIndex}">Добавить подпункт внутри раздела</button>
         </div>
       ` : ''}
       ${confirmDelete ? `
@@ -1179,6 +1224,7 @@ function renderHoldbackRowActions(rowIndex) {
     </div>
   `;
 }
+
 
 function renderKs3Pane() {
   const ks3 = app.state.ks3;
@@ -1270,21 +1316,22 @@ function renderKs3Pane() {
 function renderHoldbacksPane() {
   const rows = app.state.holdbacks.rows.map((row, index) => {
     const computed = computeHoldbackRow(row);
+    const isSubitem = row.kind === 'subitem';
     return `
-      <tr>
-        <td><textarea data-path="holdbacks.rows.${index}.name">${escapeHtml(row.name)}</textarea></td>
-        <td><input data-path="holdbacks.rows.${index}.ks2Amount" data-value-type="number" value="${formatEditableNumber(row.ks2Amount)}" /></td>
-        <td><input data-path="holdbacks.rows.${index}.materialsUsed" data-value-type="number" value="${formatEditableNumber(row.materialsUsed)}" /></td>
+      <tr class="${isSubitem ? 'holdback-subitem-row' : 'holdback-section-row'}">
+        <td>${isSubitem ? '<div class="subitem-label">↳ подпункт раздела</div>' : `<textarea data-path="holdbacks.rows.${index}.name">${escapeHtml(row.name)}</textarea>`}</td>
+        <td>${isSubitem ? '<div class="readonly mini-readonly"></div>' : `<input data-path="holdbacks.rows.${index}.ks2Amount" data-value-type="number" value="${formatEditableNumber(row.ks2Amount)}" />`}</td>
+        <td>${isSubitem ? '<div class="readonly mini-readonly"></div>' : `<input data-path="holdbacks.rows.${index}.materialsUsed" data-value-type="number" value="${formatEditableNumber(row.materialsUsed)}" />`}</td>
         <td><input data-path="holdbacks.rows.${index}.advanceReceived" data-value-type="number" value="${formatEditableNumber(row.advanceReceived)}" /></td>
         <td><input data-path="holdbacks.rows.${index}.advanceDoc" value="${escapeAttr(row.advanceDoc)}" /></td>
         <td><input data-path="holdbacks.rows.${index}.previousBalance" data-value-type="number" value="${formatEditableNumber(row.previousBalance)}" /></td>
         <td><input data-path="holdbacks.rows.${index}.closingAmount" data-value-type="number" value="${formatEditableNumber(row.closingAmount)}" /></td>
         <td>${formatMoney(computed.nextBalance)}</td>
-        <td><input data-path="holdbacks.rows.${index}.retentionRate" data-value-type="number" value="${formatEditableNumber(row.retentionRate)}" /></td>
-        <td>${formatMoney(computed.retentionAmount)}</td>
-        <td>${formatMoney(computed.payableAmount)}</td>
-        <td><textarea data-path="holdbacks.rows.${index}.comment">${escapeHtml(row.comment)}</textarea></td>
-        <td class="actions-cell">${renderHoldbackRowActions(index)}</td>
+        <td>${isSubitem ? '<div class="readonly mini-readonly"></div>' : `<input data-path="holdbacks.rows.${index}.retentionRate" data-value-type="number" value="${formatEditableNumber(row.retentionRate)}" />`}</td>
+        <td>${isSubitem ? '<div class="readonly mini-readonly"></div>' : formatMoney(computed.retentionAmount)}</td>
+        <td>${isSubitem ? '<div class="readonly mini-readonly"></div>' : formatMoney(computed.payableAmount)}</td>
+        <td>${isSubitem ? '<div class="readonly mini-readonly"></div>' : `<textarea data-path="holdbacks.rows.${index}.comment">${escapeHtml(row.comment)}</textarea>`}</td>
+        <td class="actions-cell">${renderHoldbackRowActions(index, row.kind)}</td>
       </tr>
     `;
   }).join('');
@@ -1307,9 +1354,9 @@ function renderHoldbacksPane() {
       <div class="panel-header">
         <div>
           <h2 class="panel-title">Удержания и авансы</h2>
-          <p class="panel-subtitle">Отдельная вкладка под расчёт зачетов аванса, удержания 3% и итоговой суммы к оплате. Формулы упрощены, но структура повторяет Excel-лист.</p>
+          <p class="panel-subtitle">Сложная таблица удержаний приближена к Excel: разделы, подпункты внутри раздела, отдельные итоги и действия по строкам.</p>
         </div>
-        <button class="mini" data-action="add-holdback-row">+ Добавить строку</button>
+        <button class="mini" data-action="add-holdback-row">+ Раздел</button>
       </div>
 
       ${app.state.common.showDocumentHeaders ? `
@@ -1342,7 +1389,7 @@ function renderHoldbacksPane() {
           </colgroup>
           <thead>
             <tr>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-name" data-min-width="200">Всего работ и затрат / наименование<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-name" data-min-width="220">Всего работ и затрат / наименование<span class="resize-handle"></span></th>
               <th data-table-id="holdbacks" data-col-selector="hold-col-ks2" data-min-width="84">Сумма работ по акту КС-2, руб.<span class="resize-handle"></span></th>
               <th data-table-id="holdbacks" data-col-selector="hold-col-materials" data-min-width="84">Использовано материалов, руб.<span class="resize-handle"></span></th>
               <th data-table-id="holdbacks" data-col-selector="hold-col-advance" data-min-width="84">Полученный аванс, руб.<span class="resize-handle"></span></th>
@@ -1357,7 +1404,7 @@ function renderHoldbacksPane() {
               <th data-table-id="holdbacks" data-col-selector="hold-col-actions" data-min-width="40"><span class="resize-handle"></span></th>
             </tr>
             <tr class="numbering-row">
-              <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th></th><th></th><th></th>
+              <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th></th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -1522,8 +1569,11 @@ function computeHoldbackRow(row) {
   const previousBalance = row.previousBalance == null ? advanceReceived : numberOrZero(row.previousBalance);
   const closingAmount = numberOrZero(row.closingAmount);
   const retentionRate = numberOrZero(row.retentionRate || 0);
-  const retentionAmount = round2(ks2Amount * retentionRate / 100);
   const nextBalance = round2(Math.max(previousBalance - closingAmount, 0));
+  if (row.kind === 'subitem') {
+    return { nextBalance, retentionAmount: 0, payableAmount: 0 };
+  }
+  const retentionAmount = round2(ks2Amount * retentionRate / 100);
   const payableAmount = round2(ks2Amount - closingAmount - retentionAmount);
   return { nextBalance, retentionAmount, payableAmount };
 }
@@ -1568,8 +1618,9 @@ function createBlankRow(type = 'item') {
   };
 }
 
-function createBlankHoldbackRow() {
+function createBlankHoldbackRow(kind = 'section') {
   return {
+    kind,
     name: '',
     ks2Amount: null,
     materialsUsed: null,
