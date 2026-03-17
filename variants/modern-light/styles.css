@@ -157,6 +157,15 @@ button.secondary {
   align-items: center;
   gap: 10px;
   min-width: 0;
+  flex-wrap: wrap;
+}
+.toggle-chip {
+  white-space: nowrap;
+}
+.toggle-chip.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
 }
 #stats { color: var(--muted); font-size: 14px; }
 #flash { color: var(--success); font-weight: 600; min-height: 20px; }

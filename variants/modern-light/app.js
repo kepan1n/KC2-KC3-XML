@@ -532,11 +532,9 @@ function renderRequisitesPane() {
       </div>
 
       <div class="section-block">
-        <h3>Повторяющиеся шапки и подписи</h3>
-        <p>Общие элементы, которые повторяются в документах и управляются централизованно отсюда.</p>
+        <h3>Повторяющиеся подписи документов</h3>
+        <p>Сами подписи настраиваются здесь, а показ шапок и подписей переключается кнопками сверху рядом с управлением меню.</p>
         <div class="form-grid">
-          ${renderCheckbox('Показывать шапки документов', 'common.showDocumentHeaders', c.showDocumentHeaders, 'half')}
-          ${renderCheckbox('Показывать подписи документов', 'common.showDocumentSignatures', c.showDocumentSignatures, 'half')}
           ${renderInput('Левая подпись — заголовок', 'common.contractorSignLabel', c.contractorSignLabel, 'string', 'quarter')}
           ${renderInput('Правая подпись — заголовок', 'common.customerSignLabel', c.customerSignLabel, 'string', 'quarter')}
           ${renderTextarea('Левая подпись — должность / организация', 'common.contractorSignerPosition', c.contractorSignerPosition, 'half')}
@@ -1225,18 +1223,6 @@ function renderInput(label, path, value, valueType = 'string', size = '') {
     <div class="field ${size}">
       <label>${label}</label>
       <input data-path="${path}" data-value-type="${valueType}" value="${escapeAttr(value ?? '')}" />
-    </div>
-  `;
-}
-
-function renderCheckbox(label, path, checked, size = '') {
-  return `
-    <div class="field ${size}">
-      <label>${label}</label>
-      <label class="checkbox-row">
-        <input type="checkbox" data-path="${path}" data-value-type="boolean" ${checked ? 'checked' : ''} />
-        <span>${checked ? 'Включено' : 'Выключено'}</span>
-      </label>
     </div>
   `;
 }
