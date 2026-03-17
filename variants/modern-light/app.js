@@ -262,6 +262,14 @@ function prepareState(raw) {
   data.xmlExtras.traceableGoods ??= [];
 
   data.common.okudKs3 = data.common.okudKs3 && data.common.okudKs3 !== 'Форма по ОКУД' ? data.common.okudKs3 : '0322001';
+  data.common.showDocumentHeaders = data.common.showDocumentHeaders ?? true;
+  data.common.showDocumentSignatures = data.common.showDocumentSignatures ?? true;
+  data.common.contractorSignLabel ||= 'Сдал';
+  data.common.contractorSignerPosition ||= 'Генеральный директор ООО «ЛегендаЭлит»';
+  data.common.contractorSignerName ||= 'А. Дылюк';
+  data.common.customerSignLabel ||= 'Принял';
+  data.common.customerSignerPosition ||= 'ООО «СЗ «АСПЕЙС Хорошевская» в лице Генерального директора управляющей организации ООО «АСПЕЙС Девелопмент»';
+  data.common.customerSignerName ||= 'О.В. Смирнов';
 
   data.ks2Sheets = (data.ks2Sheets || []).map((sheet, index) => {
     const prepared = {
@@ -520,6 +528,21 @@ function renderRequisitesPane() {
         <div class="form-grid">
           ${renderTextarea('Стройка', 'common.constructionObject', c.constructionObject, 'half')}
           ${renderTextarea('Объект', 'common.objectName', c.objectName, 'half')}
+        </div>
+      </div>
+
+      <div class="section-block">
+        <h3>Повторяющиеся шапки и подписи</h3>
+        <p>Общие элементы, которые повторяются в документах и управляются централизованно отсюда.</p>
+        <div class="form-grid">
+          ${renderCheckbox('Показывать шапки документов', 'common.showDocumentHeaders', c.showDocumentHeaders, 'half')}
+          ${renderCheckbox('Показывать подписи документов', 'common.showDocumentSignatures', c.showDocumentSignatures, 'half')}
+          ${renderInput('Левая подпись — заголовок', 'common.contractorSignLabel', c.contractorSignLabel, 'string', 'quarter')}
+          ${renderInput('Правая подпись — заголовок', 'common.customerSignLabel', c.customerSignLabel, 'string', 'quarter')}
+          ${renderTextarea('Левая подпись — должность / организация', 'common.contractorSignerPosition', c.contractorSignerPosition, 'half')}
+          ${renderInput('Левая подпись — ФИО', 'common.contractorSignerName', c.contractorSignerName, 'string', 'quarter')}
+          ${renderTextarea('Правая подпись — должность / организация', 'common.customerSignerPosition', c.customerSignerPosition, 'half')}
+          ${renderInput('Правая подпись — ФИО', 'common.customerSignerName', c.customerSignerName, 'string', 'quarter')}
         </div>
       </div>
     </div>
@@ -796,6 +819,8 @@ function renderKs2Pane(sheetIndex) {
           <button class="mini secondary" data-action="add-note-row" data-sheet-index="${sheetIndex}">+ Примечание</button>
         </div>
       </div>
+
+      ${app.state.common.showDocumentSignatures ? renderDocumentSignatures(app.state.common) : ''}
     </div>
   `;
 }
@@ -878,6 +903,8 @@ function renderKs3Pane() {
         <div class="summary-card"><span>Итого за период</span><strong>${formatMoney(totals.forPeriod)}</strong></div>
         <div class="summary-card"><span>Сумма НДС</span><strong>${formatMoney(vat)}</strong></div>
       </div>
+
+      ${app.state.common.showDocumentSignatures ? renderDocumentSignatures(app.state.common) : ''}
     </div>
   `;
 }
@@ -1202,6 +1229,18 @@ function renderInput(label, path, value, valueType = 'string', size = '') {
   `;
 }
 
+function renderCheckbox(label, path, checked, size = '') {
+  return `
+    <div class="field ${size}">
+      <label>${label}</label>
+      <label class="checkbox-row">
+        <input type="checkbox" data-path="${path}" data-value-type="boolean" ${checked ? 'checked' : ''} />
+        <span>${checked ? 'Включено' : 'Выключено'}</span>
+      </label>
+    </div>
+  `;
+}
+
 function renderTextarea(label, path, value, size = 'half') {
   return `
     <div class="field ${size}">
@@ -1269,6 +1308,67 @@ function inferCategory(name, note) {
 }
 
 function categoryLabel(key) {
+  return ({
+    work: 'Работа',
+    metal: 'Металлопрокат',
+    frame: 'Каркас',
+    concrete: 'Бетон',
+    misc: 'Прочее',
+    material: 'Материал',
+  })[key] || key;
+}
+
+function flash(message) {
+  refs.flash.textContent = message;
+  clearTimeout(flash.timer);
+  flash.timer = setTimeout(() => {
+    refs.flash.textContent = '';
+  }, 2800);
+}
+
+function formatMoney(value) {
+  if (value == null || Number.isNaN(value)) return '—';
+  return new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+}
+
+function formatEditableNumber(value) {
+  return value == null || Number.isNaN(value) ? '' : String(value);
+}
+
+function numberOrNull(value) {
+  if (value === '' || value == null) return null;
+  const numeric = Number(String(value).replace(',', '.'));
+  return Number.isFinite(numeric) ? round2(numeric) : null;
+}
+
+function numberOrZero(value) {
+  return numberOrNull(value) ?? 0;
+}
+
+function round2(value) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replaceAll("'", '&#39;');
+}
+
+function isIndex(value) {
+  return /^\d+$/.test(value);
+}
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+{
   return ({
     work: 'Работа',
     metal: 'Металлопрокат',

@@ -301,6 +301,21 @@ body[data-sidebar="closed"] .sidebar {
 }
 .field textarea,
 .field-wide textarea { min-height: 82px; resize: vertical; }
+.checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #c8d3df;
+  border-radius: 10px;
+  background: white;
+  font-weight: 600;
+}
+.checkbox-row input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
 .readonly {
   padding: 10px 12px;
   min-height: 42px;
