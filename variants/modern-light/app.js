@@ -1026,11 +1026,13 @@ function renderHoldbacksPane() {
     acc.ks2Amount += numberOrZero(row.ks2Amount);
     acc.materialsUsed += numberOrZero(row.materialsUsed);
     acc.advanceReceived += numberOrZero(row.advanceReceived);
+    acc.previousBalance += numberOrZero(row.previousBalance == null ? row.advanceReceived : row.previousBalance);
     acc.closingAmount += numberOrZero(row.closingAmount);
+    acc.nextBalance += computed.nextBalance;
     acc.retentionAmount += computed.retentionAmount;
     acc.payableAmount += computed.payableAmount;
     return acc;
-  }, { ks2Amount: 0, materialsUsed: 0, advanceReceived: 0, closingAmount: 0, retentionAmount: 0, payableAmount: 0 });
+  }, { ks2Amount: 0, materialsUsed: 0, advanceReceived: 0, previousBalance: 0, closingAmount: 0, nextBalance: 0, retentionAmount: 0, payableAmount: 0 });
 
   return `
     <div class="panel">
