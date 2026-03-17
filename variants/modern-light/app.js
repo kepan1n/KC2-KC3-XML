@@ -526,6 +526,83 @@ function renderRequisitesPane() {
   `;
 }
 
+function renderExcelDocFrame({ formTitle, formCodeLabel = 'Форма по ОКУД', formCode, common, contractLabel = 'Договор генподряда', docKindLabel = 'Номер документа / дата / период', documentNumber, documentDate, periodFrom, periodTo, basis, objectLabel = 'Объект' }) {
+  return `
+    <div class="excel-frame">
+      <div class="excel-frame-top">
+        <div>
+          <div class="excel-frame-caption">Унифицированная форма</div>
+          <div class="excel-frame-title">${escapeHtml(formTitle)}</div>
+          <div class="excel-frame-subtitle">Утверждена постановлением Госкомстата России от 11.11.99 № 100</div>
+        </div>
+        <div class="excel-code-box">
+          <span>${escapeHtml(formCodeLabel)}</span>
+          <strong>${escapeHtml(formCode || '')}</strong>
+        </div>
+      </div>
+
+      <div class="excel-org-list">
+        ${renderExcelPartyLine('Застройщик', common.developerName, common.developerOkpo)}
+        ${renderExcelPartyLine('Технический заказчик', common.techCustomerName, common.techCustomerOkpo)}
+        ${renderExcelPartyLine('Генподрядчик', common.contractorName, common.contractorOkpo)}
+        ${renderExcelSimpleLine('Стройка', common.constructionObject, 'наименование, адрес')}
+        ${renderExcelSimpleLine(objectLabel, common.objectName, 'наименование')}
+      </div>
+
+      <div class="excel-meta-grid">
+        <div class="excel-meta-cell">
+          <span class="excel-meta-label">${escapeHtml(contractLabel)}</span>
+          <strong>${escapeHtml(common.contractNumber || '')}</strong>
+          <em>${escapeHtml(common.contractDate || '')}</em>
+        </div>
+        <div class="excel-meta-cell">
+          <span class="excel-meta-label">Вид операции</span>
+          <strong>${escapeHtml(common.operationType || '')}</strong>
+        </div>
+        <div class="excel-meta-cell excel-meta-cell-wide">
+          <span class="excel-meta-label">${escapeHtml(docKindLabel)}</span>
+          <strong>№ ${escapeHtml(documentNumber || '')} · ${escapeHtml(documentDate || '')}</strong>
+          <em>${escapeHtml(periodFrom || '')} — ${escapeHtml(periodTo || '')}</em>
+        </div>
+      </div>
+
+      ${basis ? `
+        <div class="excel-basis-row">
+          <span class="excel-basis-label">Основание:</span>
+          <div class="excel-basis-value">${escapeHtml(basis)}</div>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function renderExcelPartyLine(label, value, okpo) {
+  return `
+    <div class="excel-line">
+      <div class="excel-line-main">
+        <span class="excel-line-label">${escapeHtml(label)}:</span>
+        <span class="excel-line-value">${escapeHtml(value || '')}</span>
+      </div>
+      <div class="excel-line-side">
+        <span class="excel-line-side-label">по ОКПО</span>
+        <strong>${escapeHtml(okpo || '')}</strong>
+      </div>
+    </div>
+  `;
+}
+
+function renderExcelSimpleLine(label, value, hint = '') {
+  return `
+    <div class="excel-line excel-line-simple">
+      <div class="excel-line-main">
+        <span class="excel-line-label">${escapeHtml(label)}:</span>
+        <span class="excel-line-value">${escapeHtml(value || '')}</span>
+      </div>
+      ${hint ? `<div class="excel-line-hint">${escapeHtml(hint)}</div>` : ''}
+    </div>
+  `;
+}
+
 function renderKs2RowActions(sheetIndex, rowIndex) {
   const menuOpen = app.state.ui.rowActionMenu
     && app.state.ui.rowActionMenu.sheetIndex === sheetIndex
@@ -610,6 +687,17 @@ function renderKs2Pane(sheetIndex) {
         </div>
       </div>
 
+      ${renderExcelDocFrame({
+        formTitle: '№ КС-2 · О приемке выполненных работ',
+        formCode: app.state.common.okudKs2,
+        common: app.state.common,
+        documentNumber: sheet.documentNumber,
+        documentDate: sheet.documentDate,
+        periodFrom: sheet.periodFrom,
+        periodTo: sheet.periodTo,
+        basis: sheet.basis,
+      })}
+
       <div class="summary-grid">
         <div class="summary-card"><span>Сумма с НДС</span><strong>${formatMoney(totals.gross)}</strong></div>
         <div class="summary-card"><span>НДС (${sheet.vatRate}%)</span><strong>${formatMoney(totals.vat)}</strong></div>
@@ -656,19 +744,22 @@ function renderKs2Pane(sheetIndex) {
             </colgroup>
             <thead>
               <tr>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-type" data-min-width="60">Тип<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-type" data-min-width="60">Код затрат<span class="resize-handle"></span></th>
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-code" data-min-width="64">Код<span class="resize-handle"></span></th>
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-line" data-min-width="42">№ п/п<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-estimate" data-min-width="42">№ сметы<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-name" data-min-width="220">Наименование<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-unit" data-min-width="54">Ед.<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-estimate" data-min-width="42">№ п/п по смете<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-name" data-min-width="220">Наименование работ и затрат<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-unit" data-min-width="54">Ед. изм.<span class="resize-handle"></span></th>
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-qty" data-min-width="70">Объем<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-price" data-min-width="90">Цена с НДС<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-amount" data-min-width="96">Сумма<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-consumption" data-min-width="42">Расход<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-price" data-min-width="90">Цена за ед., руб. с НДС<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-amount" data-min-width="96">Общая стоимость, руб. с НДС<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-consumption" data-min-width="42">Расход на единицу<span class="resize-handle"></span></th>
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-category" data-min-width="90">Категория<span class="resize-handle"></span></th>
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-note" data-min-width="120">Примечание<span class="resize-handle"></span></th>
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-actions" data-min-width="24"><span class="resize-handle"></span></th>
+              </tr>
+              <tr class="numbering-row">
+                <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th></th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -704,6 +795,18 @@ function renderKs3Pane() {
         </div>
       </div>
 
+      ${renderExcelDocFrame({
+        formTitle: '№ КС-3 · Справка о стоимости выполненных работ и затрат',
+        formCode: app.state.common.okudKs3,
+        common: app.state.common,
+        contractLabel: 'Договор подряда (контракт)',
+        documentNumber: ks3.documentNumber,
+        documentDate: ks3.documentDate,
+        periodFrom: ks3.periodFrom,
+        periodTo: ks3.periodTo,
+        objectLabel: 'Объект',
+      })}
+
       <div class="form-grid">
         ${renderInput('Номер справки', 'ks3.documentNumber', ks3.documentNumber, 'string', 'quarter')}
         ${renderInput('Дата составления', 'ks3.documentDate', ks3.documentDate, 'string', 'quarter')}
@@ -714,15 +817,18 @@ function renderKs3Pane() {
       <div class="section-block">
         <h3>Автосвод по актам</h3>
         <div class="table-wrapper">
-          <table class="table">
+          <table class="table table-ks3-like">
             <thead>
               <tr>
                 <th>#</th>
-                <th>Наименование</th>
+                <th>Наименование пусковых комплексов / объектов / работ</th>
                 <th>С начала работ</th>
                 <th>С начала года</th>
-                <th>За период</th>
+                <th>За отчетный период</th>
                 <th>НДС</th>
+              </tr>
+              <tr class="numbering-row">
+                <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th>
               </tr>
             </thead>
             <tbody>
@@ -794,6 +900,15 @@ function renderHoldbacksPane() {
         <button class="mini" data-action="add-holdback-row">+ Добавить строку</button>
       </div>
 
+      <div class="excel-frame excel-frame-tight">
+        <div class="excel-frame-title">Расчет суммы погашения авансов и гарантийного удержания</div>
+        <div class="excel-frame-subtitle">за период ${escapeHtml(app.state.ks3?.periodTo || '')}</div>
+        <div class="excel-basis-row">
+          <span class="excel-basis-label">Объект:</span>
+          <div class="excel-basis-value">${escapeHtml(app.state.common.objectName || app.state.common.constructionObject || '')}</div>
+        </div>
+      </div>
+
       <div class="table-wrapper">
         <table class="table table-holdbacks" data-table-id="holdbacks">
           <colgroup>
@@ -813,19 +928,22 @@ function renderHoldbacksPane() {
           </colgroup>
           <thead>
             <tr>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-name" data-min-width="200">Наименование<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-ks2" data-min-width="84">Сумма КС-2<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-materials" data-min-width="84">Материалы<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-advance" data-min-width="84">Полученный аванс<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-doc" data-min-width="120">Документ аванса<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-previous" data-min-width="84">Остаток прошлого периода<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-closing" data-min-width="84">Сумма закрытия<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-next" data-min-width="84">Остаток дальше<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-percent" data-min-width="40">Удержание, %<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-retention" data-min-width="84">Сумма удержания<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-payable" data-min-width="84">К оплате<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-name" data-min-width="200">Всего работ и затрат / наименование<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-ks2" data-min-width="84">Сумма работ по акту КС-2, руб.<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-materials" data-min-width="84">Использовано материалов, руб.<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-advance" data-min-width="84">Полученный аванс, руб.<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-doc" data-min-width="120">№ п/п, дата<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-previous" data-min-width="84">Незакрытый остаток прошлого периода, руб.<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-closing" data-min-width="84">Сумма закрытия, руб.<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-next" data-min-width="84">Остаток к закрытию следующего периода, руб.<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-percent" data-min-width="40">Удерж., %<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-retention" data-min-width="84">Удержание, руб.<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-payable" data-min-width="84">Итого к оплате, руб.<span class="resize-handle"></span></th>
               <th data-table-id="holdbacks" data-col-selector="hold-col-comment" data-min-width="100">Комментарий<span class="resize-handle"></span></th>
               <th data-table-id="holdbacks" data-col-selector="hold-col-actions" data-min-width="40"><span class="resize-handle"></span></th>
+            </tr>
+            <tr class="numbering-row">
+              <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th></th><th></th><th></th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
