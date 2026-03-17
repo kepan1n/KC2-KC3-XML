@@ -655,19 +655,19 @@ function renderKs2Pane(sheetIndex) {
             </colgroup>
             <thead>
               <tr>
-                <th data-table-id="ks2" data-col-selector="ks2-col-type" data-min-width="60">Тип<span class="resize-handle"></span></th>
-                <th data-table-id="ks2" data-col-selector="ks2-col-code" data-min-width="64">Код<span class="resize-handle"></span></th>
-                <th data-table-id="ks2" data-col-selector="ks2-col-line" data-min-width="42">№ п/п<span class="resize-handle"></span></th>
-                <th data-table-id="ks2" data-col-selector="ks2-col-estimate" data-min-width="42">№ сметы<span class="resize-handle"></span></th>
-                <th data-table-id="ks2" data-col-selector="ks2-col-name" data-min-width="220">Наименование<span class="resize-handle"></span></th>
-                <th data-table-id="ks2" data-col-selector="ks2-col-unit" data-min-width="54">Ед.<span class="resize-handle"></span></th>
-                <th data-table-id="ks2" data-col-selector="ks2-col-qty" data-min-width="70">Объем<span class="resize-handle"></span></th>
-                <th data-table-id="ks2" data-col-selector="ks2-col-price" data-min-width="90">Цена с НДС<span class="resize-handle"></span></th>
-                <th data-table-id="ks2" data-col-selector="ks2-col-amount" data-min-width="96">Сумма<span class="resize-handle"></span></th>
-                <th data-table-id="ks2" data-col-selector="ks2-col-consumption" data-min-width="42">Расход<span class="resize-handle"></span></th>
-                <th data-table-id="ks2" data-col-selector="ks2-col-category" data-min-width="90">Категория<span class="resize-handle"></span></th>
-                <th data-table-id="ks2" data-col-selector="ks2-col-note" data-min-width="120">Примечание<span class="resize-handle"></span></th>
-                <th data-table-id="ks2" data-col-selector="ks2-col-actions" data-min-width="44"><span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-type" data-min-width="60">Тип<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-code" data-min-width="64">Код<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-line" data-min-width="42">№ п/п<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-estimate" data-min-width="42">№ сметы<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-name" data-min-width="220">Наименование<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-unit" data-min-width="54">Ед.<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-qty" data-min-width="70">Объем<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-price" data-min-width="90">Цена с НДС<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-amount" data-min-width="96">Сумма<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-consumption" data-min-width="42">Расход<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-category" data-min-width="90">Категория<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-note" data-min-width="120">Примечание<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-actions" data-min-width="24"><span class="resize-handle"></span></th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>

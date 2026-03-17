@@ -416,7 +416,7 @@ body[data-sidebar="closed"] .sidebar {
 .table-holdbacks .hold-col-doc { width: 170px; }
 .table-holdbacks .hold-col-percent { width: 54px; }
 .table-holdbacks .hold-col-comment { width: 180px; }
-.table-holdbacks .hold-col-actions { width: 56px; }
+.table-holdbacks .hold-col-actions { width: 28px; }
 .table-holdbacks th:nth-child(9),
 .table-holdbacks td:nth-child(9) {
   text-align: center;
@@ -685,5 +685,10 @@ body[data-scale="115"] {
   .view-controls { justify-content: flex-start; }
   .field { grid-column: span 12; }
   .field.half { grid-column: span 12; }
+  .field.quarter { grid-column: span 6; }
+}
+lumn: span 6; }
+}
+olumn: span 12; }
   .field.quarter { grid-column: span 6; }
 }
