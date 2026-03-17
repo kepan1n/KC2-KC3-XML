@@ -11,6 +11,8 @@ const refs = {
   exportJson: document.getElementById('export-json'),
   addSheet: document.getElementById('add-ks2-sheet'),
   toggleSidebar: document.getElementById('toggle-sidebar'),
+  toggleHeaders: document.getElementById('toggle-headers'),
+  toggleSignatures: document.getElementById('toggle-signatures'),
   scaleDown: document.getElementById('scale-down'),
   scaleReset: document.getElementById('scale-reset'),
   scaleUp: document.getElementById('scale-up'),
@@ -74,6 +76,14 @@ function bindGlobalEvents() {
 
   refs.toggleSidebar?.addEventListener('click', () => {
     app.state.ui.sidebarOpen = !(app.state.ui.sidebarOpen ?? true);
+    render();
+  });
+  refs.toggleHeaders?.addEventListener('click', () => {
+    app.state.common.showDocumentHeaders = !app.state.common.showDocumentHeaders;
+    render();
+  });
+  refs.toggleSignatures?.addEventListener('click', () => {
+    app.state.common.showDocumentSignatures = !app.state.common.showDocumentSignatures;
     render();
   });
   refs.scaleDown?.addEventListener('click', () => shiftScale(-1));
@@ -341,6 +351,14 @@ function applyUiPreferences() {
   if (refs.scaleReset) refs.scaleReset.textContent = `${normalizeScale(app.state.ui.scale)}%`;
   if (refs.densityCompact) refs.densityCompact.checked = Boolean(app.state.ui.compactRows);
   if (refs.toggleSidebar) refs.toggleSidebar.textContent = app.state.ui.sidebarOpen ? 'Скрыть меню' : 'Показать меню';
+  if (refs.toggleHeaders) {
+    refs.toggleHeaders.textContent = app.state.common.showDocumentHeaders ? 'Шапки: вкл' : 'Шапки: выкл';
+    refs.toggleHeaders.classList.toggle('is-active', Boolean(app.state.common.showDocumentHeaders));
+  }
+  if (refs.toggleSignatures) {
+    refs.toggleSignatures.textContent = app.state.common.showDocumentSignatures ? 'Подписи: вкл' : 'Подписи: выкл';
+    refs.toggleSignatures.classList.toggle('is-active', Boolean(app.state.common.showDocumentSignatures));
+  }
 }
 
 function shiftScale(direction) {
