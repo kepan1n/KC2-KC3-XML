@@ -656,29 +656,57 @@ function renderExcelSimpleLine(label, value, hint = '') {
 
 function renderSignatureRow(label, position, name) {
   return `
-    <div class="signature-row-block">
-      <div class="signature-role">${escapeHtml(label)}</div>
-      <div class="signature-position-wide">${escapeHtml(position || '')}</div>
-      <div class="signature-mark">(должность)</div>
-      <div class="signature-sign-line"></div>
-      <div class="signature-mark">(подпись)</div>
-      <div class="signature-name-wide">${escapeHtml(name || '')}</div>
-      <div class="signature-mark">(расшифровка подписи)</div>
-      <div class="signature-stamp">М.П.</div>
+    <div class="signature-excel-block">
+      <div class="signature-excel-main">
+        <div class="signature-role">${escapeHtml(label)}</div>
+        <div class="signature-position-wide">${escapeHtml(position || '')}</div>
+        <div class="signature-sign-line"></div>
+        <div class="signature-name-wide">${escapeHtml(name || '')}</div>
+      </div>
+      <div class="signature-excel-hints">
+        <div></div>
+        <div class="signature-mark">(должность)</div>
+        <div class="signature-mark">(подпись)</div>
+        <div class="signature-mark">(расшифровка подписи)</div>
+      </div>
+      <div class="signature-excel-stamp">
+        <div></div>
+        <div class="signature-stamp">М.П.</div>
+        <div></div>
+        <div></div>
+      </div>
     </div>
   `;
 }
 
 function renderKs2TotalsBlock(sheet, totals) {
+  const workAmount = round2((totals.breakdown.work || 0) + (totals.breakdown.frame || 0));
+  const breakdownRows = [
+    ['материал, в т.ч.:', totals.breakdown.material || 0],
+    ['металлопрокат', totals.breakdown.metal || 0],
+    ['бетон', totals.breakdown.concrete || 0],
+    ['пр.мат.', totals.breakdown.misc || 0],
+    ['работа', workAmount],
+  ];
   return `
-    <div class="excel-totals-block">
-      <div class="excel-total-line">
-        <span>ВСЕГО по Акту:</span>
-        <strong>${formatMoney(totals.gross)}</strong>
+    <div class="ks2-footer-grid">
+      <div class="excel-totals-block">
+        <div class="excel-total-line">
+          <span>ВСЕГО по Акту:</span>
+          <strong>${formatMoney(totals.gross)}</strong>
+        </div>
+        <div class="excel-total-line">
+          <span>в том числе НДС (${sheet.vatRate}%)</span>
+          <strong>${formatMoney(totals.vat)}</strong>
+        </div>
       </div>
-      <div class="excel-total-line">
-        <span>в том числе НДС (${sheet.vatRate}%)</span>
-        <strong>${formatMoney(totals.vat)}</strong>
+      <div class="ks2-breakdown-block">
+        ${breakdownRows.map(([label, amount]) => `
+          <div class="ks2-breakdown-row">
+            <span>${escapeHtml(label)}</span>
+            <strong>${formatMoney(amount)}</strong>
+          </div>
+        `).join('')}
       </div>
     </div>
   `;
@@ -688,32 +716,33 @@ function renderKs3TotalsBlock(totals, vat) {
   return `
     <div class="excel-totals-block">
       <div class="excel-total-line"><span>Итого:</span><strong>${formatMoney(totals.forPeriod)}</strong></div>
-      <div class="excel-total-line"><span>Сумма НДС</span><strong>${formatMoney(vat)}</strong></div>
-      <div class="excel-total-line"><span>Всего с учетом НДС</span><strong>${formatMoney(totals.forPeriod + vat)}</strong></div>
+      <div class="excel-total-line"><span>Сумма НДС (22%)</span><strong>${formatMoney(vat)}</strong></div>
+      <div class="excel-total-line"><span>Всего с учетом НДС (22%):</span><strong>${formatMoney(totals.forPeriod + vat)}</strong></div>
     </div>
   `;
 }
 
 function renderHoldbacksTotalsBlock(totals) {
-  const vatKs2 = round2(totals.ks2Amount * 22 / 122);
-  const vatMaterials = round2(totals.materialsUsed * 22 / 122);
-  const vatAdvance = round2(totals.advanceReceived * 22 / 122);
-  const vatClosing = round2(totals.closingAmount * 22 / 122);
+  const vat = (value) => round2(numberOrZero(value) * 22 / 122);
+  const valueColumns = [
+    totals.ks2Amount,
+    totals.materialsUsed,
+    totals.advanceReceived,
+    totals.previousBalance,
+    totals.closingAmount,
+    totals.nextBalance,
+    totals.retentionAmount,
+    totals.payableAmount,
+  ];
   return `
     <div class="holdbacks-totals-grid">
       <div class="holdbacks-total-row holdbacks-total-head">
         <span>Всего:</span>
-        <strong>${formatMoney(totals.ks2Amount)}</strong>
-        <strong>${formatMoney(totals.materialsUsed)}</strong>
-        <strong>${formatMoney(totals.advanceReceived)}</strong>
-        <strong>${formatMoney(totals.closingAmount)}</strong>
+        ${valueColumns.map((value) => `<strong>${formatMoney(value)}</strong>`).join('')}
       </div>
       <div class="holdbacks-total-row">
         <span>в том числе НДС 22%</span>
-        <strong>${formatMoney(vatKs2)}</strong>
-        <strong>${formatMoney(vatMaterials)}</strong>
-        <strong>${formatMoney(vatAdvance)}</strong>
-        <strong>${formatMoney(vatClosing)}</strong>
+        ${valueColumns.map((value) => `<strong>${formatMoney(vat(value))}</strong>`).join('')}
       </div>
     </div>
   `;
