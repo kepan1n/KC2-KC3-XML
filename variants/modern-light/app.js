@@ -265,6 +265,8 @@ function prepareState(raw) {
   data.ui.sidebarOpen = data.ui.sidebarOpen ?? true;
   data.ui.rowActionMenu ??= null;
   data.ui.rowDeleteConfirm ??= null;
+  data.ui.holdbackActionMenu ??= null;
+  data.ui.holdbackDeleteConfirm ??= null;
   data.ui.columnWidths ??= {};
   data.common ??= {};
   data.holdbacks ??= { rows: [] };
@@ -1153,6 +1155,31 @@ function renderKs2Pane(sheetIndex) {
   `;
 }
 
+function renderHoldbackRowActions(rowIndex) {
+  const menuOpen = app.state.ui.holdbackActionMenu === rowIndex;
+  const confirmDelete = app.state.ui.holdbackDeleteConfirm === rowIndex;
+  return `
+    <div class="row-action-stack">
+      <button class="stack-button add" title="Действия" aria-label="Действия" data-action="open-holdback-menu" data-hold-index="${rowIndex}">+</button>
+      <button class="stack-button danger" title="Удалить строку" aria-label="Удалить строку" data-action="request-holdback-delete" data-hold-index="${rowIndex}">×</button>
+      ${menuOpen ? `
+        <div class="row-action-menu">
+          <button class="row-action-menu-btn" data-action="insert-holdback-row" data-hold-index="${rowIndex}">Добавить строку ниже</button>
+        </div>
+      ` : ''}
+      ${confirmDelete ? `
+        <div class="row-action-confirm">
+          <div class="row-action-confirm-label">Удалить строку?</div>
+          <div class="row-action-confirm-buttons">
+            <button class="row-action-confirm-btn confirm" data-action="confirm-holdback-delete" data-hold-index="${rowIndex}">✓</button>
+            <button class="row-action-confirm-btn cancel" data-action="cancel-holdback-delete" data-hold-index="${rowIndex}">×</button>
+          </div>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
 function renderKs3Pane() {
   const ks3 = app.state.ks3;
   const rows = buildKs3Rows();
@@ -1257,7 +1284,7 @@ function renderHoldbacksPane() {
         <td>${formatMoney(computed.retentionAmount)}</td>
         <td>${formatMoney(computed.payableAmount)}</td>
         <td><textarea data-path="holdbacks.rows.${index}.comment">${escapeHtml(row.comment)}</textarea></td>
-        <td><button class="icon-button danger" title="Удалить строку" aria-label="Удалить строку" data-action="delete-holdback-row" data-hold-index="${index}">×</button></td>
+        <td class="actions-cell">${renderHoldbackRowActions(index)}</td>
       </tr>
     `;
   }).join('');
