@@ -57,7 +57,11 @@ function bindGlobalEvents() {
   });
 
   refs.exportJson.addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify(app.state, null, 2)], { type: 'application/json;charset=utf-8' });
+    const payload = {
+      state: app.state,
+      ...buildLogicBundle(),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -481,7 +485,8 @@ function renderSidebar() {
 function renderStats() {
   const totalRows = app.state.ks2Sheets.reduce((sum, sheet) => sum + sheet.rows.length, 0);
   const grossTotal = app.state.ks2Sheets.reduce((sum, sheet) => sum + computeSheetTotals(sheet).gross, 0);
-  refs.stats.textContent = `${app.state.ks2Sheets.length} листов КС-2 · ${totalRows} строк · общая сумма с НДС: ${formatMoney(grossTotal)}`;
+  const validation = buildLogicBundle().validation;
+  refs.stats.textContent = `${app.state.ks2Sheets.length} листов КС-2 · ${totalRows} строк · общая сумма с НДС: ${formatMoney(grossTotal)} · ошибок: ${validation.errors.length} · предупреждений: ${validation.warnings.length}`;
 }
 
 function renderContent() {
@@ -498,12 +503,176 @@ function renderContent() {
   refs.content.innerHTML = html;
 }
 
+function buildLogicBundle() {
+  const model = buildDocumentModel();
+  const validation = buildValidationReport(model);
+  return { model, validation };
+}
+
+function buildDocumentModel() {
+  const ks2Sheets = app.state.ks2Sheets.map((sheet, sheetIndex) => {
+    const totals = computeSheetTotals(sheet);
+    const rows = sheet.rows.map((row, rowIndex) => ({
+      rowIndex,
+      type: row.type,
+      code: row.code || '',
+      lineNo: row.lineNo || '',
+      estimateNo: row.estimateNo || '',
+      name: row.name || '',
+      unit: row.unit || '',
+      quantity: numberOrNull(row.quantity),
+      price: numberOrNull(row.price),
+      amount: numberOrNull(computeRowAmount(row)),
+      unitConsumption: numberOrNull(row.unitConsumption),
+      category: row.category || '',
+      note: row.note || '',
+    }));
+    return {
+      sheetIndex,
+      id: sheet.id || `ks2-${sheetIndex + 1}`,
+      title: sheet.title,
+      document: {
+        number: sheet.documentNumber,
+        date: sheet.documentDate,
+        periodFrom: sheet.periodFrom,
+        periodTo: sheet.periodTo,
+        basis: sheet.basis,
+        vatRate: numberOrZero(sheet.vatRate),
+      },
+      rows,
+      items: rows.filter((row) => row.type === 'item'),
+      totals,
+    };
+  });
+
+  const ks3Rows = buildKs3Rows();
+  const ks3Totals = ks3Rows.reduce((acc, row) => {
+    acc.fromStart += row.fromStart;
+    acc.fromYearStart += row.fromYearStart;
+    acc.forPeriod += row.forPeriod;
+    acc.vat += row.vat;
+    return acc;
+  }, { fromStart: 0, fromYearStart: 0, forPeriod: 0, vat: 0 });
+
+  const holdbacksRows = app.state.holdbacks.rows.map((row, rowIndex) => {
+    const computed = computeHoldbackRow(row);
+    return {
+      rowIndex,
+      ...clone(row),
+      ...computed,
+    };
+  });
+
+  const holdbacksTotals = holdbacksRows.reduce((acc, row) => {
+    acc.ks2Amount += numberOrZero(row.ks2Amount);
+    acc.materialsUsed += numberOrZero(row.materialsUsed);
+    acc.advanceReceived += numberOrZero(row.advanceReceived);
+    acc.previousBalance += numberOrZero(row.previousBalance == null ? row.advanceReceived : row.previousBalance);
+    acc.closingAmount += numberOrZero(row.closingAmount);
+    acc.nextBalance += numberOrZero(row.nextBalance);
+    acc.retentionAmount += numberOrZero(row.retentionAmount);
+    acc.payableAmount += numberOrZero(row.payableAmount);
+    return acc;
+  }, { ks2Amount: 0, materialsUsed: 0, advanceReceived: 0, previousBalance: 0, closingAmount: 0, nextBalance: 0, retentionAmount: 0, payableAmount: 0 });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    common: clone(app.state.common),
+    ks2Sheets,
+    ks3: {
+      document: clone(app.state.ks3),
+      rows: ks3Rows,
+      totals: ks3Totals,
+    },
+    holdbacks: {
+      rows: holdbacksRows,
+      totals: holdbacksTotals,
+    },
+    xml: {
+      generated: buildGeneratedXmlFields(),
+      constants: clone(app.state.xmlExtras.constants),
+      manual: clone(app.state.xmlExtras.manual),
+      traceableGoods: clone(app.state.xmlExtras.traceableGoods),
+    },
+  };
+}
+
+function buildValidationReport(model) {
+  const errors = [];
+  const warnings = [];
+  const pushIssue = (severity, path, label, message) => {
+    const target = severity === 'error' ? errors : warnings;
+    target.push({ severity, path, label, message });
+  };
+  const requireValue = (value, path, label, severity = 'error') => {
+    if (value == null || String(value).trim() === '') {
+      pushIssue(severity, path, label, `${label} не заполнено`);
+    }
+  };
+
+  requireValue(model.common.developerName, 'common.developerName', 'Застройщик');
+  requireValue(model.common.developerOkpo, 'common.developerOkpo', 'ОКПО застройщика');
+  requireValue(model.common.techCustomerName, 'common.techCustomerName', 'Технический заказчик');
+  requireValue(model.common.techCustomerOkpo, 'common.techCustomerOkpo', 'ОКПО технического заказчика');
+  requireValue(model.common.contractorName, 'common.contractorName', 'Генподрядчик');
+  requireValue(model.common.contractorOkpo, 'common.contractorOkpo', 'ОКПО генподрядчика');
+  requireValue(model.common.constructionObject, 'common.constructionObject', 'Стройка');
+  requireValue(model.common.objectName, 'common.objectName', 'Объект');
+  requireValue(model.common.contractNumber, 'common.contractNumber', 'Номер договора');
+  requireValue(model.common.contractDate, 'common.contractDate', 'Дата договора');
+  requireValue(model.common.operationType, 'common.operationType', 'Вид операции');
+  requireValue(model.common.okudKs2, 'common.okudKs2', 'ОКУД КС-2');
+  requireValue(model.common.okudKs3, 'common.okudKs3', 'ОКУД КС-3');
+  requireValue(model.common.objectOkpo, 'common.objectOkpo', 'ОКПО объекта', 'warning');
+  requireValue(model.common.okdpCode, 'common.okdpCode', 'ОКДП', 'warning');
+
+  model.ks2Sheets.forEach((sheet, index) => {
+    const prefix = `ks2Sheets.${index}`;
+    requireValue(sheet.document.number, `${prefix}.document.number`, `КС-2 #${index + 1}: номер документа`);
+    requireValue(sheet.document.date, `${prefix}.document.date`, `КС-2 #${index + 1}: дата документа`);
+    requireValue(sheet.document.periodFrom, `${prefix}.document.periodFrom`, `КС-2 #${index + 1}: период с`);
+    requireValue(sheet.document.periodTo, `${prefix}.document.periodTo`, `КС-2 #${index + 1}: период по`);
+    requireValue(sheet.document.basis, `${prefix}.document.basis`, `КС-2 #${index + 1}: основание`);
+    if (!sheet.items.length) {
+      pushIssue('error', `${prefix}.rows`, `КС-2 #${index + 1}`, 'В листе нет ни одной строки типа «работа»');
+    }
+    sheet.items.forEach((item, rowIndex) => {
+      if (!item.name) pushIssue('warning', `${prefix}.rows.${rowIndex}.name`, `КС-2 #${index + 1}: строка ${rowIndex + 1}`, 'Не заполнено наименование работы');
+      if (item.quantity == null) pushIssue('warning', `${prefix}.rows.${rowIndex}.quantity`, `КС-2 #${index + 1}: строка ${rowIndex + 1}`, 'Не заполнен объем');
+      if (item.price == null) pushIssue('warning', `${prefix}.rows.${rowIndex}.price`, `КС-2 #${index + 1}: строка ${rowIndex + 1}`, 'Не заполнена цена');
+    });
+  });
+
+  requireValue(model.ks3.document.documentNumber, 'ks3.document.documentNumber', 'КС-3: номер документа');
+  requireValue(model.ks3.document.documentDate, 'ks3.document.documentDate', 'КС-3: дата документа');
+  requireValue(model.ks3.document.periodFrom, 'ks3.document.periodFrom', 'КС-3: период с');
+  requireValue(model.ks3.document.periodTo, 'ks3.document.periodTo', 'КС-3: период по');
+
+  if (!model.holdbacks.rows.length) {
+    pushIssue('warning', 'holdbacks.rows', 'Удержания', 'Нет ни одной строки удержаний');
+  }
+
+  requireValue(model.xml.manual.contractorInn, 'xml.manual.contractorInn', 'ИНН подрядчика', 'warning');
+  requireValue(model.xml.manual.customerInn, 'xml.manual.customerInn', 'ИНН заказчика', 'warning');
+
+  return {
+    errors,
+    warnings,
+    readyForExport: errors.length === 0,
+  };
+}
+
+function renderValidationIssue(issue) {
+  return `<li class="issue-item ${issue.severity}"><strong>${escapeHtml(issue.label)}:</strong> ${escapeHtml(issue.message)}</li>`;
+}
+
 function renderRequisitesPane() {
   const c = app.state.common;
   const totals = app.state.ks2Sheets.map(computeSheetTotals);
   const totalGross = totals.reduce((sum, sheet) => sum + sheet.gross, 0);
   const totalVat = totals.reduce((sum, sheet) => sum + sheet.vat, 0);
   const totalBase = totalGross - totalVat;
+  const logic = buildLogicBundle();
 
   return `
     <div class="panel">
@@ -520,6 +689,26 @@ function renderRequisitesPane() {
         <div class="summary-card"><span>Суммарный НДС</span><strong>${formatMoney(totalVat)}</strong></div>
         <div class="summary-card"><span>Сумма без НДС</span><strong>${formatMoney(totalBase)}</strong></div>
         <div class="summary-card"><span>Листов КС-2</span><strong>${app.state.ks2Sheets.length}</strong></div>
+      </div>
+
+      <div class="section-block">
+        <h3>Логика формы и проверка обязательных полей</h3>
+        <div class="summary-grid">
+          <div class="summary-card"><span>Ошибки</span><strong>${logic.validation.errors.length}</strong></div>
+          <div class="summary-card"><span>Предупреждения</span><strong>${logic.validation.warnings.length}</strong></div>
+          <div class="summary-card"><span>Готовность к экспорту</span><strong>${logic.validation.readyForExport ? 'Да' : 'Нет'}</strong></div>
+          <div class="summary-card"><span>Логическая модель</span><strong>${logic.model.ks2Sheets.length + 2} док.</strong></div>
+        </div>
+        <div class="card-grid section-block">
+          <div class="info-card">
+            <span class="label">Критичные ошибки</span>
+            ${logic.validation.errors.length ? `<ul class="issue-list">${logic.validation.errors.slice(0, 8).map(renderValidationIssue).join('')}</ul>` : '<div class="logic-ok">Критичных ошибок пока нет.</div>'}
+          </div>
+          <div class="info-card">
+            <span class="label">Предупреждения</span>
+            ${logic.validation.warnings.length ? `<ul class="issue-list">${logic.validation.warnings.slice(0, 8).map(renderValidationIssue).join('')}</ul>` : '<div class="logic-ok">Предупреждений пока нет.</div>'}
+          </div>
+        </div>
       </div>
 
       <div class="section-block">

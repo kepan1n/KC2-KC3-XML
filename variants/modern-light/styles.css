@@ -278,6 +278,32 @@ body[data-sidebar="closed"] .sidebar {
 .stat-card span,
 .label { color: var(--muted); font-size: 13px; }
 
+.issue-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.issue-item {
+  line-height: 1.45;
+}
+
+.issue-item.error {
+  color: var(--danger);
+}
+
+.issue-item.warning {
+  color: var(--warning);
+}
+
+.logic-ok {
+  margin-top: 12px;
+  color: var(--success);
+  font-weight: 700;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
