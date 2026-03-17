@@ -96,38 +96,83 @@ function bindGlobalEvents() {
 
   refs.content.addEventListener('click', handleContentClick);
   refs.content.addEventListener('change', handleContentChange);
+  refs.content.addEventListener('mousedown', handleResizeStart);
 }
 
 function handleContentClick(event) {
   const actionButton = event.target.closest('[data-action]');
-  if (!actionButton) return;
-  const { action, sheetIndex, rowIndex, holdIndex, traceIndex } = actionButton.dataset;
+  if (!actionButton) {
+    if (!event.target.closest('.row-action-stack') && hasTransientRowUi()) {
+      clearTransientRowUi();
+      render();
+    }
+    return;
+  }
+
+  const { action, sheetIndex, rowIndex, holdIndex, traceIndex, rowKind } = actionButton.dataset;
+  const rowCoords = { sheetIndex: Number(sheetIndex), rowIndex: Number(rowIndex) };
 
   if (action === 'add-item-row') {
+    clearTransientRowUi();
     app.state.ks2Sheets[Number(sheetIndex)].rows.push(createBlankRow('item'));
     render();
     return;
   }
 
   if (action === 'add-section-row') {
+    clearTransientRowUi();
     app.state.ks2Sheets[Number(sheetIndex)].rows.push(createBlankRow('section'));
     render();
     return;
   }
 
   if (action === 'add-note-row') {
+    clearTransientRowUi();
     app.state.ks2Sheets[Number(sheetIndex)].rows.push(createBlankRow('note'));
     render();
     return;
   }
 
-  if (action === 'delete-row') {
-    app.state.ks2Sheets[Number(sheetIndex)].rows.splice(Number(rowIndex), 1);
+  if (action === 'toggle-row-menu') {
+    const current = app.state.ui.rowActionMenu;
+    const sameRow = current && current.sheetIndex === rowCoords.sheetIndex && current.rowIndex === rowCoords.rowIndex;
+    app.state.ui.rowActionMenu = sameRow ? null : rowCoords;
+    app.state.ui.rowDeleteConfirm = null;
     render();
     return;
   }
 
+  if (action === 'insert-row-after') {
+    clearTransientRowUi();
+    app.state.ks2Sheets[rowCoords.sheetIndex].rows.splice(rowCoords.rowIndex + 1, 0, createBlankRow(rowKind || 'item'));
+    render();
+    flash('Строка добавлена.');
+    return;
+  }
+
+  if (action === 'prompt-delete-row') {
+    app.state.ui.rowActionMenu = null;
+    app.state.ui.rowDeleteConfirm = rowCoords;
+    render();
+    return;
+  }
+
+  if (action === 'cancel-delete-row') {
+    app.state.ui.rowDeleteConfirm = null;
+    render();
+    return;
+  }
+
+  if (action === 'confirm-delete-row') {
+    app.state.ks2Sheets[rowCoords.sheetIndex].rows.splice(rowCoords.rowIndex, 1);
+    clearTransientRowUi();
+    render();
+    flash('Строка удалена.');
+    return;
+  }
+
   if (action === 'duplicate-sheet') {
+    clearTransientRowUi();
     const sheet = clone(app.state.ks2Sheets[Number(sheetIndex)]);
     sheet.id = `ks2-${Date.now()}`;
     sheet.title = `${sheet.title} (копия)`;
@@ -138,6 +183,7 @@ function handleContentClick(event) {
   }
 
   if (action === 'delete-sheet') {
+    clearTransientRowUi();
     if (app.state.ks2Sheets.length === 1) {
       flash('Нужно оставить хотя бы один лист КС-2.');
       return;
@@ -150,24 +196,28 @@ function handleContentClick(event) {
   }
 
   if (action === 'add-holdback-row') {
+    clearTransientRowUi();
     app.state.holdbacks.rows.push(createBlankHoldbackRow());
     render();
     return;
   }
 
   if (action === 'delete-holdback-row') {
+    clearTransientRowUi();
     app.state.holdbacks.rows.splice(Number(holdIndex), 1);
     render();
     return;
   }
 
   if (action === 'add-trace-row') {
+    clearTransientRowUi();
     app.state.xmlExtras.traceableGoods.push({ registrationNumber: '', unitCode: '', unitName: '', quantity: null });
     render();
     return;
   }
 
   if (action === 'delete-trace-row') {
+    clearTransientRowUi();
     app.state.xmlExtras.traceableGoods.splice(Number(traceIndex), 1);
     render();
     return;
@@ -199,6 +249,9 @@ function prepareState(raw) {
   data.ui.scale = normalizeScale(data.ui.scale ?? 100);
   data.ui.compactRows = data.ui.compactRows ?? true;
   data.ui.sidebarOpen = data.ui.sidebarOpen ?? true;
+  data.ui.rowActionMenu ??= null;
+  data.ui.rowDeleteConfirm ??= null;
+  data.ui.columnWidths ??= {};
   data.common ??= {};
   data.holdbacks ??= { rows: [] };
   data.holdbacks.rows ??= [];
@@ -269,6 +322,7 @@ function render() {
   renderSidebar();
   renderStats();
   renderContent();
+  applyColumnWidths();
 }
 
 function applyUiPreferences() {
@@ -293,6 +347,60 @@ function shiftScale(direction) {
 function normalizeScale(value) {
   const numeric = Number(value);
   return SCALE_STEPS.includes(numeric) ? numeric : 100;
+}
+
+function hasTransientRowUi() {
+  return Boolean(app.state.ui.rowActionMenu || app.state.ui.rowDeleteConfirm);
+}
+
+function clearTransientRowUi() {
+  app.state.ui.rowActionMenu = null;
+  app.state.ui.rowDeleteConfirm = null;
+}
+
+function applyColumnWidths() {
+  const entries = Object.entries(app.state.ui.columnWidths || {});
+  for (const [tableId, columns] of entries) {
+    for (const [selector, width] of Object.entries(columns || {})) {
+      refs.content.querySelectorAll(`table[data-table-id="${tableId}"] col.${selector}`).forEach((col) => {
+        col.style.width = `${width}px`;
+      });
+    }
+  }
+}
+
+function handleResizeStart(event) {
+  const handle = event.target.closest('.resize-handle');
+  if (!handle) return;
+  event.preventDefault();
+
+  const th = handle.closest('th');
+  const table = handle.closest('table');
+  if (!th || !table) return;
+
+  const tableId = th.dataset.tableId;
+  const selector = th.dataset.colSelector;
+  const col = table.querySelector(`col.${selector}`);
+  if (!tableId || !selector || !col) return;
+
+  const startX = event.clientX;
+  const startWidth = col.getBoundingClientRect().width;
+  const minWidth = Number(th.dataset.minWidth || 40);
+
+  const onMove = (moveEvent) => {
+    const nextWidth = Math.max(minWidth, Math.round(startWidth + (moveEvent.clientX - startX)));
+    app.state.ui.columnWidths[tableId] ??= {};
+    app.state.ui.columnWidths[tableId][selector] = nextWidth;
+    col.style.width = `${nextWidth}px`;
+  };
+
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  };
+
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
 }
 
 function renderSidebar() {
@@ -418,6 +526,38 @@ function renderRequisitesPane() {
   `;
 }
 
+function renderKs2RowActions(sheetIndex, rowIndex) {
+  const menuOpen = app.state.ui.rowActionMenu
+    && app.state.ui.rowActionMenu.sheetIndex === sheetIndex
+    && app.state.ui.rowActionMenu.rowIndex === rowIndex;
+  const confirmOpen = app.state.ui.rowDeleteConfirm
+    && app.state.ui.rowDeleteConfirm.sheetIndex === sheetIndex
+    && app.state.ui.rowDeleteConfirm.rowIndex === rowIndex;
+
+  return `
+    <div class="row-action-stack">
+      <button class="stack-button add" title="Добавить строку ниже" aria-label="Добавить строку ниже" data-action="toggle-row-menu" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+</button>
+      <button class="stack-button remove" title="Удалить строку" aria-label="Удалить строку" data-action="prompt-delete-row" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">×</button>
+      ${menuOpen ? `
+        <div class="row-action-menu">
+          <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="section" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Раздел</button>
+          <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="item" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Строка</button>
+          <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="note" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Примечание</button>
+        </div>
+      ` : ''}
+      ${confirmOpen ? `
+        <div class="row-action-confirm">
+          <div class="row-action-confirm-title">Удалить?</div>
+          <div class="row-action-confirm-buttons">
+            <button class="confirm-icon confirm-yes" title="Подтвердить" aria-label="Подтвердить" data-action="confirm-delete-row" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">✓</button>
+            <button class="confirm-icon confirm-no" title="Отмена" aria-label="Отмена" data-action="cancel-delete-row" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">×</button>
+          </div>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
 function renderKs2Pane(sheetIndex) {
   const sheet = app.state.ks2Sheets[sheetIndex];
   if (!sheet) return '<div class="panel"><div class="empty-state">Лист КС-2 не найден.</div></div>';
@@ -452,7 +592,7 @@ function renderKs2Pane(sheetIndex) {
         </select>
       </td>
       <td><textarea data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.note">${escapeHtml(row.note)}</textarea></td>
-      <td class="actions-cell"><button class="icon-button danger" title="Удалить строку" aria-label="Удалить строку" data-action="delete-row" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">×</button></td>
+      <td class="actions-cell">${renderKs2RowActions(sheetIndex, rowIndex)}</td>
     </tr>
   `).join('');
 
@@ -497,7 +637,7 @@ function renderKs2Pane(sheetIndex) {
         <h3>Строки работ и затрат</h3>
         <p>Можно построчно добавлять работы, вставлять разделы и служебные примечания, как в исходном Excel.</p>
         <div class="table-wrapper">
-          <table class="table table-ks2">
+          <table class="table table-ks2" data-table-id="ks2">
             <colgroup>
               <col class="ks2-col-type" />
               <col class="ks2-col-code" />
@@ -515,19 +655,19 @@ function renderKs2Pane(sheetIndex) {
             </colgroup>
             <thead>
               <tr>
-                <th>Тип</th>
-                <th>Код</th>
-                <th>№ п/п</th>
-                <th>№ сметы</th>
-                <th>Наименование</th>
-                <th>Ед.</th>
-                <th>Объем</th>
-                <th>Цена с НДС</th>
-                <th>Сумма</th>
-                <th>Расход</th>
-                <th>Категория</th>
-                <th>Примечание</th>
-                <th></th>
+                <th data-table-id="ks2" data-col-selector="ks2-col-type" data-min-width="60">Тип<span class="resize-handle"></span></th>
+                <th data-table-id="ks2" data-col-selector="ks2-col-code" data-min-width="64">Код<span class="resize-handle"></span></th>
+                <th data-table-id="ks2" data-col-selector="ks2-col-line" data-min-width="42">№ п/п<span class="resize-handle"></span></th>
+                <th data-table-id="ks2" data-col-selector="ks2-col-estimate" data-min-width="42">№ сметы<span class="resize-handle"></span></th>
+                <th data-table-id="ks2" data-col-selector="ks2-col-name" data-min-width="220">Наименование<span class="resize-handle"></span></th>
+                <th data-table-id="ks2" data-col-selector="ks2-col-unit" data-min-width="54">Ед.<span class="resize-handle"></span></th>
+                <th data-table-id="ks2" data-col-selector="ks2-col-qty" data-min-width="70">Объем<span class="resize-handle"></span></th>
+                <th data-table-id="ks2" data-col-selector="ks2-col-price" data-min-width="90">Цена с НДС<span class="resize-handle"></span></th>
+                <th data-table-id="ks2" data-col-selector="ks2-col-amount" data-min-width="96">Сумма<span class="resize-handle"></span></th>
+                <th data-table-id="ks2" data-col-selector="ks2-col-consumption" data-min-width="42">Расход<span class="resize-handle"></span></th>
+                <th data-table-id="ks2" data-col-selector="ks2-col-category" data-min-width="90">Категория<span class="resize-handle"></span></th>
+                <th data-table-id="ks2" data-col-selector="ks2-col-note" data-min-width="120">Примечание<span class="resize-handle"></span></th>
+                <th data-table-id="ks2" data-col-selector="ks2-col-actions" data-min-width="44"><span class="resize-handle"></span></th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -654,37 +794,37 @@ function renderHoldbacksPane() {
       </div>
 
       <div class="table-wrapper">
-        <table class="table table-holdbacks">
+        <table class="table table-holdbacks" data-table-id="holdbacks">
           <colgroup>
             <col class="hold-col-name" />
-            <col class="hold-col-money" />
-            <col class="hold-col-money" />
-            <col class="hold-col-money" />
+            <col class="hold-col-ks2" />
+            <col class="hold-col-materials" />
+            <col class="hold-col-advance" />
             <col class="hold-col-doc" />
-            <col class="hold-col-money" />
-            <col class="hold-col-money" />
-            <col class="hold-col-money" />
+            <col class="hold-col-previous" />
+            <col class="hold-col-closing" />
+            <col class="hold-col-next" />
             <col class="hold-col-percent" />
-            <col class="hold-col-money" />
-            <col class="hold-col-money" />
+            <col class="hold-col-retention" />
+            <col class="hold-col-payable" />
             <col class="hold-col-comment" />
             <col class="hold-col-actions" />
           </colgroup>
           <thead>
             <tr>
-              <th>Наименование</th>
-              <th>Сумма КС-2</th>
-              <th>Материалы</th>
-              <th>Полученный аванс</th>
-              <th>Документ аванса</th>
-              <th>Остаток прошлого периода</th>
-              <th>Сумма закрытия</th>
-              <th>Остаток дальше</th>
-              <th>Удержание, %</th>
-              <th>Сумма удержания</th>
-              <th>К оплате</th>
-              <th>Комментарий</th>
-              <th></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-name" data-min-width="200">Наименование<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-ks2" data-min-width="84">Сумма КС-2<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-materials" data-min-width="84">Материалы<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-advance" data-min-width="84">Полученный аванс<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-doc" data-min-width="120">Документ аванса<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-previous" data-min-width="84">Остаток прошлого периода<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-closing" data-min-width="84">Сумма закрытия<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-next" data-min-width="84">Остаток дальше<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-percent" data-min-width="40">Удержание, %<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-retention" data-min-width="84">Сумма удержания<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-payable" data-min-width="84">К оплате<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-comment" data-min-width="100">Комментарий<span class="resize-handle"></span></th>
+              <th data-table-id="holdbacks" data-col-selector="hold-col-actions" data-min-width="40"><span class="resize-handle"></span></th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
