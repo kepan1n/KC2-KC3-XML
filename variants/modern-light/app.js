@@ -603,6 +603,31 @@ function renderExcelSimpleLine(label, value, hint = '') {
   `;
 }
 
+function renderDocumentSignatures(common) {
+  return `
+    <div class="signature-frame">
+      <div class="signature-card">
+        <div class="signature-label">${escapeHtml(common.contractorSignLabel || 'Сдал')}</div>
+        <div class="signature-position">${escapeHtml(common.contractorSignerPosition || '')}</div>
+        <div class="signature-line-row">
+          <span class="signature-line"></span>
+          <span class="signature-name">${escapeHtml(common.contractorSignerName || '')}</span>
+        </div>
+        <div class="signature-hint">(подпись) · (расшифровка подписи)</div>
+      </div>
+      <div class="signature-card">
+        <div class="signature-label">${escapeHtml(common.customerSignLabel || 'Принял')}</div>
+        <div class="signature-position">${escapeHtml(common.customerSignerPosition || '')}</div>
+        <div class="signature-line-row">
+          <span class="signature-line"></span>
+          <span class="signature-name">${escapeHtml(common.customerSignerName || '')}</span>
+        </div>
+        <div class="signature-hint">(подпись) · (расшифровка подписи)</div>
+      </div>
+    </div>
+  `;
+}
+
 function renderKs2RowActions(sheetIndex, rowIndex) {
   const menuOpen = app.state.ui.rowActionMenu
     && app.state.ui.rowActionMenu.sheetIndex === sheetIndex
@@ -726,7 +751,7 @@ function renderKs2Pane(sheetIndex) {
         <h3>Строки работ и затрат</h3>
         <p>Можно построчно добавлять работы, вставлять разделы и служебные примечания, как в исходном Excel.</p>
         <div class="table-wrapper">
-          <table class="table table-ks2" data-table-id="ks2">
+          <table class="table table-ks2" data-table-id="${ks2TableId}">
             <colgroup>
               <col class="ks2-col-type" />
               <col class="ks2-col-code" />
@@ -1226,6 +1251,9 @@ function coerceValue(value, type) {
     if (value === '' || value == null) return null;
     const normalized = Number(String(value).replace(',', '.'));
     return Number.isFinite(normalized) ? round2(normalized) : null;
+  }
+  if (type === 'boolean') {
+    return Boolean(value);
   }
   return value;
 }
