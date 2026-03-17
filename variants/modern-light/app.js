@@ -751,7 +751,7 @@ function renderKs2Pane(sheetIndex) {
         </div>
       </div>
 
-      ${renderExcelDocFrame({
+      ${app.state.common.showDocumentHeaders ? renderExcelDocFrame({
         formTitle: '№ КС-2 · О приемке выполненных работ',
         formCode: app.state.common.okudKs2,
         common: app.state.common,
@@ -760,7 +760,7 @@ function renderKs2Pane(sheetIndex) {
         periodFrom: sheet.periodFrom,
         periodTo: sheet.periodTo,
         basis: sheet.basis,
-      })}
+      }) : ''}
 
       <div class="summary-grid">
         <div class="summary-card"><span>Сумма с НДС</span><strong>${formatMoney(totals.gross)}</strong></div>
