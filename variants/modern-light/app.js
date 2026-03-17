@@ -489,7 +489,22 @@ function renderKs2Pane(sheetIndex) {
         <h3>Строки работ и затрат</h3>
         <p>Можно построчно добавлять работы, вставлять разделы и служебные примечания, как в исходном Excel.</p>
         <div class="table-wrapper">
-          <table class="table">
+          <table class="table table-ks2">
+            <colgroup>
+              <col class="ks2-col-type" />
+              <col class="ks2-col-code" />
+              <col class="ks2-col-line" />
+              <col class="ks2-col-estimate" />
+              <col class="ks2-col-name" />
+              <col class="ks2-col-unit" />
+              <col class="ks2-col-qty" />
+              <col class="ks2-col-price" />
+              <col class="ks2-col-amount" />
+              <col class="ks2-col-consumption" />
+              <col class="ks2-col-category" />
+              <col class="ks2-col-note" />
+              <col class="ks2-col-actions" />
+            </colgroup>
             <thead>
               <tr>
                 <th>Тип</th>

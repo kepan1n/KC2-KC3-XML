@@ -352,15 +352,46 @@ button.secondary {
 .table tr.note-row td {
   background: #fff9ed;
 }
+
+.table-ks2 {
+  min-width: 1320px;
+}
+.table-ks2 .ks2-col-type { width: 76px; }
+.table-ks2 .ks2-col-code { width: 82px; }
+.table-ks2 .ks2-col-line { width: 50px; }
+.table-ks2 .ks2-col-estimate { width: 56px; }
+.table-ks2 .ks2-col-name { width: 440px; }
+.table-ks2 .ks2-col-unit { width: 72px; }
+.table-ks2 .ks2-col-qty { width: 92px; }
+.table-ks2 .ks2-col-price { width: 118px; }
+.table-ks2 .ks2-col-amount { width: 126px; }
+.table-ks2 .ks2-col-consumption { width: 58px; }
+.table-ks2 .ks2-col-category { width: 118px; }
+.table-ks2 .ks2-col-note { width: 190px; }
+.table-ks2 .ks2-col-actions { width: 88px; }
+
+.table-ks2 th:nth-child(3),
+.table-ks2 th:nth-child(4),
+.table-ks2 th:nth-child(10),
+.table-ks2 td:nth-child(3),
+.table-ks2 td:nth-child(4),
+.table-ks2 td:nth-child(10) {
+  text-align: center;
+}
+
+.table-ks2 td:nth-child(5) textarea {
+  min-height: calc(var(--table-textarea-min) + 4px);
+}
+
 .number-cell {
-  min-width: 104px;
+  min-width: 92px;
 }
 .amount-cell {
   white-space: nowrap;
   font-weight: 700;
 }
 .actions-cell {
-  min-width: 96px;
+  min-width: 88px;
 }
 
 body[data-density="compact"] {
