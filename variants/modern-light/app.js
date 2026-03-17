@@ -280,6 +280,12 @@ function prepareState(raw) {
   data.common.customerSignLabel ||= 'Принял';
   data.common.customerSignerPosition ||= 'ООО «СЗ «АСПЕЙС Хорошевская» в лице Генерального директора управляющей организации ООО «АСПЕЙС Девелопмент»';
   data.common.customerSignerName ||= 'О.В. Смирнов';
+  data.common.objectOkpo ||= '';
+  data.common.okdpCode ||= '';
+  data.common.ks2DocLabel ||= 'АКТ';
+  data.common.ks2DocSubtitle ||= 'О ПРИЕМКЕ ВЫПОЛНЕННЫХ РАБОТ';
+  data.common.ks3DocLabel ||= 'СПРАВКА';
+  data.common.ks3DocSubtitle ||= 'О СТОИМОСТИ ВЫПОЛНЕННЫХ РАБОТ И ЗАТРАТ';
 
   data.ks2Sheets = (data.ks2Sheets || []).map((sheet, index) => {
     const prepared = {
@@ -521,6 +527,8 @@ function renderRequisitesPane() {
         <div class="form-grid">
           ${renderInput('ОКУД КС-2', 'common.okudKs2', c.okudKs2, 'string', 'quarter')}
           ${renderInput('ОКУД КС-3', 'common.okudKs3', c.okudKs3, 'string', 'quarter')}
+          ${renderInput('ОКПО объекта', 'common.objectOkpo', c.objectOkpo, 'string', 'quarter')}
+          ${renderInput('ОКДП', 'common.okdpCode', c.okdpCode, 'string', 'quarter')}
           ${renderInput('Валюта (код)', 'common.currencyCode', c.currencyCode, 'string', 'quarter')}
           ${renderInput('Валюта (наименование)', 'common.currencyName', c.currencyName, 'string', 'quarter')}
           ${renderInput('Номер договора', 'common.contractNumber', c.contractNumber, 'string', 'half')}
@@ -546,6 +554,16 @@ function renderRequisitesPane() {
         <div class="form-grid">
           ${renderTextarea('Стройка', 'common.constructionObject', c.constructionObject, 'half')}
           ${renderTextarea('Объект', 'common.objectName', c.objectName, 'half')}
+        </div>
+      </div>
+
+      <div class="section-block">
+        <h3>Названия документов</h3>
+        <div class="form-grid">
+          ${renderInput('КС-2: заголовок', 'common.ks2DocLabel', c.ks2DocLabel, 'string', 'quarter')}
+          ${renderInput('КС-2: подзаголовок', 'common.ks2DocSubtitle', c.ks2DocSubtitle, 'string', 'half')}
+          ${renderInput('КС-3: заголовок', 'common.ks3DocLabel', c.ks3DocLabel, 'string', 'quarter')}
+          ${renderInput('КС-3: подзаголовок', 'common.ks3DocSubtitle', c.ks3DocSubtitle, 'string', 'half')}
         </div>
       </div>
 
@@ -577,14 +595,14 @@ function renderRequisitesPane() {
   `;
 }
 
-function renderExcelDocFrame({ formTitle, formCodeLabel = 'Форма по ОКУД', formCode, common, contractLabel = 'Договор генподряда', docKindLabel = 'Номер документа / дата / период', documentNumber, documentDate, periodFrom, periodTo, basis, objectLabel = 'Объект' }) {
+function renderExcelDocFrame({ formTitle, docLabel = '', docSubtitle = '', formCodeLabel = 'Форма по ОКУД', formCode, common, contractLabel = 'Договор генподряда', docKindLabel = 'Номер документа / дата / период', documentNumber, documentDate, periodFrom, periodTo, basis, objectLabel = 'Объект' }) {
   return `
     <div class="excel-frame">
       <div class="excel-frame-top">
         <div>
           <div class="excel-frame-caption">Унифицированная форма</div>
-          <div class="excel-frame-title">${escapeHtml(formTitle)}</div>
-          <div class="excel-frame-subtitle">Утверждена постановлением Госкомстата России от 11.11.99 № 100</div>
+          <div class="excel-frame-title">${escapeHtml(docLabel || formTitle)}</div>
+          <div class="excel-frame-subtitle">${escapeHtml(docSubtitle || 'Утверждена постановлением Госкомстата России от 11.11.99 № 100')}</div>
         </div>
         <div class="excel-code-box">
           <span>${escapeHtml(formCodeLabel)}</span>
@@ -597,7 +615,8 @@ function renderExcelDocFrame({ formTitle, formCodeLabel = 'Форма по ОК�
         ${renderExcelPartyLine('Технический заказчик', common.techCustomerName, common.techCustomerOkpo)}
         ${renderExcelPartyLine('Генподрядчик', common.contractorName, common.contractorOkpo)}
         ${renderExcelSimpleLine('Стройка', common.constructionObject, 'наименование, адрес')}
-        ${renderExcelSimpleLine(objectLabel, common.objectName, 'наименование')}
+        ${renderExcelPartyLine(objectLabel, common.objectName, common.objectOkpo)}
+        ${renderExcelSimpleLine('Вид деятельности по ОКДП', common.okdpCode, '')}
       </div>
 
       <div class="excel-meta-grid">
@@ -854,6 +873,8 @@ function renderKs2Pane(sheetIndex) {
 
       ${app.state.common.showDocumentHeaders ? renderExcelDocFrame({
         formTitle: '№ КС-2 · О приемке выполненных работ',
+        docLabel: app.state.common.ks2DocLabel,
+        docSubtitle: app.state.common.ks2DocSubtitle,
         formCode: app.state.common.okudKs2,
         common: app.state.common,
         documentNumber: sheet.documentNumber,
@@ -965,6 +986,8 @@ function renderKs3Pane() {
 
       ${app.state.common.showDocumentHeaders ? renderExcelDocFrame({
         formTitle: '№ КС-3 · Справка о стоимости выполненных работ и затрат',
+        docLabel: app.state.common.ks3DocLabel,
+        docSubtitle: app.state.common.ks3DocSubtitle,
         formCode: app.state.common.okudKs3,
         common: app.state.common,
         contractLabel: 'Договор подряда (контракт)',
