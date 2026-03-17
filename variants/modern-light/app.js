@@ -562,6 +562,7 @@ function renderKs2Pane(sheetIndex) {
   const sheet = app.state.ks2Sheets[sheetIndex];
   if (!sheet) return '<div class="panel"><div class="empty-state">Лист КС-2 не найден.</div></div>';
   const totals = computeSheetTotals(sheet);
+  const ks2TableId = `ks2-${sheetIndex}`;
 
   const rows = sheet.rows.map((row, rowIndex) => `
     <tr class="${row.type === 'section' ? 'section-row' : row.type === 'note' ? 'note-row' : ''}">
