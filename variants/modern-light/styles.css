@@ -938,6 +938,7 @@ body[data-scale="115"] {
   .view-controls { justify-content: flex-start; }
   .signature-frame { grid-template-columns: 1fr; }
   .signature-row-block,
+  .holdbacks-total-row,
   .excel-frame-top, .excel-line, .excel-meta-grid, .excel-basis-row { grid-template-columns: 1fr; display: grid; }
   .field { grid-column: span 12; }
   .field.half { grid-column: span 12; }
@@ -957,6 +958,27 @@ x;
 }
 
 @media (max-width: 1180px) {
+  .workspace-scale {
+    transform: none;
+    width: 100%;
+  }
+  .workspace { grid-template-columns: 1fr; }
+  .sidebar { position: static; }
+}
+
+@media (max-width: 860px) {
+  .topbar, .statusbar, .panel-header, .toolbar-wrap, .statusbar-left { flex-direction: column; }
+  .view-controls { justify-content: flex-start; }
+  .field { grid-column: span 12; }
+  .field.half { grid-column: span 12; }
+  .field.quarter { grid-column: span 6; }
+}
+lumn: span 6; }
+}
+olumn: span 12; }
+  .field.quarter { grid-column: span 6; }
+}
+edia (max-width: 1180px) {
   .workspace-scale {
     transform: none;
     width: 100%;

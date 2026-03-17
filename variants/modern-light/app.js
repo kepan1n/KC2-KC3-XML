@@ -695,10 +695,26 @@ function renderKs3TotalsBlock(totals, vat) {
 }
 
 function renderHoldbacksTotalsBlock(totals) {
+  const vatKs2 = round2(totals.ks2Amount * 22 / 122);
+  const vatMaterials = round2(totals.materialsUsed * 22 / 122);
+  const vatAdvance = round2(totals.advanceReceived * 22 / 122);
+  const vatClosing = round2(totals.closingAmount * 22 / 122);
   return `
-    <div class="excel-totals-block">
-      <div class="excel-total-line"><span>Всего:</span><strong>${formatMoney(totals.ks2Amount)}</strong></div>
-      <div class="excel-total-line"><span>в том числе НДС 22%</span><strong>${formatMoney(round2(totals.ks2Amount * 22 / 122))}</strong></div>
+    <div class="holdbacks-totals-grid">
+      <div class="holdbacks-total-row holdbacks-total-head">
+        <span>Всего:</span>
+        <strong>${formatMoney(totals.ks2Amount)}</strong>
+        <strong>${formatMoney(totals.materialsUsed)}</strong>
+        <strong>${formatMoney(totals.advanceReceived)}</strong>
+        <strong>${formatMoney(totals.closingAmount)}</strong>
+      </div>
+      <div class="holdbacks-total-row">
+        <span>в том числе НДС 22%</span>
+        <strong>${formatMoney(vatKs2)}</strong>
+        <strong>${formatMoney(vatMaterials)}</strong>
+        <strong>${formatMoney(vatAdvance)}</strong>
+        <strong>${formatMoney(vatClosing)}</strong>
+      </div>
     </div>
   `;
 }
