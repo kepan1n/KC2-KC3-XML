@@ -1,6 +1,7 @@
 const STORAGE_KEY = 'kc2kc3-web-form-v1';
 
 const refs = {
+  appShell: document.getElementById('app-shell'),
   sidebar: document.getElementById('sidebar'),
   content: document.getElementById('content'),
   stats: document.getElementById('stats'),
@@ -9,7 +10,13 @@ const refs = {
   saveLocal: document.getElementById('save-local'),
   exportJson: document.getElementById('export-json'),
   addSheet: document.getElementById('add-ks2-sheet'),
+  scaleDown: document.getElementById('scale-down'),
+  scaleReset: document.getElementById('scale-reset'),
+  scaleUp: document.getElementById('scale-up'),
+  densityCompact: document.getElementById('density-compact'),
 };
+
+const SCALE_STEPS = [85, 100, 115];
 
 const app = {
   sample: null,
@@ -34,7 +41,9 @@ async function fetchSample() {
 
 function bindGlobalEvents() {
   refs.loadSample.addEventListener('click', () => {
+    const ui = clone(app.state?.ui || {});
     app.state = clone(app.sample);
+    app.state.ui = { ...app.state.ui, ...ui };
     render();
     flash('Загружен пример из Excel.');
   });
@@ -60,6 +69,17 @@ function bindGlobalEvents() {
     app.state.ui.activePane = `ks2:${app.state.ks2Sheets.length - 1}`;
     render();
     flash('Добавлен новый лист КС-2.');
+  });
+
+  refs.scaleDown?.addEventListener('click', () => shiftScale(-1));
+  refs.scaleUp?.addEventListener('click', () => shiftScale(1));
+  refs.scaleReset?.addEventListener('click', () => {
+    app.state.ui.scale = 100;
+    render();
+  });
+  refs.densityCompact?.addEventListener('change', (event) => {
+    app.state.ui.compactRows = event.target.checked;
+    render();
   });
 
   refs.sidebar.addEventListener('click', (event) => {
@@ -171,6 +191,8 @@ function prepareState(raw) {
   const data = clone(raw);
   data.ui ??= {};
   data.ui.activePane ??= 'requisites';
+  data.ui.scale = normalizeScale(data.ui.scale ?? 100);
+  data.ui.compactRows = data.ui.compactRows ?? true;
   data.common ??= {};
   data.holdbacks ??= { rows: [] };
   data.holdbacks.rows ??= [];
@@ -237,9 +259,32 @@ function prepareState(raw) {
 }
 
 function render() {
+  applyUiPreferences();
   renderSidebar();
   renderStats();
   renderContent();
+}
+
+function applyUiPreferences() {
+  document.body.dataset.scale = String(normalizeScale(app.state.ui.scale));
+  document.body.dataset.density = app.state.ui.compactRows ? 'compact' : 'comfortable';
+
+  if (refs.scaleReset) refs.scaleReset.textContent = `${normalizeScale(app.state.ui.scale)}%`;
+  if (refs.densityCompact) refs.densityCompact.checked = Boolean(app.state.ui.compactRows);
+}
+
+function shiftScale(direction) {
+  const current = normalizeScale(app.state.ui.scale);
+  const index = SCALE_STEPS.indexOf(current);
+  const safeIndex = index === -1 ? 1 : index;
+  const nextIndex = Math.min(Math.max(safeIndex + direction, 0), SCALE_STEPS.length - 1);
+  app.state.ui.scale = SCALE_STEPS[nextIndex];
+  render();
+}
+
+function normalizeScale(value) {
+  const numeric = Number(value);
+  return SCALE_STEPS.includes(numeric) ? numeric : 100;
 }
 
 function renderSidebar() {
