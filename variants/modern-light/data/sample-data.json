@@ -1,0 +1,1904 @@
+{
+  "meta": {
+    "sourceWorkbook": "пример заполнения.xlsx",
+    "description": "Демо-данные, извлеченные из пример заполнения.xlsx"
+  },
+  "common": {
+    "okudKs2": "322001",
+    "okudKs3": "Форма по ОКУД",
+    "developerName": "Общество с ограниченной ответственностью «Специализированный застройщик «АСПЕЙС Хорошевская», 123112 , г. Москва, наб. Пресненская, д. 6, стр. 2, помещение 34/38",
+    "developerOkpo": "74641884",
+    "techCustomerName": "Общество с ограниченной ответственностью «А Плюс», 127006, г. Москва, ул. Малая Дмитровка, 18Ас3, пом. 1/3",
+    "techCustomerOkpo": "99975557",
+    "contractorName": "Общество с ограниченной ответственностью «ЛегендаЭлит», 109028, г. Москва, пер. Дурасовский, д. 5, стр. 2",
+    "contractorOkpo": "47810841",
+    "constructionObject": "Бизнес-центр с подземным паркингом по адресу: г. Москва, шоссе Хорошёвское, вл. 39",
+    "objectName": "Бизнес-центр с подземным паркингом по адресу: г. Москва, шоссе Хорошёвское, вл. 39",
+    "contractNumber": "АСП-ХОР/2025",
+    "contractDate": "22.09.2025 г.",
+    "operationType": "",
+    "currencyCode": "643",
+    "currencyName": "Российский рубль"
+  },
+  "ks2Sheets": [
+    {
+      "id": "2-1-1",
+      "title": "КС-2 №1 Кальк. №1 краны",
+      "documentNumber": "1",
+      "documentDate": "2026-01-31",
+      "periodFrom": "2026-01-01",
+      "periodTo": "2026-01-31",
+      "basis": "Выполнение комплекса работ по разработке и согласованию ППРпс и проекта на фундамент под башенные краны. Мобилизация и демобилизация башенных кранов. (Калькуляция №1 зам.)",
+      "vatRate": 22,
+      "rows": [
+        {
+          "type": "section",
+          "code": "СР3010",
+          "lineNo": "",
+          "estimateNo": "",
+          "name": "Раздел №1. Башенный кран №1 (Hкр ≥ 110м., Lc ≥ 50м., Грузоподъемность на максимальном вылете (50м) Qг ≥ 2т.) - POTAIN MC 175 B (высота свободностоящего крана 44м)",
+          "unit": "",
+          "quantity": null,
+          "price": null,
+          "amount": null,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР3010",
+          "lineNo": "1",
+          "estimateNo": "1",
+          "name": "Разработка и согласование ППРпс и проекта на фундамент под башенный кран, в т.ч. регистрация крана в Ростехнадзоре",
+          "unit": "услуга",
+          "quantity": 1.0,
+          "price": 228750.0,
+          "amount": 228750.0,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР3010",
+          "lineNo": "2",
+          "estimateNo": "2",
+          "name": "Мобилизация башенного крана (доставка на строительную площадку + монтаж на фундаментную плиту).",
+          "unit": "услуга",
+          "quantity": 1.0,
+          "price": 2524639.17,
+          "amount": 2524639.17,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "section",
+          "code": "СР3010",
+          "lineNo": "",
+          "estimateNo": "",
+          "name": "Раздел №2. Башенный кран №2 (Hкр ≥ 20м., Lc ≥ 40м., Грузоподъемность на максимальном вылете (40м) Qг ≥ 2т.) - POTAIN МС 175 В (высота свободностоящего крана 44м)",
+          "unit": "",
+          "quantity": null,
+          "price": null,
+          "amount": null,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР3010",
+          "lineNo": "3",
+          "estimateNo": "4",
+          "name": "Разработка и согласование ППРпс и проекта на фундамент под башенный кран, в т.ч. регистрация крана в Ростехнадзоре",
+          "unit": "услуга",
+          "quantity": 1.0,
+          "price": 147416.67,
+          "amount": 147416.67,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "section",
+          "code": "СР3010",
+          "lineNo": "",
+          "estimateNo": "",
+          "name": "Раздел №3. Башенный кран №3 (Hкр ≥ 110м., Lc ≥ 45м., Грузоподъемность на максимальном вылете (45м) Qг ≥ 2т.) - POTAIN МСТ 178 (высота свободностоящего крана 63,1м)",
+          "unit": "",
+          "quantity": null,
+          "price": null,
+          "amount": null,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР3010",
+          "lineNo": "4",
+          "estimateNo": "7",
+          "name": "Разработка и согласование ППРпс и проекта на фундамент под башенный кран, в т.ч. регистрация крана в Ростехнадзоре",
+          "unit": "услуга",
+          "quantity": 1.0,
+          "price": 147416.67,
+          "amount": 147416.67,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "note",
+          "code": "",
+          "lineNo": "",
+          "estimateNo": "",
+          "name": "Корректировка Акта выполненных работ КС-2 №1 от 31.12.2025 г.",
+          "unit": "",
+          "quantity": null,
+          "price": null,
+          "amount": null,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "section",
+          "code": "СР3010",
+          "lineNo": "",
+          "estimateNo": "",
+          "name": "Раздел №2. Башенный кран №2 (Hкр ≥ 20м., Lc ≥ 40м., Грузоподъемность на максимальном вылете (40м) Qг ≥ 2т.) - POTAIN МС 175 В (высота свободностоящего крана 44м)",
+          "unit": "",
+          "quantity": null,
+          "price": null,
+          "amount": null,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР3010",
+          "lineNo": "5",
+          "estimateNo": "2",
+          "name": "Мобилизация башенного крана (доставка на строительную площадку + монтаж на фундаментную плиту).",
+          "unit": "услуга",
+          "quantity": -0.95,
+          "price": 2164721.35,
+          "amount": -2058650.0,
+          "unitConsumption": null,
+          "note": ""
+        }
+      ],
+      "totals": {
+        "gross": 989572.51,
+        "vat": 178447.5,
+        "breakdown": [
+          {
+            "label": "материал, в т.ч.:",
+            "amount": 0
+          },
+          {
+            "label": "металлопрокат",
+            "amount": 0
+          },
+          {
+            "label": "бетон",
+            "amount": 0
+          },
+          {
+            "label": "пр.мат.",
+            "amount": 0
+          },
+          {
+            "label": "работа",
+            "amount": 989572.51
+          },
+          {
+            "label": "0",
+            "amount": 989572.51
+          }
+        ]
+      }
+    },
+    {
+      "id": "2-2-2",
+      "title": "КС-2 №2 Кальк. №2 вибр",
+      "documentNumber": "2",
+      "documentDate": "2025-12-31",
+      "periodFrom": "2025-12-01",
+      "periodTo": "2025-12-31",
+      "basis": "Монтаж виброизоляции (Калькуляция №2)",
+      "vatRate": 20,
+      "rows": [
+        {
+          "type": "section",
+          "code": "",
+          "lineNo": "",
+          "estimateNo": "",
+          "name": "Раздел 1. Фундаментная плита - 1 корпус+переход",
+          "unit": "",
+          "quantity": null,
+          "price": null,
+          "amount": null,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "С2030",
+          "lineNo": "1",
+          "estimateNo": "1",
+          "name": "Монтаж виброзащитного материала под подошвой фундамента, в т.ч. крепеж",
+          "unit": "м2",
+          "quantity": 2361.65,
+          "price": 1037.98,
+          "amount": 2451345.47,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "С2030",
+          "lineNo": "2",
+          "estimateNo": "2",
+          "name": "Gener VX850 2000 х 1000 х 37",
+          "unit": "м2",
+          "quantity": 2.0,
+          "price": 0.0,
+          "amount": 0.0,
+          "unitConsumption": 1.05,
+          "note": "давальческий материал (материал Заказчика)"
+        },
+        {
+          "type": "item",
+          "code": "С2030",
+          "lineNo": "3",
+          "estimateNo": "3",
+          "name": "Gener VX650 2000 х 1000 х 37",
+          "unit": "м2",
+          "quantity": 36.0,
+          "price": 0.0,
+          "amount": 0.0,
+          "unitConsumption": 1.05,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "С2030",
+          "lineNo": "4",
+          "estimateNo": "4",
+          "name": "Gener VX500 2000 х 1000 х 37",
+          "unit": "м2",
+          "quantity": 20.0,
+          "price": 0.0,
+          "amount": 0.0,
+          "unitConsumption": 1.05,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "С2030",
+          "lineNo": "5",
+          "estimateNo": "5",
+          "name": "Gener VX450 2000 х 1000 х 37",
+          "unit": "м2",
+          "quantity": 68.0,
+          "price": 0.0,
+          "amount": 0.0,
+          "unitConsumption": 1.05,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "С2030",
+          "lineNo": "6",
+          "estimateNo": "6",
+          "name": "Gener VX350 2000 х 1000 х 37",
+          "unit": "м2",
+          "quantity": 146.0,
+          "price": 0.0,
+          "amount": 0.0,
+          "unitConsumption": 1.05,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "С2030",
+          "lineNo": "7",
+          "estimateNo": "7",
+          "name": "Gener VX220 2000 х 1000 х 37",
+          "unit": "м2",
+          "quantity": 120.0,
+          "price": 0.0,
+          "amount": 0.0,
+          "unitConsumption": 1.05,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "С2030",
+          "lineNo": "8",
+          "estimateNo": "8",
+          "name": "Gener VX170 2000 х 1000 х 37",
+          "unit": "м2",
+          "quantity": 788.0,
+          "price": 0.0,
+          "amount": 0.0,
+          "unitConsumption": 1.05,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "С2030",
+          "lineNo": "9",
+          "estimateNo": "9",
+          "name": "Gener VX110 2000 х 1000 х 37",
+          "unit": "м2",
+          "quantity": 1182.0,
+          "price": 0.0,
+          "amount": 0.0,
+          "unitConsumption": 1.05,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "С2030",
+          "lineNo": "10",
+          "estimateNo": "10",
+          "name": "Gener VX80 2500 х 1200 х 37",
+          "unit": "м2",
+          "quantity": 129.0,
+          "price": 0.0,
+          "amount": 0.0,
+          "unitConsumption": 1.05,
+          "note": ""
+        }
+      ],
+      "totals": {
+        "gross": 2451345.47,
+        "vat": 408557.58,
+        "breakdown": [
+          {
+            "label": "материал, в т.ч.:",
+            "amount": 0
+          },
+          {
+            "label": "металлопрокат",
+            "amount": 0
+          },
+          {
+            "label": "бетон",
+            "amount": 0
+          },
+          {
+            "label": "пр.мат.",
+            "amount": 0
+          },
+          {
+            "label": "работа",
+            "amount": 2451345.47
+          },
+          {
+            "label": "0",
+            "amount": 2451345.47
+          }
+        ]
+      }
+    },
+    {
+      "id": "2-2-3",
+      "title": "КС-2 №2 Кальк. №3",
+      "documentNumber": "2",
+      "documentDate": "2026-01-31",
+      "periodFrom": "2026-01-01",
+      "periodTo": "2026-01-31",
+      "basis": "Выполнение комплекса строительно-монтажных работ по возведению монолитных ж/б конструкций - фундаментная плита 1 и 2 корпус. Калькуляция №3 зам.",
+      "vatRate": 22,
+      "rows": [
+        {
+          "type": "section",
+          "code": "",
+          "lineNo": "",
+          "estimateNo": "",
+          "name": "Раздел 1. Фундаментная плита - 1 корпус",
+          "unit": "",
+          "quantity": null,
+          "price": null,
+          "amount": null,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "1",
+          "estimateNo": "8",
+          "name": "ПВХ Гидрошпонка тип ХОМ-300-4/20",
+          "unit": "м.п.",
+          "quantity": 90.0,
+          "price": 859.08,
+          "amount": 77317.2,
+          "unitConsumption": 1.0,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "2",
+          "estimateNo": "15",
+          "name": "Устройство фундаментной плиты т. 800 мм",
+          "unit": "м3",
+          "quantity": 582.48,
+          "price": 17948.33,
+          "amount": 10454543.26,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "3",
+          "estimateNo": "16",
+          "name": "Бетон B30 F150 W8 на гранитном щебне по ГОСТ 26633-2015",
+          "unit": "м3",
+          "quantity": 489.05,
+          "price": 7362.7,
+          "amount": 3600728.44,
+          "unitConsumption": 1.01,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "4",
+          "estimateNo": "16",
+          "name": "Бетон B30 F150 W8 на гранитном щебне по ГОСТ 26633-2015",
+          "unit": "м3",
+          "quantity": 1349.95,
+          "price": 7242.0,
+          "amount": 9776337.9,
+          "unitConsumption": 1.01,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "5",
+          "estimateNo": "17",
+          "name": "Арматура ф10 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 0.1,
+          "price": 48698.33,
+          "amount": 4869.83,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "6",
+          "estimateNo": "17",
+          "name": "Арматура ф10 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 0.2,
+          "price": 48800.0,
+          "amount": 9760.0,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "7",
+          "estimateNo": "18",
+          "name": "Арматура Ø 12 А500С  ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 2.83,
+          "price": 46665.0,
+          "amount": 132061.95,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "8",
+          "estimateNo": "19",
+          "name": "Арматура Ø 16 А500С  ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 0.86,
+          "price": 46766.67,
+          "amount": 40219.34,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "9",
+          "estimateNo": "20",
+          "name": "Арматура Ø 20 А500С  ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 3.96,
+          "price": 46766.67,
+          "amount": 185196.01,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "10",
+          "estimateNo": "20",
+          "name": "Арматура Ø 20 А500С  ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 28.41,
+          "price": 46167.85,
+          "amount": 1311628.62,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "11",
+          "estimateNo": "21",
+          "name": "Арматура Ø 25 А500С  ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 37.08,
+          "price": 46766.67,
+          "amount": 1734108.12,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "12",
+          "estimateNo": "21",
+          "name": "Арматура Ø 25 А500С  ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 47.32,
+          "price": 46167.85,
+          "amount": 2184662.66,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "13",
+          "estimateNo": "22",
+          "name": "Арматура Ø 32 А500С  ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 27.5,
+          "price": 46766.67,
+          "amount": 1286083.43,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "14",
+          "estimateNo": "22",
+          "name": "Арматура Ø 32 А500С  ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 3.03,
+          "price": 46258.33,
+          "amount": 140162.74,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "15",
+          "estimateNo": "23",
+          "name": "Арматура Ø 36 А500С  ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 3.08,
+          "price": 46766.67,
+          "amount": 144041.34,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "16",
+          "estimateNo": "24",
+          "name": "Арматура Ø 40 А500С  ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 4.19,
+          "price": 46766.67,
+          "amount": 195952.35,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "17",
+          "estimateNo": "29",
+          "name": "Каркас КР-3 (арматура ф10 А500С ГОСТ 34028-2016)",
+          "unit": "шт",
+          "quantity": 72.0,
+          "price": 1469.08,
+          "amount": 105773.76,
+          "unitConsumption": 1.0,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "18",
+          "estimateNo": "30",
+          "name": "Каркас КР-4 (арматура ф10 А500С ГОСТ 34028-2016)",
+          "unit": "шт",
+          "quantity": 80.0,
+          "price": 461.57,
+          "amount": 36925.6,
+          "unitConsumption": 1.0,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "19",
+          "estimateNo": "31",
+          "name": "Каркас КР-5 (арматура ф10 А500С ГОСТ 34028-2016)",
+          "unit": "шт",
+          "quantity": 24.0,
+          "price": 1017.68,
+          "amount": 24424.32,
+          "unitConsumption": 1.0,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "20",
+          "estimateNo": "32",
+          "name": "Каркас КР-6 (арматура ф10 А500С ГОСТ 34028-2016)",
+          "unit": "шт",
+          "quantity": 28.0,
+          "price": 363.97,
+          "amount": 10191.16,
+          "unitConsumption": 1.0,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "21",
+          "estimateNo": "35",
+          "name": "Каркас КР-9 (арматура ф10 А500С ГОСТ 34028-2016)",
+          "unit": "шт",
+          "quantity": 6.0,
+          "price": 700.48,
+          "amount": 4202.88,
+          "unitConsumption": 1.0,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "22",
+          "estimateNo": "36",
+          "name": "Каркас КР-10 (арматура ф10 А500С ГОСТ 34028-2016)",
+          "unit": "шт",
+          "quantity": 8.0,
+          "price": 273.48,
+          "amount": 2187.84,
+          "unitConsumption": 1.0,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "23",
+          "estimateNo": "39",
+          "name": "Установка контрольно-инъякционных штуцеров",
+          "unit": "шт",
+          "quantity": 25.0,
+          "price": 534.42,
+          "amount": 13360.5,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "24",
+          "estimateNo": "40",
+          "name": "Контрольно-инъекционный штуцер",
+          "unit": "шт",
+          "quantity": 25.0,
+          "price": 437.17,
+          "amount": 10929.25,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "note",
+          "code": "",
+          "lineNo": "",
+          "estimateNo": "",
+          "name": "Корректировка Акта выполненных работ КС-2 №2 от 31.12.2025 г.",
+          "unit": "",
+          "quantity": null,
+          "price": null,
+          "amount": null,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "section",
+          "code": "",
+          "lineNo": "",
+          "estimateNo": "",
+          "name": "Раздел 1. Фундаментная плита - 1 корпус",
+          "unit": "",
+          "quantity": null,
+          "price": null,
+          "amount": null,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2030",
+          "lineNo": "25",
+          "estimateNo": "16",
+          "name": "Бетон B30 F150 W8 на гранитном щебне по ГОСТ 26633-2015",
+          "unit": "м3",
+          "quantity": -1349.95,
+          "price": 7250.0,
+          "amount": -9787137.5,
+          "unitConsumption": 1.01,
+          "note": ""
+        }
+      ],
+      "totals": {
+        "gross": 21698531.0,
+        "vat": 3912849.85,
+        "breakdown": [
+          {
+            "label": "материал, в т.ч.:",
+            "amount": 11230627.24
+          },
+          {
+            "label": "металлопрокат",
+            "amount": 7368746.39
+          },
+          {
+            "label": "каркас",
+            "amount": 183705.56
+          },
+          {
+            "label": "бетон",
+            "amount": 3589928.84
+          },
+          {
+            "label": "пр.мат.",
+            "amount": 88246.45
+          },
+          {
+            "label": "работа",
+            "amount": 10467903.76
+          }
+        ]
+      }
+    },
+    {
+      "id": "2-3-4",
+      "title": "КС-2 №3 Кальк. №4",
+      "documentNumber": "3",
+      "documentDate": "2026-01-31",
+      "periodFrom": "2026-01-01",
+      "periodTo": "2026-01-31",
+      "basis": "Устройство временного проезда от ш. Хорошевское до заезда со стороны гостиница Пальмира. Калькуляция №4 зам.",
+      "vatRate": 22,
+      "rows": [
+        {
+          "type": "item",
+          "code": "СР1010",
+          "lineNo": "1",
+          "estimateNo": "8",
+          "name": "Эксплуатация временных дорог (чистка, уборка мусора, уборка снега, уборка наледи)",
+          "unit": "день",
+          "quantity": 28.0,
+          "price": 3025.0,
+          "amount": 84700.0,
+          "unitConsumption": null,
+          "note": "с 4 января"
+        }
+      ],
+      "totals": {
+        "gross": 84700.0,
+        "vat": 15273.77,
+        "breakdown": [
+          {
+            "label": "материал, в т.ч.:",
+            "amount": 0
+          },
+          {
+            "label": "металлопрокат",
+            "amount": 0
+          },
+          {
+            "label": "каркас",
+            "amount": 0
+          },
+          {
+            "label": "бетон",
+            "amount": 0
+          },
+          {
+            "label": "пр.мат.",
+            "amount": 0
+          },
+          {
+            "label": "работа",
+            "amount": 84700.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "2-5-5",
+      "title": "КС-2 №5 Кальк. №5",
+      "documentNumber": "5",
+      "documentDate": "2025-12-31",
+      "periodFrom": "2025-12-01",
+      "periodTo": "2025-12-31",
+      "basis": "Устройство временного проезда для спец.техники к строительной площадке. Калькуляция №5.",
+      "vatRate": 20,
+      "rows": [
+        {
+          "type": "item",
+          "code": "СР1010",
+          "lineNo": "1",
+          "estimateNo": "1",
+          "name": "Срезка откоса из растительного грунта в зоне въезда со стороны бетонного завода с перевозкой и складированием на растояние до 1 км",
+          "unit": "м3",
+          "quantity": 200.0,
+          "price": 500.0,
+          "amount": 100000.0,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР1010",
+          "lineNo": "2",
+          "estimateNo": "2",
+          "name": "Планировка территории (экскаватором-погрузчиком, ручная доработка)",
+          "unit": "м2",
+          "quantity": 1057.0,
+          "price": 100.0,
+          "amount": 105700.0,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР1010",
+          "lineNo": "3",
+          "estimateNo": "3",
+          "name": "Устройство покрытия проезжей части из плит ПАГ 14 (материал Генподрядчика) на песчаной подушке 200 мм с предварительным уплотнением, в т.ч. материал и аренда спец. техники (погрузчик, автокран)",
+          "unit": "м2",
+          "quantity": 444.0,
+          "price": 1079.0,
+          "amount": 479076.0,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР1010",
+          "lineNo": "4",
+          "estimateNo": "5",
+          "name": "Песок строительный",
+          "unit": "м3",
+          "quantity": 211.4,
+          "price": 0.0,
+          "amount": 0.0,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР1010",
+          "lineNo": "5",
+          "estimateNo": "8",
+          "name": "Устройство пандусов из щебня в зоне перепадов дороги",
+          "unit": "м3",
+          "quantity": 800.0,
+          "price": 2000.0,
+          "amount": 1600000.0,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР1010",
+          "lineNo": "6",
+          "estimateNo": "9",
+          "name": "Щебень вторичный фр.40-70",
+          "unit": "м3",
+          "quantity": 800.0,
+          "price": 2130.0,
+          "amount": 1704000.0,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР1010",
+          "lineNo": "7",
+          "estimateNo": "10",
+          "name": "Вырубка деревьев в зоне временных дорог",
+          "unit": "шт",
+          "quantity": 10.0,
+          "price": 5000.0,
+          "amount": 50000.0,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР1010",
+          "lineNo": "8",
+          "estimateNo": "13",
+          "name": "Демонтаж покрытия проезжей части из плит ПАГ 14 с погрузкой и вывозом",
+          "unit": "м2",
+          "quantity": 444.0,
+          "price": 755.3,
+          "amount": 335353.2,
+          "unitConsumption": null,
+          "note": ""
+        }
+      ],
+      "totals": {
+        "gross": 4374129.2,
+        "vat": 729021.53,
+        "breakdown": [
+          {
+            "label": "материал, в т.ч.:",
+            "amount": 1704000.0
+          },
+          {
+            "label": "металлопрокат",
+            "amount": 0
+          },
+          {
+            "label": "каркас",
+            "amount": 0
+          },
+          {
+            "label": "бетон",
+            "amount": 0
+          },
+          {
+            "label": "пр.мат.",
+            "amount": 1704000.0
+          },
+          {
+            "label": "работа",
+            "amount": 2670129.2
+          }
+        ]
+      }
+    },
+    {
+      "id": "2-4-6",
+      "title": "КС-2 №4 Кальк. №6",
+      "documentNumber": "4",
+      "documentDate": "2026-01-31",
+      "periodFrom": "2026-01-01",
+      "periodTo": "2026-01-31",
+      "basis": "Выполнение комплекса строительно-монтажных работ по возведению монолитных жб конструкций - каркас ниже 0,000 (вертикальные конструкции и перекрытие) 1 и 2 корпус (Калькуляция №6 зам.)",
+      "vatRate": 22,
+      "rows": [
+        {
+          "type": "section",
+          "code": "СР2040",
+          "lineNo": "",
+          "estimateNo": "",
+          "name": "Раздел 2. Каркас ниже 0,000 - 2 корпус (вертикальные конструкции, перекрытие)",
+          "unit": "",
+          "quantity": null,
+          "price": null,
+          "amount": null,
+          "unitConsumption": null,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "1",
+          "estimateNo": "99",
+          "name": "Устройство вертикальных конструкций -2 этажа с устройством гильз для ввода коммуникаций при необходимости",
+          "unit": "м3",
+          "quantity": 231.94,
+          "price": 35125.8,
+          "amount": 8147078.05,
+          "unitConsumption": null,
+          "note": "минус 5% ИД"
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "2",
+          "estimateNo": "99",
+          "name": "Устройство вертикальных конструкций -2 этажа с устройством гильз для ввода коммуникаций при необходимости",
+          "unit": "м3",
+          "quantity": 231.94,
+          "price": 30000.0,
+          "amount": 6958200.0,
+          "unitConsumption": null,
+          "note": "Работы приняты по  расценке 30 000,00 руб. за 1 м3 с НДС до устранения замечаний о не соответствии класса поверхности согласно Акту о несоответствии бн от 31.01.2026 г. | минус 5% ИД | Акт ещё в подготовке"
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "3",
+          "estimateNo": "100",
+          "name": "Бетон В40 П4 F300 W12 по ГОСТ 26633-2015",
+          "unit": "м3",
+          "quantity": 34.68,
+          "price": 7909.67,
+          "amount": 274307.36,
+          "unitConsumption": 1.01,
+          "note": "согласно УПД"
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "4",
+          "estimateNo": "100",
+          "name": "Бетон В40 П4 F300 W12, ПМД по ГОСТ 26633-2015",
+          "unit": "м3",
+          "quantity": 160.08,
+          "price": 8011.33,
+          "amount": 1282453.71,
+          "unitConsumption": 1.01,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "5",
+          "estimateNo": "100",
+          "name": "Бетон В40 П5 F200 W14 по ГОСТ 26633-2015",
+          "unit": "м3",
+          "quantity": 40.38,
+          "price": 8113.0,
+          "amount": 327602.94,
+          "unitConsumption": 1.01,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "6",
+          "estimateNo": "100",
+          "name": "Бетон В40 П5 F200 W14, ПМД по ГОСТ 26633-2015",
+          "unit": "м3",
+          "quantity": 81.7,
+          "price": 8080.0,
+          "amount": 660136.0,
+          "unitConsumption": 1.01,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "7",
+          "estimateNo": "100",
+          "name": "Бетон B40 П5 F200 W14 по ГОСТ 26633-2015",
+          "unit": "м3",
+          "quantity": 47.03,
+          "price": 7980.0,
+          "amount": 375299.4,
+          "unitConsumption": 1.01,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "8",
+          "estimateNo": "101",
+          "name": "Бетон В50 П4 F300 W14 по ГОСТ 26633-2015",
+          "unit": "м3",
+          "quantity": 35.15,
+          "price": 11214.85,
+          "amount": 394201.98,
+          "unitConsumption": 1.01,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "9",
+          "estimateNo": "101",
+          "name": "Бетон В50 П4 F300 W14 (фр. 5/10) ПМД по ГОСТ 26633-2015",
+          "unit": "м3",
+          "quantity": 25.65,
+          "price": 9801.68,
+          "amount": 251413.09,
+          "unitConsumption": 1.01,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "10",
+          "estimateNo": "101",
+          "name": "Бетон В50 П4 F300 W14. ПМД по ГОСТ 26633-2015",
+          "unit": "м3",
+          "quantity": 39.9,
+          "price": 11131.0,
+          "amount": 444126.9,
+          "unitConsumption": 1.01,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "11",
+          "estimateNo": "102",
+          "name": "Арматура ф8 А240 ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 1.82,
+          "price": 49308.33,
+          "amount": 89741.16,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "12",
+          "estimateNo": "102",
+          "name": "Арматура ф8 А240 ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 2.0,
+          "price": 49816.67,
+          "amount": 99633.34,
+          "unitConsumption": 1.03,
+          "note": "Сталь-инвест"
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "13",
+          "estimateNo": "103",
+          "name": "Арматура ф6 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 0.52,
+          "price": 49308.33,
+          "amount": 25640.33,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "14",
+          "estimateNo": "104",
+          "name": "Арматура ф10 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 2.74,
+          "price": 48800.0,
+          "amount": 133712.0,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "15",
+          "estimateNo": "104",
+          "name": "Арматура ф10 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 2.85,
+          "price": 49816.67,
+          "amount": 141977.51,
+          "unitConsumption": 1.03,
+          "note": "Сталь-инвест"
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "16",
+          "estimateNo": "105",
+          "name": "Арматура ф12 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 3.7,
+          "price": 46665.0,
+          "amount": 172660.5,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "17",
+          "estimateNo": "106",
+          "name": "Арматура ф16 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 40.52,
+          "price": 46167.85,
+          "amount": 1870721.28,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "18",
+          "estimateNo": "106",
+          "name": "Арматура ф16 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 2.55,
+          "price": 46766.67,
+          "amount": 119255.01,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "19",
+          "estimateNo": "106",
+          "name": "Арматура ф16 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 9.41,
+          "price": 47275.0,
+          "amount": 444857.75,
+          "unitConsumption": 1.03,
+          "note": "сталь-инвест"
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "20",
+          "estimateNo": "107",
+          "name": "Арматура ф20 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 67.28,
+          "price": 46167.85,
+          "amount": 3106172.95,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "21",
+          "estimateNo": "108",
+          "name": "Арматура ф25 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 49.11,
+          "price": 46167.85,
+          "amount": 2267303.11,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "22",
+          "estimateNo": "109",
+          "name": "Арматура ф32 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 26.57,
+          "price": 46258.33,
+          "amount": 1229083.83,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "23",
+          "estimateNo": "110",
+          "name": "Арматура ф36 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 3.52,
+          "price": 46766.67,
+          "amount": 164618.68,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "24",
+          "estimateNo": "111",
+          "name": "Арматура ф40 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 9.54,
+          "price": 47071.67,
+          "amount": 449063.73,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "25",
+          "estimateNo": "111",
+          "name": "Арматура ф40 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 0.12,
+          "price": 46766.67,
+          "amount": 5612.0,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "26",
+          "estimateNo": "112",
+          "name": "Сталь угловая 100х10 С245 по ГОСТ 8509-93",
+          "unit": "тн",
+          "quantity": 0.84,
+          "price": 53883.33,
+          "amount": 45262.0,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "27",
+          "estimateNo": "113",
+          "name": "Устройство плиты перекрытия над -2 этажом с капителями, в т.ч. балки",
+          "unit": "м3",
+          "quantity": 289.63,
+          "price": 32503.8,
+          "amount": 9414075.59,
+          "unitConsumption": null,
+          "note": "минус 5% ИД"
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "28",
+          "estimateNo": "114",
+          "name": "Бетон B30 П4 F300 W12, с ПМД по ГОСТ 26633-2015",
+          "unit": "м3",
+          "quantity": 202.35,
+          "price": 7472.5,
+          "amount": 1512060.38,
+          "unitConsumption": 1.01,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "29",
+          "estimateNo": "114",
+          "name": "Бетон B30 П4 F300 W12, с ПМД по ГОСТ 26633-2015",
+          "unit": "м3",
+          "quantity": 86.45,
+          "price": 7350.0,
+          "amount": 635407.5,
+          "unitConsumption": 1.01,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "30",
+          "estimateNo": "115",
+          "name": "Арматура ф8 А240 ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 0.01,
+          "price": 49308.33,
+          "amount": 493.08,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "31",
+          "estimateNo": "116",
+          "name": "Арматура ф10 А240 ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 3.83,
+          "price": 49308.33,
+          "amount": 188850.9,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "32",
+          "estimateNo": "118",
+          "name": "Арматура ф16 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 52.04,
+          "price": 46167.85,
+          "amount": 2402574.91,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "33",
+          "estimateNo": "119",
+          "name": "Арматура ф20 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 5.49,
+          "price": 46167.85,
+          "amount": 253461.5,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "34",
+          "estimateNo": "120",
+          "name": "Арматура ф25 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 12.27,
+          "price": 46167.85,
+          "amount": 566479.52,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "35",
+          "estimateNo": "121",
+          "name": "Арматура ф32 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 14.21,
+          "price": 46258.33,
+          "amount": 657330.87,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "36",
+          "estimateNo": "122",
+          "name": "Арматура ф36 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 0.61,
+          "price": 46766.67,
+          "amount": 28527.67,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "37",
+          "estimateNo": "123",
+          "name": "Арматура ф40 А500С ГОСТ 34028-2016",
+          "unit": "тн",
+          "quantity": 2.98,
+          "price": 46766.67,
+          "amount": 139364.68,
+          "unitConsumption": 1.03,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "38",
+          "estimateNo": "124",
+          "name": "Каркас КР-1 (арматура ф10 А500С ГОСТ 34028-2016)",
+          "unit": "шт",
+          "quantity": 113.0,
+          "price": 1136.25,
+          "amount": 128396.25,
+          "unitConsumption": 1.0,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "39",
+          "estimateNo": "125",
+          "name": "Каркас КР-2 (арматура ф10 А500С ГОСТ 34028-2016)",
+          "unit": "шт",
+          "quantity": 20.0,
+          "price": 740.58,
+          "amount": 14811.6,
+          "unitConsumption": 1.0,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "40",
+          "estimateNo": "128",
+          "name": "Каркас КР-5 (арматура ф10 А500С ГОСТ 34028-2016)",
+          "unit": "шт",
+          "quantity": 20.0,
+          "price": 643.89,
+          "amount": 12877.8,
+          "unitConsumption": 1.0,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "41",
+          "estimateNo": "129",
+          "name": "Каркас КР-6 (арматура ф10 А500С ГОСТ 34028-2016)",
+          "unit": "шт",
+          "quantity": 20.0,
+          "price": 794.5,
+          "amount": 15890.0,
+          "unitConsumption": 1.0,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "42",
+          "estimateNo": "130",
+          "name": "Каркас КР-7 (арматура ф10 А500С ГОСТ 34028-2016)",
+          "unit": "шт",
+          "quantity": 4.0,
+          "price": 1039.54,
+          "amount": 4158.16,
+          "unitConsumption": 1.0,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "43",
+          "estimateNo": "131",
+          "name": "Каркас КР-8 (арматура ф10 А500С ГОСТ 34028-2016)",
+          "unit": "шт",
+          "quantity": 4.0,
+          "price": 902.4,
+          "amount": 3609.6,
+          "unitConsumption": 1.0,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "44",
+          "estimateNo": "132",
+          "name": "Каркас КР-9 (арматура ф10 А500С ГОСТ 34028-2016)",
+          "unit": "шт",
+          "quantity": 4.0,
+          "price": 747.17,
+          "amount": 2988.68,
+          "unitConsumption": 1.0,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "45",
+          "estimateNo": "133",
+          "name": "Каркас КР-10 (арматура ф10 А500С ГОСТ 34028-2016)",
+          "unit": "шт",
+          "quantity": 8.0,
+          "price": 617.23,
+          "amount": 4937.84,
+          "unitConsumption": 1.0,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "46",
+          "estimateNo": "134",
+          "name": "Каркас КР-11 (арматура ф10 А500С ГОСТ 34028-2016)",
+          "unit": "шт",
+          "quantity": 4.0,
+          "price": 480.09,
+          "amount": 1920.36,
+          "unitConsumption": 1.0,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "47",
+          "estimateNo": "135",
+          "name": "Каркас КР-12 (арматура ф10 А500 ГОСТ 34028-2016)",
+          "unit": "шт",
+          "quantity": 81.0,
+          "price": 350.15,
+          "amount": 28362.15,
+          "unitConsumption": 1.0,
+          "note": ""
+        },
+        {
+          "type": "item",
+          "code": "СР2040",
+          "lineNo": "48",
+          "estimateNo": "136",
+          "name": "Каркас КР-13 (арматура ф10 А500С ГОСТ 34028-2016)",
+          "unit": "шт",
+          "quantity": 4.0,
+          "price": 187.72,
+          "amount": 750.88,
+          "unitConsumption": 1.0,
+          "note": ""
+        }
+      ],
+      "totals": {
+        "gross": 45497464.53,
+        "vat": 8204460.82,
+        "breakdown": [
+          {
+            "label": "материал, в т.ч.:",
+            "amount": 20978110.89
+          },
+          {
+            "label": "металлопрокат",
+            "amount": 14602398.31
+          },
+          {
+            "label": "каркас",
+            "amount": 218703.32
+          },
+          {
+            "label": "бетон",
+            "amount": 6157009.26
+          },
+          {
+            "label": "пр.мат.",
+            "amount": 0
+          },
+          {
+            "label": "работа",
+            "amount": 24519353.64
+          }
+        ]
+      }
+    }
+  ],
+  "ks3": {
+    "title": "КС-3 №4",
+    "documentNumber": "4",
+    "documentDate": "2026-01-31",
+    "periodFrom": "2026-01-01",
+    "periodTo": "2026-01-31",
+    "rows": [
+      {
+        "order": "1",
+        "name": "Всего работ и затрат, включаемых в стоимость работ",
+        "code": "",
+        "fromStart": 252295504.44,
+        "fromYearStart": 55959236.1,
+        "forPeriod": 55959236.1
+      },
+      {
+        "order": "",
+        "name": "в том числе:",
+        "code": "",
+        "fromStart": null,
+        "fromYearStart": null,
+        "forPeriod": null
+      },
+      {
+        "order": "2",
+        "name": "Акт №1. Выполнение комплекса работ по разработке и согласованию ППРпс и проекта на фундамент под башенные краны. Мобилизация и демобилизация башенных кранов. Калькуляция №1",
+        "code": "",
+        "fromStart": 4332500.01,
+        "fromYearStart": 811125.01,
+        "forPeriod": 811125.01
+      },
+      {
+        "order": "3",
+        "name": "Монтаж виброизоляции. Калькуляция №2.",
+        "code": "",
+        "fromStart": 2042787.89,
+        "fromYearStart": null,
+        "forPeriod": null
+      },
+      {
+        "order": "4",
+        "name": "Акт №2. Выполнение комплекса строительно-монтажных работ по возведению монолитных ж/б конструкций - фундаментная плита 1 и 2 корпус. Калькуляция №3",
+        "code": "",
+        "fromStart": 203908325.72,
+        "fromYearStart": 17785681.15,
+        "forPeriod": 17785681.15
+      },
+      {
+        "order": "5",
+        "name": "Акт №3. Выполнение комплекса работ по устройству временного проезда от ш. Хорошевское до заезда со стороны гостиница Пальмира. Калькуляция №4.",
+        "code": "",
+        "fromStart": 1073779.44,
+        "fromYearStart": 69426.23,
+        "forPeriod": 69426.23
+      },
+      {
+        "order": "6",
+        "name": "Устройство временного проезда для спец.техники к строительной площадке. Калькуляция №5.",
+        "code": "",
+        "fromStart": 3645107.67,
+        "fromYearStart": null,
+        "forPeriod": null
+      },
+      {
+        "order": "7",
+        "name": "Акт №4. Выполнение комплекса строительно-монтажных работ по возведению монолитных жб конструкций - каркас ниже 0,000 (вертикальные конструкции и перекрытие) 1 и 2 корпус. Калькуляция №6",
+        "code": "",
+        "fromStart": 37293003.71,
+        "fromYearStart": 37293003.71,
+        "forPeriod": 37293003.71
+      }
+    ],
+    "totals": {
+      "subtotal": 55959236.1,
+      "vat": 12311031.94,
+      "grandTotal": 68270268.04
+    }
+  },
+  "holdbacks": {
+    "title": "Удержания",
+    "rows": [
+      {
+        "name": "Всего работ и затрат в текущих ценах:",
+        "ks2Amount": null,
+        "materialsUsed": null,
+        "advanceReceived": null,
+        "advanceDoc": "",
+        "previousBalance": null,
+        "closingAmount": null,
+        "nextBalance": null,
+        "retentionAmount": null,
+        "payableAmount": null,
+        "comment": ""
+      },
+      {
+        "name": "КС-2 №1 Разработка и согласование ППРпс и проекта на фундамент под башенные краны. Мобилизация и демобилизация башенных кранов. Калькуляция №1 (ООО \"СМП ТРЭЙД\")",
+        "ks2Amount": 989572.51,
+        "materialsUsed": 0.0,
+        "advanceReceived": 1956000.0,
+        "advanceDoc": "443 от 09.10.2025 г.",
+        "previousBalance": 0.0,
+        "closingAmount": null,
+        "nextBalance": 0.0,
+        "retentionAmount": 29687.18,
+        "payableAmount": 326815.73,
+        "comment": "БК№3"
+      },
+      {
+        "name": "Монтаж виброизоляции Калькуляция №2 (ООО \"Гавари Трейд\")",
+        "ks2Amount": null,
+        "materialsUsed": null,
+        "advanceReceived": 2433535.48,
+        "advanceDoc": "510 от 21.10.2025 г.",
+        "previousBalance": 1694578.5,
+        "closingAmount": null,
+        "nextBalance": 1694578.5,
+        "retentionAmount": null,
+        "payableAmount": 0.0,
+        "comment": "виброзащита (работа)"
+      },
+      {
+        "name": "КС-2 №2 Выполнение комплекса строительно-монтажных работ по возведению монолитных ж/б конструкций - фундаментная плита 1 и 2 корпус. Калькуляция №3",
+        "ks2Amount": 21698531.0,
+        "materialsUsed": 11230627.24,
+        "advanceReceived": 5000000.0,
+        "advanceDoc": "871 от 12.08.2025 г. (соглашение №1 от 30.09.2025 г. к дог. № 1АС/ХОР - зачет аванса)",
+        "previousBalance": 0.0,
+        "closingAmount": null,
+        "nextBalance": 0.0,
+        "retentionAmount": 650955.93,
+        "payableAmount": 6235297.73,
+        "comment": "монолит ФП (работа, гидроизоляция)"
+      },
+      {
+        "name": "КС-2 №3 Устройство временного проезда от ш. Хорошевское до заезда со стороны гостиница Пальмира. Калькуляция №4.",
+        "ks2Amount": 84700.0,
+        "materialsUsed": 0.0,
+        "advanceReceived": 1257094.68,
+        "advanceDoc": "615 от 20.11.2025 г.",
+        "previousBalance": 1257094.68,
+        "closingAmount": 82159.0,
+        "nextBalance": 1174935.68,
+        "retentionAmount": 2541.0,
+        "payableAmount": 0.0,
+        "comment": "временная дорога (перенесённый из калькуляции №5)"
+      },
+      {
+        "name": "Устройство временного проезда для спец.техники к строительной площадке. Калькуляция №5",
+        "ks2Amount": null,
+        "materialsUsed": null,
+        "advanceReceived": 4242905.32,
+        "advanceDoc": "615 от 20.11.2025 г.",
+        "previousBalance": 0.0,
+        "closingAmount": null,
+        "nextBalance": 0.0,
+        "retentionAmount": null,
+        "payableAmount": 0.0,
+        "comment": "Калькуляция №5"
+      },
+      {
+        "name": "КС-2 №4 Выполнение комплекса строительно-монтажных работ по возведению монолитных жб конструкций - каркас ниже 0,000 (вертикальные конструкции и перекрытие) 1 и 2 корпус. Калькуляция №6",
+        "ks2Amount": 45497464.53,
+        "materialsUsed": 20978110.89,
+        "advanceReceived": 45000000.0,
+        "advanceDoc": "629 от 21.11.2025 г.",
+        "previousBalance": 45000000.0,
+        "closingAmount": 11327091.89,
+        "nextBalance": 33672908.11,
+        "retentionAmount": 1364923.94,
+        "payableAmount": 11827337.81,
+        "comment": "монолит подземная часть"
+      },
+      {
+        "name": "Выполнение работ по поставке, монтажу, пусконаладке и диспетчеризации лифтового оборудования «под ключ». Калькуляция №7",
+        "ks2Amount": null,
+        "materialsUsed": null,
+        "advanceReceived": 33519410.69,
+        "advanceDoc": "784 от  23.12.2025 г.",
+        "previousBalance": 33519410.69,
+        "closingAmount": null,
+        "nextBalance": 33519410.69,
+        "retentionAmount": null,
+        "payableAmount": null,
+        "comment": "лифт МЕТЕОР"
+      }
+    ],
+    "totals": {
+      "ks2Amount": 68270268.04,
+      "materialsUsed": 32208738.13,
+      "advanceReceived": 332675499.05,
+      "previousBalance": 174610278.37,
+      "closingAmount": 47832708.72,
+      "nextBalance": 126777569.65,
+      "retentionAmount": 2048108.05,
+      "payableAmount": 18389451.27
+    }
+  },
+  "xmlExtras": {
+    "generated": {
+      "knd": "1110335",
+      "formatVersion": "1.00",
+      "programVersion": "prototype-0.1.0",
+      "fileDate": "2026-03-17",
+      "fileTime": "16:28:33"
+    },
+    "constants": {
+      "isGovMunicipal": "0",
+      "vatCalcInTotalOnly": "1",
+      "cumulativeMode": "2",
+      "priceIndexYear": "0000",
+      "requiresSettlementApproval": "1"
+    },
+    "manual": {
+      "economicSubjectName": "ООО «ЛегендаЭлит»",
+      "estimateVersionCode": "",
+      "supplementDocType": "",
+      "supplementDocNumber": "",
+      "supplementDocDate": "",
+      "contractorInn": "",
+      "customerInn": "",
+      "developerPostalIndex": "",
+      "developerRegionCode": "",
+      "contractorPostalIndex": "",
+      "contractorRegionCode": "",
+      "correctionNumber": "",
+      "correctionDate": ""
+    },
+    "traceableGoods": [
+      {
+        "registrationNumber": "",
+        "unitCode": "",
+        "unitName": "",
+        "quantity": null
+      }
+    ]
+  }
+}
