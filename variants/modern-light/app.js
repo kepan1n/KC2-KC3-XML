@@ -9,6 +9,7 @@ const refs = {
   loadSample: document.getElementById('load-sample'),
   saveLocal: document.getElementById('save-local'),
   exportJson: document.getElementById('export-json'),
+  exportXml: document.getElementById('export-xml'),
   addSheet: document.getElementById('add-ks2-sheet'),
   toggleSidebar: document.getElementById('toggle-sidebar'),
   toggleHeaders: document.getElementById('toggle-headers'),
@@ -69,6 +70,19 @@ function bindGlobalEvents() {
     link.click();
     URL.revokeObjectURL(url);
     flash('JSON выгружен.');
+  });
+
+  refs.exportXml?.addEventListener('click', () => {
+    const payload = buildLogicBundle().model;
+    const xml = buildXmlExportString(payload);
+    const blob = new Blob([xml], { type: 'application/xml;charset=windows-1251' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${payload.xml.generated.fileId || `ON_AKTREZRABP_${new Date().toISOString().slice(0, 10)}`}.xml`;
+    link.click();
+    URL.revokeObjectURL(url);
+    flash('XML выгружен. Для XSD-проверки можно прогнать файл через scripts/validate_xml_xsd.py');
   });
 
   refs.addSheet.addEventListener('click', () => {
@@ -1558,6 +1572,118 @@ function buildGeneratedXmlFields() {
     programVersion: generated.programVersion || 'prototype-0.1.0',
     fileId: `ON_AKT_${contractorInn}_${date.replaceAll('-', '')}_${String(documentNumber).padStart(3, '0')}`,
   };
+}
+
+function formatXmlDate(value) {
+  if (!value) return '01.01.2026';
+  const str = String(value).trim().replace(' г.', '').replace(' г', '');
+  if (str.length === 10 && str[4] === '-' && str[7] === '-') {
+    const [yyyy, mm, dd] = str.split('-');
+    return `${dd}.${mm}.${yyyy}`;
+  }
+  return str.slice(0, 10);
+}
+
+function xmlEscape(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
+function splitSignerName(text) {
+  const parts = String(text || '').replaceAll(',', ' ').split(/\s+/).filter(Boolean);
+  if (!parts.length) return { family: 'Иванов', name: 'Иван', patronymic: '' };
+  if (parts.length === 1) return { family: parts[0], name: 'Иван', patronymic: '' };
+  if (parts.length === 2) return { family: parts[0], name: parts[1], patronymic: '' };
+  return { family: parts[0], name: parts[1], patronymic: parts.slice(2).join(' ') };
+}
+
+function buildXmlExportString(model) {
+  const common = model.common;
+  const manual = model.xml.manual;
+  const generated = model.xml.generated;
+  const constants = model.xml.constants;
+  const settlement = model.xml.settlement || { totalRetention: 0, totalClaims: 0, settlementRows: [] };
+  const firstSheet = model.ks2Sheets[0] || { document: {}, items: [] };
+  const signer = splitSignerName(common.contractorSigner || common.contractorResponsible || 'Иванов Иван');
+  const signerAttr = signer.patronymic ? ` Отчество="${xmlEscape(signer.patronymic)}"` : '';
+  const worksXml = model.ks2Sheets.flatMap((sheet, sheetIndex) => (
+    (sheet.items || []).map((item, itemIndex) => {
+      const amount = numberOrZero(item.amount);
+      const vat = Math.max(round2(amount * 0.2), 0);
+      return `      <ВидРаб НаимТов="${xmlEscape(item.name || `Работа ${sheetIndex + 1}.${itemIndex + 1}`)}" ЦенаТов="${formatMoney(numberOrZero(item.price))}" СтТовБезНДС="${formatMoney(amount)}" НомСтр="${itemIndex + 1}" НомПоз="${xmlEscape(item.lineNo || String(itemIndex + 1))}" ТипЗатр="1" ОКЕИ_Стройка="796" НаимЕдИзм="${xmlEscape(item.unit || 'шт')}">\n        <УчОшИНовОбстСт>\n          <ОшибПрПер>\n            <УвелДен>1</УвелДен>\n            <УвелКол>1</УвелКол>\n          </ОшибПрПер>\n        </УчОшИНовОбстСт>\n        <СумНал>\n          <СумНал>${formatMoney(vat)}</СумНал>\n        </СумНал>\n      </ВидРаб>`;
+    })
+  )).join('\n');
+  const sectionsXml = (model.holdbacks.sections || []).map((section, idx) => `      <Раздел НаимРаздел="${xmlEscape(section.name || `Раздел №${idx + 1}`)}" СтБезНДСРаздОтч="${formatMoney(numberOrZero(section.ks2Amount))}">\n${(section.subitems || []).map((sub, subIdx) => `        <СвВидРаб НаимТов="${xmlEscape(sub.advanceDoc || `Подпункт ${idx + 1}.${subIdx + 1}`)}" ЦенаТов="${formatMoney(numberOrZero(sub.advanceReceived))}" СтТовБезНДС="${formatMoney(numberOrZero(sub.closingAmount))}"/>`).join('\n') || `        <СвВидРаб НаимТов="${xmlEscape(section.name || `Раздел №${idx + 1}`)}" ЦенаТов="${formatMoney(numberOrZero(section.ks2Amount))}" СтТовБезНДС="${formatMoney(numberOrZero(section.ks2Amount))}"/>`}\n      </Раздел>`).join('\n');
+  const settlementRowsXml = (settlement.settlementRows?.length ? settlement.settlementRows : [{ amount: 0, kindCode: '31' }]).map((row) => `      <УчетТребУдерж СумТребУдерж="${formatMoney(numberOrZero(row.amount))}">\n        <ВидУдерж>${xmlEscape(row.kindCode || '31')}</ВидУдерж>\n      </УчетТребУдерж>`).join('\n');
+
+  return `<?xml version="1.0" encoding="windows-1251"?>
+<Файл ИдФайл="${xmlEscape(generated.fileId)}" ВерсПрог="${xmlEscape(generated.programVersion)}" ВерсФорм="${xmlEscape(generated.formatVersion)}">
+  <Документ КНД="${xmlEscape(generated.knd)}" ДатаИнфПодр="${xmlEscape(formatXmlDate(generated.fileDate))}" ВремИнфПодр="${xmlEscape(generated.fileTime)}" НаимЭкСубСост="${xmlEscape(manual.economicSubjectName || common.contractorName || 'Организация')}">
+    <ОснДовОргСост>
+      <ИдРекСост>
+        <ИННЮЛ>${xmlEscape(manual.contractorInn || '7701234567')}</ИННЮЛ>
+      </ИдРекСост>
+    </ОснДовОргСост>
+    <СвАктСдПр НомерДок="${xmlEscape(firstSheet.document.number || 'без номера')}" ДатаДок="${xmlEscape(formatXmlDate(firstSheet.document.date))}" НаимОб="${xmlEscape(common.objectName || common.constructionObject || 'Объект строительства')}" КодОКВДог="643">
+      <ИдДог>
+        <ТипИдДок НаимДок="Договор генподряда" НомерДок="${xmlEscape(common.contractNumber || 'без номера')}" ДатаДок="${xmlEscape(formatXmlDate(common.contractDate))}"/>
+      </ИдДог>
+      <ИспрАктСдПр НомИспр="${xmlEscape(manual.correctionNumber || '1')}" ДатаИспр="${xmlEscape(formatXmlDate(manual.correctionDate || firstSheet.document.date))}"/>
+      <СвПодр>
+        <СвСторДог>
+          <ИдСв>
+            <СвЮЛУч НаимОрг="${xmlEscape(common.contractorName || 'Подрядчик')}" ИННЮЛ="${xmlEscape(manual.contractorInn || '7701234567')}"/>
+          </ИдСв>
+        </СвСторДог>
+      </СвПодр>
+      <СвЗак>
+        <СвСторДог>
+          <ИдСв>
+            <СвЮЛУч НаимОрг="${xmlEscape(common.developerName || common.techCustomerName || 'Заказчик')}" ИННЮЛ="${xmlEscape(manual.customerInn || '7701234567')}"/>
+          </ИдСв>
+        </СвСторДог>
+      </СвЗак>
+      <ОсновСтроит ПрГосМун="${xmlEscape(constants.isGovMunicipal || '0')}"/>
+      <МестВыпРаб>
+        <АдрРФ Индекс="${xmlEscape(manual.developerPostalIndex || '123456')}" КодРегион="${xmlEscape(manual.developerRegionCode || '77')}"/>
+      </МестВыпРаб>
+      <ИзмСмет КодСмет="${xmlEscape(manual.estimateVersionCode || '1')}">
+        <ИдДопСогл>
+          <ТипИдДок НаимДок="${xmlEscape(manual.supplementDocType || 'Дополнительное соглашение')}" НомерДок="${xmlEscape(manual.supplementDocNumber || 'ДС-1')}" ДатаДок="${xmlEscape(formatXmlDate(manual.supplementDocDate || firstSheet.document.date))}"/>
+        </ИдДопСогл>
+      </ИзмСмет>
+      <ДенИзм КодОКВ="643"/>
+      <ИнфПолФХЖ1>
+        <ТекстИнф Идентиф="customField" Значение="generated"/>
+      </ИнфПолФХЖ1>
+    </СвАктСдПр>
+    <НаимИСт>
+${worksXml}${worksXml && sectionsXml ? '\n' : ''}${sectionsXml}
+    </НаимИСт>
+    <СвПродПер>
+      <СвПер СодОпер="О ПРИЕМКЕ ВЫПОЛНЕННЫХ РАБОТ"/>
+    </СвПродПер>
+    <СвОРасч СумУдержВсегоОтч="${formatMoney(numberOrZero(settlement.totalRetention))}" СумТребВсегоОтч="${formatMoney(numberOrZero(settlement.totalClaims))}" ВсегоКОплатОтч="${formatMoney(numberOrZero(model.holdbacks.totals?.payableAmount || model.ks3.totals?.forPeriod))}">
+${settlementRowsXml}
+    </СвОРасч>
+    <ВсегоАктОтч СтТовБезНДСВсего="${formatMoney(numberOrZero(model.ks3.totals?.forPeriod))}">
+      <СумНалВсего>${formatMoney(numberOrZero(model.ks3.totals?.vat))}</СумНалВсего>
+      <СумПоСтавке НалСт="20%" НалБаза="${formatMoney(numberOrZero(model.ks3.totals?.forPeriod))}">
+        <СумНДС>${formatMoney(numberOrZero(model.ks3.totals?.vat))}</СумНДС>
+      </СумПоСтавке>
+    </ВсегоАктОтч>
+    <НастрФормДок ПрНДСВИтог="${xmlEscape(constants.vatCalcInTotalOnly || '0')}" ПрНакИтог="${xmlEscape(constants.cumulativeMode || '0')}" ПрИндЦен="${xmlEscape(constants.priceIndexYear || '0000')}" ПрСведРасчСогл="${xmlEscape(constants.requiresSettlementApproval || '0')}"/>
+    <ПодписантПодр>
+      <Подписант>
+        <ФИО Фамилия="${xmlEscape(signer.family)}" Имя="${xmlEscape(signer.name)}"${signerAttr}/>
+      </Подписант>
+    </ПодписантПодр>
+  </Документ>
+</Файл>
+`;
 }
 
 function computeSheetTotals(sheet) {
