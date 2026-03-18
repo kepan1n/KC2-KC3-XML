@@ -309,14 +309,17 @@ def build_xml(data: dict) -> ET._ElementTree:
             if not items:
                 continue
             section_amount = sum(float(item.get('amount') or 0) for item in items)
+            section_estimate_no = entry.get('estimateNo') or next((str(it.get('estimateNo')) for it in items if it.get('estimateNo')), '')
+            section_vat = max(round(section_amount * vat_rate_default / 100, 2), 0)
             sec_attrs = {
                 'НомСтр': str(entry['rowNo']),
                 'НомРазд': str(entry['sectionNo']),
                 'НаимРаздел': entry['name'],
                 'СтБезНДСРаздОтч': fmt_money(section_amount),
+                'СтСНДСРаздОтч': fmt_money(section_amount + section_vat),
             }
-            if entry.get('estimateNo'):
-                sec_attrs['ПозРаздСмет'] = str(entry['estimateNo'])
+            if section_estimate_no:
+                sec_attrs['ПозРаздСмет'] = section_estimate_no
             sec = ET.SubElement(works, 'Раздел', **sec_attrs)
             for item in items:
                 amount = float(item.get('amount') or 0)
