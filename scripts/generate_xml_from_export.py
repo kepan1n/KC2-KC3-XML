@@ -53,6 +53,38 @@ def load_json(path: Path):
         return json.load(fh)
 
 
+def validate_export_payload(data: dict):
+    common = data.get('common', {})
+    xml = data.get('xml', {})
+    manual = xml.get('manual', {})
+    ks2_sheets = data.get('ks2Sheets', [])
+    first_sheet = ks2_sheets[0] if ks2_sheets else {}
+    first_doc = first_sheet.get('document', {})
+
+    required = [
+        ('common.contractorName', common.get('contractorName'), 'Не заполнен генподрядчик'),
+        ('common.developerName|common.techCustomerName', common.get('developerName') or common.get('techCustomerName'), 'Не заполнен заказчик/застройщик'),
+        ('common.objectName|common.constructionObject', common.get('objectName') or common.get('constructionObject'), 'Не заполнен объект/стройка'),
+        ('common.contractNumber', common.get('contractNumber'), 'Не заполнен номер договора'),
+        ('common.contractDate', common.get('contractDate'), 'Не заполнена дата договора'),
+        ('ks2Sheets[0].document.number', first_doc.get('number'), 'Не заполнен номер акта КС-2'),
+        ('ks2Sheets[0].document.date', first_doc.get('date'), 'Не заполнена дата акта КС-2'),
+        ('xml.manual.contractorInn', manual.get('contractorInn'), 'Не заполнен ИНН подрядчика'),
+        ('xml.manual.customerInn', manual.get('customerInn'), 'Не заполнен ИНН заказчика'),
+        ('xml.manual.economicSubjectName', manual.get('economicSubjectName') or common.get('contractorName'), 'Не заполнено наименование составителя XML'),
+        ('xml.manual.estimateVersionCode', manual.get('estimateVersionCode'), 'Не заполнена версия сметы (КодСмет)'),
+        ('xml.manual.supplementDocType', manual.get('supplementDocType'), 'Не заполнен тип допсоглашения'),
+        ('xml.manual.supplementDocNumber', manual.get('supplementDocNumber'), 'Не заполнен номер допсоглашения'),
+        ('xml.manual.supplementDocDate', manual.get('supplementDocDate'), 'Не заполнена дата допсоглашения'),
+        ('xml.manual.developerPostalIndex', manual.get('developerPostalIndex'), 'Не заполнен индекс адреса'),
+        ('xml.manual.developerRegionCode', manual.get('developerRegionCode'), 'Не заполнен код региона'),
+        ('signer', common.get('contractorSigner') or common.get('contractorResponsible') or common.get('signerName'), 'Не заполнено ФИО подписанта'),
+    ]
+
+    errors = [{'path': path, 'message': message} for path, value, message in required if value in (None, '')]
+    return errors
+
+
 def clear_children(el):
     for child in list(el):
         el.remove(child)
@@ -66,6 +98,10 @@ def set_attr(el, **attrs):
 
 
 def build_xml(data: dict) -> ET._ElementTree:
+    validation_errors = validate_export_payload(data)
+    if validation_errors:
+        raise ValueError(json.dumps({'validationErrors': validation_errors}, ensure_ascii=False))
+
     parser = ET.XMLParser(remove_blank_text=False)
     tree = ET.parse(str(TEMPLATE_XML), parser)
     root = tree.getroot()
@@ -88,8 +124,8 @@ def build_xml(data: dict) -> ET._ElementTree:
     file_id = generated.get('fileId') or root.get('ИдФайл')
     set_attr(root,
              ИдФайл=file_id,
-             ВерсПрог=generated.get('programVersion') or root.get('ВерсПрог') or 'KC2-KC3-XML-webapp',
-             ВерсФорм=generated.get('formatVersion') or root.get('ВерсФорм') or '1.00')
+             ВерсПрог=generated.get('programVersion') or 'KC2-KC3-XML-webapp',
+             ВерсФорм=generated.get('formatVersion') or '1.00')
 
     set_attr(doc,
              КНД=generated.get('knd') or '1110335',
@@ -193,21 +229,26 @@ def build_xml(data: dict) -> ET._ElementTree:
             row_no += 1
 
     for idx, section in enumerate(sections, start=1):
+        section_amount = float(section.get('ks2Amount') or 0)
+        subitems = section.get('subitems', [])
+        filtered_subitems = [sub for sub in subitems if float(sub.get('closingAmount') or 0) > 0 or float(sub.get('advanceReceived') or 0) > 0]
+        if section_amount <= 0 and not filtered_subitems:
+            continue
+
         sec = ET.SubElement(works, 'Раздел',
                             НаимРаздел=section.get('name') or f'Раздел №{idx}',
-                            СтБезНДСРаздОтч=fmt_money(section.get('ks2Amount')))
-        subitems = section.get('subitems', [])
-        if subitems:
-            for sub in subitems:
+                            СтБезНДСРаздОтч=fmt_money(section_amount))
+        if filtered_subitems:
+            for sub in filtered_subitems:
                 ET.SubElement(sec, 'СвВидРаб',
                               НаимТов=sub.get('advanceDoc') or f'Подпункт {idx}',
                               ЦенаТов=fmt_money(sub.get('advanceReceived')),
-                              СтТовБезНДС=fmt_money(sub.get('closingAmount')))
+                              СтТовБезНДС=fmt_money(sub.get('closingAmount') or sub.get('advanceReceived')))
         else:
             ET.SubElement(sec, 'СвВидРаб',
                           НаимТов=section.get('name') or f'Раздел №{idx}',
-                          ЦенаТов=fmt_money(section.get('ks2Amount')),
-                          СтТовБезНДС=fmt_money(section.get('ks2Amount')))
+                          ЦенаТов=fmt_money(section_amount),
+                          СтТовБезНДС=fmt_money(section_amount))
 
     transfer = doc.find('СвПродПер')
     clear_children(transfer)

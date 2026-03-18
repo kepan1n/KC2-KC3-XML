@@ -87,7 +87,9 @@ function bindGlobalEvents() {
         let errorMessage = `Ошибка ${response.status}`;
         try {
           const data = await response.json();
-          if (Array.isArray(data.errors) && data.errors.length) {
+          if (Array.isArray(data.validationErrors) && data.validationErrors.length) {
+            errorMessage = data.validationErrors.slice(0, 5).map((err) => err.message).join(' | ');
+          } else if (Array.isArray(data.errors) && data.errors.length) {
             errorMessage = data.errors.slice(0, 3).map((err) => `строка ${err.line}: ${err.message}`).join(' | ');
           } else if (data.error) {
             errorMessage = data.error;

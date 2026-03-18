@@ -55,7 +55,15 @@ class AppHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(xml_bytes)
         except Exception as exc:
-            self._send_json({'ok': False, 'error': str(exc)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            text = str(exc)
+            try:
+                data = json.loads(text)
+                if isinstance(data, dict) and 'validationErrors' in data:
+                    self._send_json({'ok': False, 'valid': False, 'validationErrors': data['validationErrors']}, status=HTTPStatus.UNPROCESSABLE_ENTITY)
+                    return
+            except Exception:
+                pass
+            self._send_json({'ok': False, 'error': text}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def _send_json(self, data, status=HTTPStatus.OK):
         body = json.dumps(data, ensure_ascii=False, indent=2).encode('utf-8')
