@@ -1220,8 +1220,8 @@ function renderHoldbackRowActions(rowIndex, rowKind) {
       <button class="stack-button danger" title="Удалить строку" aria-label="Удалить строку" data-action="request-holdback-delete" data-hold-index="${rowIndex}">×</button>
       ${menuOpen ? `
         <div class="row-action-menu">
-          <button class="row-action-menu-btn" data-action="insert-holdback-section" data-hold-index="${effectiveIndex}">Раздел</button>
-          <button class="row-action-menu-btn" data-action="insert-holdback-subitem" data-hold-index="${effectiveIndex}">Подпункт</button>
+          <button class="row-action-menu-item" data-action="insert-holdback-section" data-hold-index="${effectiveIndex}">+ Раздел</button>
+          <button class="row-action-menu-item" data-action="insert-holdback-subitem" data-hold-index="${effectiveIndex}">+ Подпункт</button>
         </div>
       ` : ''}
       ${confirmDelete ? `
@@ -1603,9 +1603,7 @@ function renderHoldbackGroup(group) {
   const sectionRow = `
     <tr class="holdback-section-row">
       ${renderHoldbackSectionCells(section.index, section.row, sectionComputed)}
-      <td class="holdback-subitems-slot" colspan="5">
-        ${subitems.length ? '<div class="holdback-subitems-hint">Детализация ниже</div>' : '<div class="holdback-subitems-hint">Подпунктов пока нет</div>'}
-      </td>
+      ${renderHoldbackSectionMiddleCells(sectionComputed, subitems.length)}
       ${renderHoldbackSectionRightCells(section.index, section.row, sectionComputed)}
       <td class="actions-cell">${renderHoldbackRowActions(section.index, 'section')}</td>
     </tr>
@@ -1637,6 +1635,16 @@ function renderHoldbackSectionCells(rowIndex, row, computed) {
     <td class="holdback-section-cell holdback-section-title"><textarea data-path="holdbacks.rows.${rowIndex}.name" placeholder="Наименование раздела / акта">${escapeHtml(row.name)}</textarea></td>
     <td class="holdback-section-cell"><input data-path="holdbacks.rows.${rowIndex}.ks2Amount" data-value-type="number" value="${formatEditableNumber(row.ks2Amount)}" /></td>
     <td class="holdback-section-cell"><input data-path="holdbacks.rows.${rowIndex}.materialsUsed" data-value-type="number" value="${formatEditableNumber(row.materialsUsed)}" /></td>
+  `;
+}
+
+function renderHoldbackSectionMiddleCells(computed, subitemCount) {
+  return `
+    <td class="holdback-section-cell holdback-middle-result">${formatMoney(computed.advanceReceived)}</td>
+    <td class="holdback-section-cell holdback-middle-doc">${subitemCount ? `${subitemCount} подп.` : '—'}</td>
+    <td class="holdback-section-cell holdback-middle-result">${formatMoney(computed.previousBalance)}</td>
+    <td class="holdback-section-cell holdback-middle-result">${formatMoney(computed.closingAmount)}</td>
+    <td class="holdback-section-cell holdback-middle-result">${formatMoney(computed.nextBalance)}</td>
   `;
 }
 

@@ -800,31 +800,18 @@ body[data-sidebar="closed"] .sidebar {
   border-bottom: 1px solid #d9dfeb;
 }
 
-.holdback-subitems-slot {
+.holdback-middle-result {
+  white-space: nowrap;
+  text-align: right;
+  font-weight: 700;
   background: #fafbfd;
-  border-left: 1px solid #dfe5ef;
-  border-right: 1px solid #dfe5ef;
 }
 
-.holdback-subitems-hint {
-  min-height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.holdback-middle-doc {
+  text-align: center;
   color: #667085;
   font-size: 11px;
-}
-
-.holdback-inline-add {
-  width: 100%;
-  min-height: 22px;
-  border: 1px dashed #c8d2e1;
-  background: #fcfdff;
-  color: #245bdb;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 6px;
+  background: #fafbfd;
 }
 
 .holdback-subitem-row td {
@@ -963,8 +950,8 @@ body[data-sidebar="closed"] .sidebar {
   right: calc(100% + 8px);
   top: 0;
   z-index: 8;
-  min-width: 120px;
-  max-width: 140px;
+  min-width: 108px;
+  max-width: 124px;
   background: white;
   border: 1px solid var(--line);
   border-radius: 8px;
