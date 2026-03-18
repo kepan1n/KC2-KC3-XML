@@ -167,7 +167,7 @@ def build_xml(data: dict) -> ET._ElementTree:
 
     customer = act.find('СвЗак/СвСторДог/ИдСв/СвЮЛУч')
     set_attr(customer,
-             НаимОрг=common.get('developerName') or common.get('techCustomerName') or customer.get('НаимОрг'),
+             НаимОрг=common.get('techCustomerName') or common.get('developerName') or customer.get('НаимОрг'),
              ИННЮЛ=manual.get('customerInn') or customer.get('ИННЮЛ'))
 
     basic = act.find('ОсновСтроит')
@@ -191,7 +191,7 @@ def build_xml(data: dict) -> ET._ElementTree:
 
     info_block = act.find('ИнфПолФХЖ1')
     clear_children(info_block)
-    ET.SubElement(info_block, 'ТекстИнф', Идентиф='customField', Значение='generated')
+    ET.SubElement(info_block, 'ТекстИнф', Идентиф='customField', Значение=manual.get('customInfoValue') or 'sample')
 
     works = doc.find('НаимИСт')
     clear_children(works)
