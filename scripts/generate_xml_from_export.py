@@ -415,6 +415,14 @@ def build_xml(data: dict) -> ET._ElementTree:
              ПрИндЦен=constants.get('priceIndexYear') or '0000',
              ПрСведРасчСогл=constants.get('requiresSettlementApproval') or '0')
 
+    signer_parent = doc.find('ПодписантПодр/Подписант')
+    set_attr(
+        signer_parent,
+        СтатПодп=manual.get('signerStatus') or '1',
+        ТипПодпис=manual.get('signatureType') or '1',
+        Должн=manual.get('signerPosition') or common.get('contractorSignerPosition') or '',
+    )
+
     signer = doc.find('ПодписантПодр/Подписант/ФИО')
     signer_source = manual.get('signerName') or common.get('contractorSignerName') or common.get('contractorSigner') or common.get('contractorResponsible') or common.get('signerName') or 'Иванов Иван'
     family, name, patronymic = split_fio(signer_source)
