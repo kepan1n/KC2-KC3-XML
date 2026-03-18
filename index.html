@@ -2,45 +2,14 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
+    <meta http-equiv="refresh" content="0; url=/variants/modern-light/" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>KC2/KC3 XML — веб-форма</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <title>KC2/KC3 XML — redirect</title>
+    <script>
+      window.location.replace('/variants/modern-light/');
+    </script>
   </head>
   <body>
-    <div class="app-shell">
-      <header class="topbar">
-        <div>
-          <p class="eyebrow">Этап 1 · прототип структуры формы</p>
-          <h1>KC2 / KC3 / XML — веб-форма по образцу Excel</h1>
-          <p class="subtitle">
-            Повторяет логику исходного файла: реквизиты, листы КС-2, удержания,
-            дополнительные XML-поля и автоматические расчёты по строкам.
-          </p>
-        </div>
-        <div class="toolbar">
-          <button id="load-sample" class="ghost">Загрузить пример из Excel</button>
-          <button id="save-local" class="ghost">Сохранить локально</button>
-          <button id="export-json">Экспорт JSON</button>
-          <button id="add-ks2-sheet">+ Лист КС-2</button>
-        </div>
-      </header>
-
-      <section class="statusbar">
-        <div id="stats"></div>
-        <div id="flash" aria-live="polite"></div>
-      </section>
-
-      <div class="workspace">
-        <aside class="sidebar" id="sidebar"></aside>
-        <main class="content" id="content"></main>
-      </div>
-
-      <footer class="footer-note">
-        Сейчас это именно первый шаг: рабочая форма и структура данных. Следующий этап —
-        генерация XLSX в исходном формате и XSD-валидного XML.
-      </footer>
-    </div>
-
-    <script type="module" src="./app.js"></script>
+    <p>Переход в актуальный интерфейс: <a href="/variants/modern-light/">modern-light</a></p>
   </body>
 </html>

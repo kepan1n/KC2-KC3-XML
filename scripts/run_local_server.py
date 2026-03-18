@@ -23,6 +23,19 @@ class AppHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, directory=None, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
 
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        if parsed.path in ('', '/'):
+            self.send_response(HTTPStatus.FOUND)
+            self.send_header('Location', '/variants/modern-light/')
+            self.end_headers()
+            return
+        if parsed.path == '/api/forms/list':
+            return self.handle_list_forms()
+        if parsed.path.startswith('/api/forms/load/'):
+            return self.handle_load_form(parsed.path.removeprefix('/api/forms/load/'))
+        return super().do_GET()
+
     def do_POST(self):
         parsed = urlparse(self.path)
         if parsed.path == '/api/export-xml':
@@ -30,14 +43,6 @@ class AppHandler(SimpleHTTPRequestHandler):
         if parsed.path == '/api/forms/save':
             return self.handle_save_form()
         self.send_error(HTTPStatus.NOT_FOUND, 'Unknown API route')
-
-    def do_GET(self):
-        parsed = urlparse(self.path)
-        if parsed.path == '/api/forms/list':
-            return self.handle_list_forms()
-        if parsed.path.startswith('/api/forms/load/'):
-            return self.handle_load_form(parsed.path.removeprefix('/api/forms/load/'))
-        return super().do_GET()
 
     def _read_json(self):
         length = int(self.headers.get('Content-Length', '0'))
