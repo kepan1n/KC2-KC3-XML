@@ -200,11 +200,23 @@ def build_xml(data: dict) -> ET._ElementTree:
              НомИспр=manual.get('correctionNumber') or correction.get('НомИспр') or '1',
              ДатаИспр=fmt_date(manual.get('correctionDate') or first_doc.get('date') or ks3_doc.get('documentDate')))
 
+    contractor_side = act.find('СвПодр/СвСторДог')
+    set_attr(contractor_side, ОКПО=common.get('contractorOkpo') or contractor_side.get('ОКПО'))
     contractor = act.find('СвПодр/СвСторДог/ИдСв/СвЮЛУч')
     set_attr(contractor,
              НаимОрг=common.get('contractorName') or contractor.get('НаимОрг'),
              ИННЮЛ=manual.get('contractorInn') or contractor.get('ИННЮЛ'))
+    contractor_addr = act.find('СвПодр/СвСторДог/Адрес')
+    if contractor_addr is None:
+        contractor_addr = ET.SubElement(contractor_side, 'Адрес')
+    else:
+        clear_children(contractor_addr)
+    ET.SubElement(contractor_addr, 'АдрРФ',
+                  Индекс=manual.get('contractorPostalIndex') or '109028',
+                  КодРегион=manual.get('contractorRegionCode') or '77')
 
+    customer_side = act.find('СвЗак/СвСторДог')
+    set_attr(customer_side, ОКПО=common.get('techCustomerOkpo') or common.get('developerOkpo') or customer_side.get('ОКПО'))
     customer = act.find('СвЗак/СвСторДог/ИдСв/СвЮЛУч')
     set_attr(customer,
              НаимОрг=common.get('techCustomerName') or common.get('developerName') or customer.get('НаимОрг'),
