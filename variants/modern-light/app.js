@@ -1329,13 +1329,14 @@ function renderHoldbacksPane() {
   const groups = buildHoldbackGroups();
   const rows = groups.map((group) => renderHoldbackGroup(group)).join('');
 
-  const totals = app.state.holdbacks.rows.reduce((acc, row) => {
-    const computed = computeHoldbackRow(row);
-    acc.ks2Amount += numberOrZero(row.ks2Amount);
-    acc.materialsUsed += numberOrZero(row.materialsUsed);
-    acc.advanceReceived += numberOrZero(row.advanceReceived);
-    acc.previousBalance += numberOrZero(row.previousBalance == null ? row.advanceReceived : row.previousBalance);
-    acc.closingAmount += numberOrZero(row.closingAmount);
+  const totals = groups.reduce((acc, group) => {
+    const sectionRow = group.section.row;
+    const computed = computeHoldbackSectionComputed(group);
+    acc.ks2Amount += numberOrZero(sectionRow.ks2Amount);
+    acc.materialsUsed += numberOrZero(sectionRow.materialsUsed);
+    acc.advanceReceived += computed.advanceReceived;
+    acc.previousBalance += computed.previousBalance;
+    acc.closingAmount += computed.closingAmount;
     acc.nextBalance += computed.nextBalance;
     acc.retentionAmount += computed.retentionAmount;
     acc.payableAmount += computed.payableAmount;
@@ -1658,7 +1659,10 @@ function renderHoldbackSectionRightCells(rowIndex, row, computed) {
 }
 
 function computeHoldbackSectionComputed(group) {
-  const sectionComputed = computeHoldbackRow(group.section.row);
+  const sectionRow = group.section.row;
+  const ks2Amount = numberOrZero(sectionRow.ks2Amount);
+  const retentionRate = numberOrZero(sectionRow.retentionRate || 0);
+
   const subTotals = group.subitems.reduce((acc, item) => {
     const rowComputed = computeHoldbackRow(item.row);
     acc.advanceReceived += numberOrZero(item.row.advanceReceived);
@@ -1668,7 +1672,14 @@ function computeHoldbackSectionComputed(group) {
     return acc;
   }, { advanceReceived: 0, previousBalance: 0, closingAmount: 0, nextBalance: 0 });
 
-  return { ...sectionComputed, ...subTotals };
+  const retentionAmount = round2(ks2Amount * retentionRate / 100);
+  const payableAmount = round2(ks2Amount - subTotals.closingAmount - retentionAmount);
+
+  return {
+    ...subTotals,
+    retentionAmount,
+    payableAmount,
+  };
 }
 
 function computeRowAmount(row) {
