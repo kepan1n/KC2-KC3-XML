@@ -78,7 +78,7 @@ def validate_export_payload(data: dict):
         ('xml.manual.supplementDocDate', manual.get('supplementDocDate'), 'Не заполнена дата допсоглашения'),
         ('xml.manual.developerPostalIndex', manual.get('developerPostalIndex'), 'Не заполнен индекс адреса'),
         ('xml.manual.developerRegionCode', manual.get('developerRegionCode'), 'Не заполнен код региона'),
-        ('signer', common.get('contractorSigner') or common.get('contractorResponsible') or common.get('signerName'), 'Не заполнено ФИО подписанта'),
+        ('signer', manual.get('signerName') or common.get('contractorSignerName') or common.get('contractorSigner') or common.get('contractorResponsible') or common.get('signerName'), 'Не заполнено ФИО подписанта'),
     ]
 
     errors = [{'path': path, 'message': message} for path, value, message in required if value in (None, '')]
@@ -261,15 +261,17 @@ def build_xml(data: dict) -> ET._ElementTree:
              СумТребВсегоОтч=fmt_money(settlement.get('totalClaims')),
              ВсегоКОплатОтч=fmt_money(holdbacks.get('totals', {}).get('payableAmount') or ks3_totals.get('forPeriod')))
     settlement_rows = settlement.get('settlementRows', []) or [{'amount': 1, 'kindCode': '31'}]
-    for row in settlement_rows:
-        amount = max(float(row.get('amount') or 0), 0)
-        item = ET.SubElement(settlement_el, 'УчетТребУдерж', СумТребУдерж=fmt_money(amount if amount > 0 else 1))
-        if row.get('kindCode', '').startswith('3'):
-            child = ET.SubElement(item, 'ВидУдерж')
-            child.text = str(row.get('kindCode'))
-        else:
-            child = ET.SubElement(item, 'ВидТреб')
-            child.text = str(row.get('kindCode'))
+    # XSD-профиль для compact/Diadoc-ready сценария допускает один УчетТребУдерж.
+    # Поэтому сворачиваем строки в одну агрегированную запись.
+    aggregated_amount = sum(max(float(row.get('amount') or 0), 0) for row in settlement_rows)
+    preferred_kind = '31' if any(str(row.get('kindCode')) == '31' for row in settlement_rows) else str(settlement_rows[0].get('kindCode') or '31')
+    item = ET.SubElement(settlement_el, 'УчетТребУдерж', СумТребУдерж=fmt_money(aggregated_amount if aggregated_amount > 0 else 1))
+    if preferred_kind.startswith('3'):
+        child = ET.SubElement(item, 'ВидУдерж')
+        child.text = preferred_kind
+    else:
+        child = ET.SubElement(item, 'ВидТреб')
+        child.text = preferred_kind
 
     total_el = doc.find('ВсегоАктОтч')
     clear_children(total_el)
