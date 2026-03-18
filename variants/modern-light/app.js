@@ -1220,8 +1220,8 @@ function renderHoldbackRowActions(rowIndex, rowKind) {
       <button class="stack-button danger" title="Удалить строку" aria-label="Удалить строку" data-action="request-holdback-delete" data-hold-index="${rowIndex}">×</button>
       ${menuOpen ? `
         <div class="row-action-menu">
-          <button class="row-action-menu-btn" data-action="insert-holdback-section" data-hold-index="${effectiveIndex}">Добавить раздел ниже</button>
-          <button class="row-action-menu-btn" data-action="insert-holdback-subitem" data-hold-index="${effectiveIndex}">Добавить подпункт внутри раздела</button>
+          <button class="row-action-menu-btn" data-action="insert-holdback-section" data-hold-index="${effectiveIndex}">Раздел</button>
+          <button class="row-action-menu-btn" data-action="insert-holdback-subitem" data-hold-index="${effectiveIndex}">Подпункт</button>
         </div>
       ` : ''}
       ${confirmDelete ? `
