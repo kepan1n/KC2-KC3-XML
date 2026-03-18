@@ -255,10 +255,11 @@
   2. XML заказчика / КС-3 (`...Z`).
 
 Дополнительно по XML заказчика (`...Z`):
-- Начат отдельный генератор `scripts/generate_customer_xml_from_export.py`.
-- В каркас `...Z` уже заложены базовые блоки:
+- Добавлен отдельный генератор `scripts/generate_customer_xml_from_export.py`.
+- В `...Z` реализованы и проходят XSD базовые блоки:
   - `ОснДоверОргСост`
   - `ИдИнфПодр`
   - `СодФХЖ4`
   - `ПодписантЗак`
 - Источником подписанта заказчика сейчас принят `customerSignerName/customerSignerPosition` с fallback на техзаказчика.
+- Файл `output/small-sample-customer.xml` проходит XSD-валидацию по `ON_AKTREZRABZ.xsd` (`VALID`).

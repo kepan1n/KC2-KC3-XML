@@ -46,6 +46,11 @@ def load_json(path: Path):
     return json.loads(path.read_text(encoding='utf-8'))
 
 
+def fmt_time_dots(value: str | None) -> str:
+    value = str(value or '00:00:00')
+    return value.replace(':', '.')
+
+
 def build_customer_xml(data: dict, contractor_xml_path: Path | None = None) -> ET._ElementTree:
     common = data.get('common', {})
     xml = data.get('xml', {})
@@ -58,13 +63,13 @@ def build_customer_xml(data: dict, contractor_xml_path: Path | None = None) -> E
 
     contractor_file_id = generated.get('fileId') or 'ON_AKTREZRABP_UNKNOWN'
     contractor_file_date = fmt_date(generated.get('fileDate'))
-    contractor_file_time = generated.get('fileTime') or '00:00:00'
+    contractor_file_time = fmt_time_dots(generated.get('fileTime') or '00:00:00')
     if contractor_xml_path and contractor_xml_path.exists():
         root_p = ET.parse(str(contractor_xml_path)).getroot()
         doc_p = root_p.find('Документ')
         contractor_file_id = root_p.get('ИдФайл') or contractor_file_id
         contractor_file_date = doc_p.get('ДатаИнфПодр') or contractor_file_date
-        contractor_file_time = doc_p.get('ВремИнфПодр') or contractor_file_time
+        contractor_file_time = fmt_time_dots(doc_p.get('ВремИнфПодр') or contractor_file_time)
 
     root = ET.Element('Файл',
         ИдФайл=f'ON_AKTREZRABZ_{contractor_file_id[-30:]}',
@@ -72,22 +77,25 @@ def build_customer_xml(data: dict, contractor_xml_path: Path | None = None) -> E
         ВерсФорм='1.00'
     )
     doc = ET.SubElement(root, 'Документ',
-        КНД='1110335',
-        ДатаИнфПодр=fmt_date(generated.get('fileDate')),
-        ВремИнфПодр=generated.get('fileTime') or '00:00:00',
-        НаимЭкСубСост=manual.get('economicSubjectName') or common.get('techCustomerName') or common.get('developerName') or 'Заказчик'
+        КНД='1110336',
+        ДатИнфЗак=fmt_date(generated.get('fileDate')),
+        ВрИнфЗак=fmt_time_dots(generated.get('fileTime') or '00:00:00'),
+        НаимЭконСубСост=manual.get('economicSubjectName') or common.get('techCustomerName') or common.get('developerName') or 'Заказчик'
     )
 
     base = ET.SubElement(doc, 'ОснДоверОргСост')
-    ident = ET.SubElement(base, 'ИдРекСост')
-    ET.SubElement(ident, 'ИННЮЛ').text = manual.get('customerInn') or '7701234567'
+    ET.SubElement(base, 'ТипИдДок',
+        НаимДок='Доверенность / основание подписания заказчика',
+        НомерДок=common.get('contractNumber') or 'без номера',
+        ДатаДок=fmt_date(common.get('contractDate')),
+    )
 
-    ET.SubElement(doc, 'ИдИнфПодр',
+    info_p = ET.SubElement(doc, 'ИдИнфПодр',
         ИдФайлИнфПодр=contractor_file_id,
         ДатаФайлИнфПодр=contractor_file_date,
         ВремяФайлИнфПодр=contractor_file_time,
-        ЭП='placeholder-signature-base64'
     )
+    ET.SubElement(info_p, 'ЭП').text = 'placeholder-signature-base64'
 
     content = ET.SubElement(doc, 'СодФХЖ4',
         НомПостДок=first_doc.get('number') or 'без номера',
