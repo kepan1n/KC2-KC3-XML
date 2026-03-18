@@ -82,7 +82,7 @@ function bindGlobalEvents() {
     link.download = `${payload.xml.generated.fileId || `ON_AKTREZRABP_${new Date().toISOString().slice(0, 10)}`}.xml`;
     link.click();
     URL.revokeObjectURL(url);
-    flash('XML выгружен. Для XSD-проверки можно прогнать файл через scripts/validate_xml_xsd.py');
+    flash('XML выгружен в XSD-ready профиле. Для строгой проверки: экспортируй JSON и запусти scripts/export_and_validate_xml.sh <json>.');
   });
 
   refs.addSheet.addEventListener('click', () => {
