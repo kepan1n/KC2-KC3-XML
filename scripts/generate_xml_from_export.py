@@ -53,6 +53,13 @@ def split_fio(text: str | None):
     return parts[0], parts[1], ' '.join(parts[2:])
 
 
+def short_org_name(text: str | None) -> str:
+    value = (text or '').strip()
+    if not value:
+        return ''
+    return value.split(',')[0][:255]
+
+
 def load_json(path: Path):
     with path.open('r', encoding='utf-8') as fh:
         return json.load(fh)
@@ -195,13 +202,31 @@ def build_xml(data: dict) -> ET._ElementTree:
              НомерДок=common.get('contractNumber') or 'без номера',
              ДатаДок=fmt_date(common.get('contractDate')))
 
+    estimate_id = act.find('ИдСмет/ТипИдДок')
+    if estimate_id is not None:
+        set_attr(
+            estimate_id,
+            НаимДок='Смета',
+            НомерДок=manual.get('estimateVersionCode') or '1',
+            ДатаДок=fmt_date(manual.get('supplementDocDate') or first_doc.get('date') or common.get('contractDate')),
+        )
+
     correction = act.find('ИспрАктСдПр')
     set_attr(correction,
              НомИспр=manual.get('correctionNumber') or correction.get('НомИспр') or '1',
              ДатаИспр=fmt_date(manual.get('correctionDate') or first_doc.get('date') or ks3_doc.get('documentDate')))
 
+    # Основания сдачи результатов работ: используем текст основания листа КС-2 как НаимДок.
+    for el in act.findall('ОснСдачи'):
+        act.remove(el)
+
     contractor_side = act.find('СвПодр/СвСторДог')
-    set_attr(contractor_side, ОКПО=common.get('contractorOkpo') or contractor_side.get('ОКПО'))
+    set_attr(
+        contractor_side,
+        ОКПО=common.get('contractorOkpo') or contractor_side.get('ОКПО'),
+        ИнфДляУчаст='contractor',
+        КраткНазв=short_org_name(common.get('contractorName')),
+    )
     contractor = act.find('СвПодр/СвСторДог/ИдСв/СвЮЛУч')
     set_attr(contractor,
              НаимОрг=common.get('contractorName') or contractor.get('НаимОрг'),
@@ -216,7 +241,13 @@ def build_xml(data: dict) -> ET._ElementTree:
                   КодРегион=manual.get('contractorRegionCode') or '77')
 
     customer_side = act.find('СвЗак/СвСторДог')
-    set_attr(customer_side, ОКПО=common.get('techCustomerOkpo') or common.get('developerOkpo') or customer_side.get('ОКПО'))
+    customer_name = common.get('techCustomerName') or common.get('developerName')
+    set_attr(
+        customer_side,
+        ОКПО=common.get('techCustomerOkpo') or common.get('developerOkpo') or customer_side.get('ОКПО'),
+        ИнфДляУчаст='customer',
+        КраткНазв=short_org_name(customer_name),
+    )
     customer = act.find('СвЗак/СвСторДог/ИдСв/СвЮЛУч')
     set_attr(customer,
              НаимОрг=common.get('techCustomerName') or common.get('developerName') or customer.get('НаимОрг'),
@@ -239,6 +270,14 @@ def build_xml(data: dict) -> ET._ElementTree:
              ДатаДок=fmt_date(manual.get('supplementDocDate') or supplement.get('ДатаДок')))
 
     currency = act.find('ДенИзм')
+    basis_value = first_doc.get('basis') or ''
+    if basis_value:
+        delivery_basis = ET.Element('ОснСдачи')
+        ET.SubElement(delivery_basis, 'ТипИдДок',
+                      НаимДок=str(basis_value)[:255],
+                      НомерДок=common.get('contractNumber') or 'без номера',
+                      ДатаДок=fmt_date(common.get('contractDate')))
+        act.insert(list(act).index(currency), delivery_basis)
     set_attr(currency, КодОКВ='643')
 
     info_block = act.find('ИнфПолФХЖ1')
