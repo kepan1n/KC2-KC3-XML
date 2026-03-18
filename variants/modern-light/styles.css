@@ -759,10 +759,49 @@ body[data-sidebar="closed"] .sidebar {
   background: #fbfcfe;
 }
 
-.subitem-label {
-  color: var(--muted);
+.holdback-section-cell {
+  background: white;
+  vertical-align: top;
+}
+
+.holdback-section-title textarea {
+  min-height: 78px;
   font-weight: 700;
-  padding-left: 8px;
+}
+
+.holdback-comment-cell textarea {
+  min-height: 78px;
+}
+
+.holdback-result-cell {
+  white-space: nowrap;
+  font-weight: 800;
+  text-align: right;
+}
+
+.holdback-percent-cell input {
+  text-align: center;
+}
+
+.subitem-money-cell,
+.subitem-doc-cell,
+.subitem-result-cell {
+  background: #fbfcfe;
+}
+
+.subitem-result-cell {
+  white-space: nowrap;
+  text-align: right;
+  font-weight: 700;
+}
+
+.subitem-placeholder {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  color: var(--muted);
+  font-style: italic;
 }
 
 .mini-readonly {
@@ -875,7 +914,8 @@ body[data-sidebar="closed"] .sidebar {
   gap: 4px;
 }
 
-.row-action-menu-item {
+.row-action-menu-item,
+.row-action-menu-btn {
   width: 100%;
   border: 1px solid var(--line);
   background: #f8fafc;

@@ -233,7 +233,9 @@ function handleContentClick(event) {
 
   if (action === 'insert-holdback-subitem') {
     const idx = Number(holdIndex);
-    let insertAt = idx + 1;
+    const baseRow = app.state.holdbacks.rows[idx];
+    const sectionIndex = (baseRow?.kind || 'section') === 'subitem' ? findHoldbackSectionIndex(idx) : idx;
+    let insertAt = sectionIndex + 1;
     while (insertAt < app.state.holdbacks.rows.length && (app.state.holdbacks.rows[insertAt].kind || 'section') === 'subitem') {
       insertAt += 1;
     }
@@ -259,7 +261,16 @@ function handleContentClick(event) {
 
   if (action === 'confirm-holdback-delete') {
     const idx = Number(holdIndex);
-    app.state.holdbacks.rows.splice(idx, 1);
+    const kind = app.state.holdbacks.rows[idx]?.kind || 'section';
+    if (kind === 'subitem') {
+      app.state.holdbacks.rows.splice(idx, 1);
+    } else {
+      let deleteCount = 1;
+      while (idx + deleteCount < app.state.holdbacks.rows.length && (app.state.holdbacks.rows[idx + deleteCount].kind || 'section') === 'subitem') {
+        deleteCount += 1;
+      }
+      app.state.holdbacks.rows.splice(idx, deleteCount);
+    }
     app.state.ui.holdbackDeleteConfirm = null;
     render();
     return;
@@ -1200,21 +1211,22 @@ function renderKs2Pane(sheetIndex) {
 }
 
 function renderHoldbackRowActions(rowIndex, rowKind) {
-  const menuOpen = app.state.ui.holdbackActionMenu === rowIndex;
+  const effectiveIndex = rowKind === 'subitem' ? findHoldbackSectionIndex(rowIndex) : rowIndex;
+  const menuOpen = app.state.ui.holdbackActionMenu === effectiveIndex;
   const confirmDelete = app.state.ui.holdbackDeleteConfirm === rowIndex;
   return `
     <div class="row-action-stack">
-      <button class="stack-button add" title="Добавить" aria-label="Добавить" data-action="open-holdback-menu" data-hold-index="${rowIndex}">+</button>
+      <button class="stack-button add" title="Добавить" aria-label="Добавить" data-action="open-holdback-menu" data-hold-index="${effectiveIndex}">+</button>
       <button class="stack-button danger" title="Удалить строку" aria-label="Удалить строку" data-action="request-holdback-delete" data-hold-index="${rowIndex}">×</button>
       ${menuOpen ? `
         <div class="row-action-menu">
-          <button class="row-action-menu-btn" data-action="insert-holdback-section" data-hold-index="${rowIndex}">Добавить раздел ниже</button>
-          <button class="row-action-menu-btn" data-action="insert-holdback-subitem" data-hold-index="${rowIndex}">Добавить подпункт внутри раздела</button>
+          <button class="row-action-menu-btn" data-action="insert-holdback-section" data-hold-index="${effectiveIndex}">Добавить раздел ниже</button>
+          <button class="row-action-menu-btn" data-action="insert-holdback-subitem" data-hold-index="${effectiveIndex}">Добавить подпункт внутри раздела</button>
         </div>
       ` : ''}
       ${confirmDelete ? `
         <div class="row-action-confirm">
-          <div class="row-action-confirm-label">Удалить строку?</div>
+          <div class="row-action-confirm-label">${rowKind === 'subitem' ? 'Удалить подпункт?' : 'Удалить раздел со вложениями?'}</div>
           <div class="row-action-confirm-buttons">
             <button class="row-action-confirm-btn confirm" data-action="confirm-holdback-delete" data-hold-index="${rowIndex}">✓</button>
             <button class="row-action-confirm-btn cancel" data-action="cancel-holdback-delete" data-hold-index="${rowIndex}">×</button>
@@ -1314,27 +1326,8 @@ function renderKs3Pane() {
 }
 
 function renderHoldbacksPane() {
-  const rows = app.state.holdbacks.rows.map((row, index) => {
-    const computed = computeHoldbackRow(row);
-    const isSubitem = row.kind === 'subitem';
-    return `
-      <tr class="${isSubitem ? 'holdback-subitem-row' : 'holdback-section-row'}">
-        <td>${isSubitem ? '<div class="subitem-label">↳ подпункт раздела</div>' : `<textarea data-path="holdbacks.rows.${index}.name">${escapeHtml(row.name)}</textarea>`}</td>
-        <td>${isSubitem ? '<div class="readonly mini-readonly"></div>' : `<input data-path="holdbacks.rows.${index}.ks2Amount" data-value-type="number" value="${formatEditableNumber(row.ks2Amount)}" />`}</td>
-        <td>${isSubitem ? '<div class="readonly mini-readonly"></div>' : `<input data-path="holdbacks.rows.${index}.materialsUsed" data-value-type="number" value="${formatEditableNumber(row.materialsUsed)}" />`}</td>
-        <td><input data-path="holdbacks.rows.${index}.advanceReceived" data-value-type="number" value="${formatEditableNumber(row.advanceReceived)}" /></td>
-        <td><input data-path="holdbacks.rows.${index}.advanceDoc" value="${escapeAttr(row.advanceDoc)}" /></td>
-        <td><input data-path="holdbacks.rows.${index}.previousBalance" data-value-type="number" value="${formatEditableNumber(row.previousBalance)}" /></td>
-        <td><input data-path="holdbacks.rows.${index}.closingAmount" data-value-type="number" value="${formatEditableNumber(row.closingAmount)}" /></td>
-        <td>${formatMoney(computed.nextBalance)}</td>
-        <td>${isSubitem ? '<div class="readonly mini-readonly"></div>' : `<input data-path="holdbacks.rows.${index}.retentionRate" data-value-type="number" value="${formatEditableNumber(row.retentionRate)}" />`}</td>
-        <td>${isSubitem ? '<div class="readonly mini-readonly"></div>' : formatMoney(computed.retentionAmount)}</td>
-        <td>${isSubitem ? '<div class="readonly mini-readonly"></div>' : formatMoney(computed.payableAmount)}</td>
-        <td>${isSubitem ? '<div class="readonly mini-readonly"></div>' : `<textarea data-path="holdbacks.rows.${index}.comment">${escapeHtml(row.comment)}</textarea>`}</td>
-        <td class="actions-cell">${renderHoldbackRowActions(index, row.kind)}</td>
-      </tr>
-    `;
-  }).join('');
+  const groups = buildHoldbackGroups();
+  const rows = groups.map((group) => renderHoldbackGroup(group)).join('');
 
   const totals = app.state.holdbacks.rows.reduce((acc, row) => {
     const computed = computeHoldbackRow(row);
@@ -1576,6 +1569,86 @@ function computeHoldbackRow(row) {
   const retentionAmount = round2(ks2Amount * retentionRate / 100);
   const payableAmount = round2(ks2Amount - closingAmount - retentionAmount);
   return { nextBalance, retentionAmount, payableAmount };
+}
+
+function findHoldbackSectionIndex(index) {
+  let current = index;
+  while (current > 0 && (app.state.holdbacks.rows[current]?.kind || 'section') === 'subitem') {
+    current -= 1;
+  }
+  return current;
+}
+
+function buildHoldbackGroups() {
+  const groups = [];
+  let currentGroup = null;
+
+  app.state.holdbacks.rows.forEach((row, index) => {
+    const kind = row.kind || 'section';
+    if (kind !== 'subitem' || !currentGroup) {
+      currentGroup = { section: { row, index }, subitems: [] };
+      groups.push(currentGroup);
+      return;
+    }
+    currentGroup.subitems.push({ row, index });
+  });
+
+  return groups;
+}
+
+function renderHoldbackGroup(group) {
+  const { section, subitems } = group;
+  const sectionComputed = computeHoldbackSectionComputed(group);
+  const bodyRows = subitems.length ? subitems : [{ row: createBlankHoldbackRow('subitem'), index: null, ghost: true }];
+  const rowspan = bodyRows.length;
+
+  return bodyRows.map((entry, rowOffset) => {
+    const isGhost = Boolean(entry.ghost);
+    const subComputed = isGhost ? { nextBalance: 0 } : computeHoldbackRow(entry.row);
+    return `
+      <tr class="${isGhost ? 'holdback-subitem-row holdback-subitem-placeholder' : 'holdback-subitem-row'}">
+        ${rowOffset === 0 ? renderHoldbackSectionCells(section.index, section.row, sectionComputed, rowspan) : ''}
+        <td class="subitem-money-cell">${isGhost ? '<div class="subitem-placeholder">Добавьте подпункт внутри раздела</div>' : `<input data-path="holdbacks.rows.${entry.index}.advanceReceived" data-value-type="number" value="${formatEditableNumber(entry.row.advanceReceived)}" />`}</td>
+        <td class="subitem-doc-cell">${isGhost ? '<div class="readonly mini-readonly"></div>' : `<input data-path="holdbacks.rows.${entry.index}.advanceDoc" value="${escapeAttr(entry.row.advanceDoc)}" placeholder="№, дата документа" />`}</td>
+        <td class="subitem-money-cell">${isGhost ? '<div class="readonly mini-readonly"></div>' : `<input data-path="holdbacks.rows.${entry.index}.previousBalance" data-value-type="number" value="${formatEditableNumber(entry.row.previousBalance)}" />`}</td>
+        <td class="subitem-money-cell">${isGhost ? '<div class="readonly mini-readonly"></div>' : `<input data-path="holdbacks.rows.${entry.index}.closingAmount" data-value-type="number" value="${formatEditableNumber(entry.row.closingAmount)}" />`}</td>
+        <td class="subitem-result-cell">${isGhost ? '<div class="readonly mini-readonly"></div>' : formatMoney(subComputed.nextBalance)}</td>
+        ${rowOffset === 0 ? renderHoldbackSectionRightCells(section.index, section.row, sectionComputed, rowspan) : ''}
+        <td class="actions-cell">${isGhost ? renderHoldbackRowActions(section.index, 'section') : renderHoldbackRowActions(entry.index, 'subitem')}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderHoldbackSectionCells(rowIndex, row, computed, rowspan) {
+  return `
+    <td class="holdback-section-cell holdback-section-title" rowspan="${rowspan}"><textarea data-path="holdbacks.rows.${rowIndex}.name" placeholder="Наименование раздела / акта">${escapeHtml(row.name)}</textarea></td>
+    <td class="holdback-section-cell" rowspan="${rowspan}"><input data-path="holdbacks.rows.${rowIndex}.ks2Amount" data-value-type="number" value="${formatEditableNumber(row.ks2Amount)}" /></td>
+    <td class="holdback-section-cell" rowspan="${rowspan}"><input data-path="holdbacks.rows.${rowIndex}.materialsUsed" data-value-type="number" value="${formatEditableNumber(row.materialsUsed)}" /></td>
+  `;
+}
+
+function renderHoldbackSectionRightCells(rowIndex, row, computed, rowspan) {
+  return `
+    <td class="holdback-section-cell holdback-percent-cell" rowspan="${rowspan}"><input data-path="holdbacks.rows.${rowIndex}.retentionRate" data-value-type="number" value="${formatEditableNumber(row.retentionRate)}" /></td>
+    <td class="holdback-section-cell holdback-result-cell" rowspan="${rowspan}">${formatMoney(computed.retentionAmount)}</td>
+    <td class="holdback-section-cell holdback-result-cell" rowspan="${rowspan}">${formatMoney(computed.payableAmount)}</td>
+    <td class="holdback-section-cell holdback-comment-cell" rowspan="${rowspan}"><textarea data-path="holdbacks.rows.${rowIndex}.comment" placeholder="Комментарий по разделу">${escapeHtml(row.comment)}</textarea></td>
+  `;
+}
+
+function computeHoldbackSectionComputed(group) {
+  const sectionComputed = computeHoldbackRow(group.section.row);
+  const subTotals = group.subitems.reduce((acc, item) => {
+    const rowComputed = computeHoldbackRow(item.row);
+    acc.advanceReceived += numberOrZero(item.row.advanceReceived);
+    acc.previousBalance += numberOrZero(item.row.previousBalance == null ? item.row.advanceReceived : item.row.previousBalance);
+    acc.closingAmount += numberOrZero(item.row.closingAmount);
+    acc.nextBalance += rowComputed.nextBalance;
+    return acc;
+  }, { advanceReceived: 0, previousBalance: 0, closingAmount: 0, nextBalance: 0 });
+
+  return { ...sectionComputed, ...subTotals };
 }
 
 function computeRowAmount(row) {
