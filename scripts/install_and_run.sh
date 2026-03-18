@@ -15,7 +15,7 @@ if [[ ! -d "$VENV" ]]; then
 fi
 
 source "$VENV/bin/activate"
-python -m pip install --upgrade pip >/dev/null
+python -m pip install --upgrade pip setuptools wheel >/dev/null
 python -m pip install -r "$ROOT/requirements.txt"
 
 echo
