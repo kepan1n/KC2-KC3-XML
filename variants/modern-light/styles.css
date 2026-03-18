@@ -761,16 +761,16 @@ body[data-sidebar="closed"] .sidebar {
 
 .holdback-section-cell {
   background: white;
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 .holdback-section-title textarea {
-  min-height: 52px;
+  min-height: 40px;
   font-weight: 700;
 }
 
 .holdback-comment-cell textarea {
-  min-height: 52px;
+  min-height: 40px;
 }
 
 .holdback-result-cell {
@@ -783,30 +783,51 @@ body[data-sidebar="closed"] .sidebar {
   text-align: center;
 }
 
+.table-holdbacks tbody td {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+.table-holdbacks tbody textarea,
+.table-holdbacks tbody input {
+  min-height: 28px;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.holdback-section-row td {
+  border-top: 1px solid #cfd6e4;
+  border-bottom: 1px solid #d9dfeb;
+}
+
 .holdback-subitems-slot {
   background: #fafbfd;
-  border-left: 1px dashed #d6dbe6;
-  border-right: 1px dashed #d6dbe6;
+  border-left: 1px solid #dfe5ef;
+  border-right: 1px solid #dfe5ef;
 }
 
 .holdback-subitems-hint {
-  min-height: 36px;
+  min-height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--muted);
-  font-size: 12px;
+  color: #667085;
+  font-size: 11px;
 }
 
 .holdback-inline-add {
   width: 100%;
-  min-height: 36px;
+  min-height: 26px;
   border: 1px dashed #c8d2e1;
-  background: #f8fbff;
+  background: #fcfdff;
   color: #245bdb;
-  border-radius: 8px;
-  font-size: 12px;
+  border-radius: 4px;
+  font-size: 11px;
   font-weight: 600;
+}
+
+.holdback-subitem-row td {
+  background: #fcfdff;
 }
 
 .holdback-subitem-indent,
@@ -814,16 +835,18 @@ body[data-sidebar="closed"] .sidebar {
 .subitem-doc-cell,
 .subitem-result-cell,
 .holdback-subitem-right {
-  background: #fbfcfe;
+  background: #fcfdff;
 }
 
 .holdback-subitem-indent {
   border-top: 0;
+  border-bottom: 0;
 }
 
 .subitem-money-cell,
 .subitem-doc-cell,
-.subitem-result-cell {
+.subitem-result-cell,
+.holdback-subitem-right {
   border-top: 0;
 }
 
@@ -834,14 +857,13 @@ body[data-sidebar="closed"] .sidebar {
 }
 
 .holdback-subitem-right {
-  color: var(--muted);
-  font-size: 12px;
-  border-top: 0;
+  color: #667085;
+  font-size: 11px;
 }
 
 .holdback-subitem-caption {
   display: inline-block;
-  padding-left: 8px;
+  padding-left: 4px;
 }
 
 .mini-readonly {
