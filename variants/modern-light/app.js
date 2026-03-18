@@ -1583,6 +1583,7 @@ function renderXmlPane() {
           ${renderSelect('Признак накопительного итога', 'xmlExtras.constants.cumulativeMode', constants.cumulativeMode, { '0': '0 — без накопления', '1': '1 — в акте всё', '2': '2 — только строка «Всего»' }, 'half')}
           ${renderInput('Год индекса цен', 'xmlExtras.constants.priceIndexYear', constants.priceIndexYear, 'string', 'quarter')}
           ${renderSelect('Сведения о расчётах для согласования', 'xmlExtras.constants.requiresSettlementApproval', constants.requiresSettlementApproval, { '0': '0 — нет', '1': '1 — да' }, 'quarter')}
+          ${renderSelect('Режим табличной части XML', 'xmlExtras.constants.diadocCompactMode', constants.diadocCompactMode || '1', { '1': 'compact / pass-friendly', '0': 'full / как в форме' }, 'half')}
         </div>
       </div>
 
@@ -1600,6 +1601,9 @@ function renderXmlPane() {
           ${renderInput('Код региона застройщика / адреса работ', 'xmlExtras.manual.developerRegionCode', manual.developerRegionCode, 'string', 'quarter')}
           ${renderInput('Подписант XML — ФИО', 'xmlExtras.manual.signerName', manual.signerName || app.state.common.contractorSignerName, 'string', 'quarter')}
           ${renderInput('Подписант XML — должность', 'xmlExtras.manual.signerPosition', manual.signerPosition || app.state.common.contractorSignerPosition, 'string', 'half')}
+          ${renderSelect('Подписант XML — статус', 'xmlExtras.manual.signerStatus', manual.signerStatus || '1', { '1': '1 — без доверенности', '2': '2 — доверенность в ЭФ', '3': '3 — доверенность на бумаге' }, 'quarter')}
+          ${renderSelect('Подписант XML — тип подписи', 'xmlExtras.manual.signatureType', manual.signatureType || '1', { '1': '1 — УКЭП', '2': '2 — ПЭП', '3': '3 — УНЭП' }, 'quarter')}
+          ${renderInput('ИнфПолФХЖ1 / customField', 'xmlExtras.manual.customInfoValue', manual.customInfoValue || 'sample', 'string', 'quarter')}
           ${renderInput('Индекс подрядчика', 'xmlExtras.manual.contractorPostalIndex', manual.contractorPostalIndex, 'string', 'quarter')}
           ${renderInput('Код региона подрядчика', 'xmlExtras.manual.contractorRegionCode', manual.contractorRegionCode, 'string', 'quarter')}
           ${renderInput('Исправление №', 'xmlExtras.manual.correctionNumber', manual.correctionNumber, 'string', 'quarter')}

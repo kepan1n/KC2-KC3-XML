@@ -524,7 +524,8 @@
       "vatCalcInTotalOnly": "0",
       "cumulativeMode": "0",
       "priceIndexYear": "0000",
-      "requiresSettlementApproval": "0"
+      "requiresSettlementApproval": "0",
+      "diadocCompactMode": "1"
     },
     "manual": {
       "economicSubjectName": "Общество с ограниченной ответственностью «ЛегендаЭлит», 109028, г. Москва, пер. Дурасовский, д. 5, стр. 2",
@@ -541,7 +542,10 @@
       "correctionNumber": "1",
       "correctionDate": "2025-10-31",
       "signerName": "Дылюк А.",
-      "signerPosition": "Генеральный директор ООО «ЛегендаЭлит»"
+      "signerPosition": "Генеральный директор ООО «ЛегендаЭлит»",
+      "signerStatus": "1",
+      "signatureType": "1",
+      "customInfoValue": "sample"
     },
     "traceableGoods": []
   }
