@@ -72,17 +72,48 @@ function bindGlobalEvents() {
     flash('JSON выгружен.');
   });
 
-  refs.exportXml?.addEventListener('click', () => {
+  refs.exportXml?.addEventListener('click', async () => {
     const payload = buildLogicBundle().model;
-    const xml = buildXmlExportString(payload);
-    const blob = new Blob([xml], { type: 'application/xml;charset=windows-1251' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${payload.xml.generated.fileId || `ON_AKTREZRABP_${new Date().toISOString().slice(0, 10)}`}.xml`;
-    link.click();
-    URL.revokeObjectURL(url);
-    flash('XML выгружен в XSD-ready профиле. Для строгой проверки: экспортируй JSON и запусти scripts/export_and_validate_xml.sh <json>.');
+    refs.exportXml.disabled = true;
+    refs.exportXml.textContent = 'Проверка XSD…';
+    try {
+      const response = await fetch('/api/export-xml', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        let errorMessage = `Ошибка ${response.status}`;
+        try {
+          const data = await response.json();
+          if (Array.isArray(data.errors) && data.errors.length) {
+            errorMessage = data.errors.slice(0, 3).map((err) => `строка ${err.line}: ${err.message}`).join(' | ');
+          } else if (data.error) {
+            errorMessage = data.error;
+          }
+        } catch (_) {}
+        flash(`XML не выгружен: ${errorMessage}`);
+        return;
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="([^"]+)"/);
+      const filename = match?.[1] || `${payload.xml.generated.fileId || `ON_AKTREZRABP_${new Date().toISOString().slice(0, 10)}`}.xml`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+      flash('XML прошёл XSD-проверку и выгружен.');
+    } catch (error) {
+      flash(`Не удалось выполнить XSD-проверку: ${error.message}`);
+    } finally {
+      refs.exportXml.disabled = false;
+      refs.exportXml.textContent = 'Экспорт XML (XSD-ready)';
+    }
   });
 
   refs.addSheet.addEventListener('click', () => {
