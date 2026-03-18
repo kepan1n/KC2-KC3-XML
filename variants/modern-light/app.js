@@ -1560,6 +1560,8 @@ function computeSheetTotals(sheet) {
 function computeHoldbackRow(row) {
   const ks2Amount = numberOrZero(row.ks2Amount);
   const advanceReceived = numberOrZero(row.advanceReceived);
+  // По подтверждённой логике Excel:
+  // F и G заполняются вручную, H считается автоматически как F - G.
   const previousBalance = row.previousBalance == null ? advanceReceived : numberOrZero(row.previousBalance);
   const closingAmount = numberOrZero(row.closingAmount);
   const retentionRate = numberOrZero(row.retentionRate || 0);
@@ -1640,6 +1642,12 @@ function renderHoldbackSectionCells(rowIndex, row, computed) {
 }
 
 function renderHoldbackSectionMiddleCells(computed, subitemCount) {
+  // Логика Excel для раздела удержаний:
+  // D = сумма подпунктов по полученному авансу
+  // E = служебное поле по подпунктам / документам
+  // F = сумма подпунктов по незакрытому остатку прошлого периода
+  // G = сумма подпунктов по сумме закрытия
+  // H = сумма подпунктов по остатку к закрытию следующего периода
   return `
     <td class="holdback-section-cell holdback-middle-result">${formatMoney(computed.advanceReceived)}</td>
     <td class="holdback-section-cell holdback-middle-doc">${subitemCount ? `${subitemCount} подп.` : '—'}</td>
@@ -1673,12 +1681,60 @@ function computeHoldbackSectionComputed(group) {
   }, { advanceReceived: 0, previousBalance: 0, closingAmount: 0, nextBalance: 0 });
 
   const retentionAmount = round2(ks2Amount * retentionRate / 100);
+  // Подтверждённая формула Excel для строки раздела: J = B - ΣG - I.
   const payableAmount = round2(ks2Amount - subTotals.closingAmount - retentionAmount);
 
   return {
     ...subTotals,
     retentionAmount,
     payableAmount,
+  };
+}
+
+function buildHoldbacksXmlSettlementModel() {
+  const groups = buildHoldbackGroups();
+  const settlementRows = [];
+  let totalRetention = 0;
+  let totalClaims = 0;
+
+  groups.forEach((group) => {
+    const section = group.section.row;
+    const computed = computeHoldbackSectionComputed(group);
+
+    if (computed.retentionAmount > 0) {
+      settlementRows.push({
+        source: 'section-retention',
+        sectionName: section.name || '',
+        amount: computed.retentionAmount,
+        kindCode: '32', // гарантийное удержание / отложенный платеж
+        kindLabel: 'ВидУдерж',
+        comment: section.comment || '',
+      });
+      totalRetention += computed.retentionAmount;
+    }
+
+    group.subitems.forEach((item) => {
+      const row = item.row;
+      const closingAmount = numberOrZero(row.closingAmount);
+      if (closingAmount > 0) {
+        settlementRows.push({
+          source: 'subitem-advance-closing',
+          sectionName: section.name || '',
+          documentRef: row.advanceDoc || '',
+          amount: closingAmount,
+          kindCode: '31', // зачет аванса
+          kindLabel: 'ВидУдерж',
+          comment: row.comment || '',
+        });
+        totalRetention += closingAmount;
+      }
+    });
+  });
+
+  return {
+    totalRetention,
+    totalClaims,
+    settlementRows,
   };
 }
 
