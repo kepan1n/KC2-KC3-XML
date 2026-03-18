@@ -1,7 +1,7 @@
 {
   "meta": {
-    "sourceWorkbook": "small_sample---9fa681af-ad49-47d9-a4f5-8c55da4feaf7.xlsx",
-    "description": "Упрощенный demo-образец из small_sample.xlsx"
+    "sourceWorkbook": "small sample.xlsx",
+    "description": "Упрощенный demo-образец: 1 лист КС-2, 1 лист КС-3, компактные удержания"
   },
   "common": {
     "okudKs2": "322001",
@@ -19,8 +19,6 @@
     "operationType": "",
     "currencyCode": "643",
     "currencyName": "Российский рубль",
-    "showDocumentHeaders": true,
-    "showDocumentSignatures": true,
     "contractorSignLabel": "Сдал",
     "contractorSignerPosition": "Генеральный директор ООО «ЛегендаЭлит»",
     "contractorSignerName": "А. Дылюк",
@@ -30,12 +28,14 @@
     "techCustomerSignLabel": "Проверил",
     "techCustomerSignerPosition": "Генеральный директор ООО «А+»",
     "techCustomerSignerName": "Е.С. Воронин",
+    "showDocumentHeaders": true,
+    "showDocumentSignatures": true,
     "objectOkpo": "",
     "okdpCode": "",
-    "ks2DocLabel": "АКТ",
+    "ks2DocLabel": "AKT",
     "ks2DocSubtitle": "О ПРИЕМКЕ ВЫПОЛНЕННЫХ РАБОТ",
-    "ks3DocLabel": "СПРАВКА",
-    "ks3DocSubtitle": "О СТОИМОСТИ ВЫПОЛНЕННЫХ РАБОТ И ЗАТРАТ"
+    "ks3DocLabel": "Справка",
+    "ks3DocSubtitle": "о стоимости выполненных работ и затрат"
   },
   "ks2Sheets": [
     {
@@ -72,8 +72,7 @@
           "price": 1725.0,
           "amount": 89044.5,
           "unitConsumption": null,
-          "note": "",
-          "category": "work"
+          "note": ""
         },
         {
           "type": "item",
@@ -86,8 +85,7 @@
           "price": 13500.0,
           "amount": 1882575.0,
           "unitConsumption": null,
-          "note": "",
-          "category": "work"
+          "note": ""
         },
         {
           "type": "item",
@@ -100,8 +98,7 @@
           "price": 7070.0,
           "amount": 1007475.0,
           "unitConsumption": 1.022,
-          "note": "",
-          "category": "work"
+          "note": ""
         },
         {
           "type": "item",
@@ -114,8 +111,7 @@
           "price": 45900.0,
           "amount": 878526.0,
           "unitConsumption": 1.033,
-          "note": "",
-          "category": "work"
+          "note": ""
         },
         {
           "type": "item",
@@ -128,8 +124,7 @@
           "price": 92.0,
           "amount": 36091.6,
           "unitConsumption": 1.1,
-          "note": "",
-          "category": "work"
+          "note": ""
         },
         {
           "type": "section",
@@ -155,8 +150,7 @@
           "price": 7000.0,
           "amount": 36400.0,
           "unitConsumption": null,
-          "note": "",
-          "category": "work"
+          "note": ""
         },
         {
           "type": "item",
@@ -169,8 +163,7 @@
           "price": 6383.33,
           "amount": 38299.98,
           "unitConsumption": 1.1538461538461537,
-          "note": "",
-          "category": "work"
+          "note": ""
         },
         {
           "type": "item",
@@ -183,8 +176,7 @@
           "price": 19500.0,
           "amount": 1433250.0,
           "unitConsumption": null,
-          "note": "",
-          "category": "work"
+          "note": ""
         },
         {
           "type": "item",
@@ -197,8 +189,7 @@
           "price": 6850.0,
           "amount": 511010.0,
           "unitConsumption": 1.015,
-          "note": "",
-          "category": "work"
+          "note": ""
         },
         {
           "type": "item",
@@ -211,8 +202,7 @@
           "price": 45400.0,
           "amount": 25424.0,
           "unitConsumption": 1.033,
-          "note": "",
-          "category": "work"
+          "note": ""
         },
         {
           "type": "item",
@@ -225,8 +215,7 @@
           "price": 45400.0,
           "amount": 68554.0,
           "unitConsumption": 1.033,
-          "note": "",
-          "category": "work"
+          "note": ""
         },
         {
           "type": "item",
@@ -239,8 +228,7 @@
           "price": 45400.0,
           "amount": 236080.0,
           "unitConsumption": 1.033,
-          "note": "",
-          "category": "work"
+          "note": ""
         },
         {
           "type": "item",
@@ -253,8 +241,7 @@
           "price": 65256.9,
           "amount": 8483.4,
           "unitConsumption": 1.033,
-          "note": "1м2=78,5кг, 1 лист 353,25 кг",
-          "category": "work"
+          "note": "1м2=78,5кг, 1 лист 353,25 кг"
         },
         {
           "type": "item",
@@ -267,10 +254,39 @@
           "price": 84310.34,
           "amount": 6744.83,
           "unitConsumption": 1.033,
-          "note": "1п.м. = 0,0058тн",
-          "category": "work"
+          "note": "1п.м. = 0,0058тн"
         }
-      ]
+      ],
+      "totals": {
+        "gross": 6257958.3100000005,
+        "vat": 1042993.05,
+        "breakdown": [
+          {
+            "label": "материал, в т.ч.:",
+            "amount": 2816688.81
+          },
+          {
+            "label": "металлопрокат",
+            "amount": 1223812.23
+          },
+          {
+            "label": "бетон",
+            "amount": 1556784.98
+          },
+          {
+            "label": "пр.мат.",
+            "amount": 36091.6
+          },
+          {
+            "label": "работа",
+            "amount": 3441269.5
+          },
+          {
+            "label": "",
+            "amount": 6257958.3100000005
+          }
+        ]
+      }
     }
   ],
   "ks3": {
@@ -278,7 +294,29 @@
     "documentNumber": "1",
     "documentDate": "2025-10-31",
     "periodFrom": "22.09.2025 г.",
-    "periodTo": "2025-10-31"
+    "periodTo": "2025-10-31",
+    "rows": [
+      {
+        "name": "Всего работ и затрат, включаемых в стоимость работ",
+        "fromStart": 5214965.260000001,
+        "fromYearStart": 5214965.260000001,
+        "forPeriod": 5214965.260000001,
+        "vat": null
+      },
+      {
+        "name": "Акт №1. Выполнение комплекса строительно-монтажных работ по возведению монолитных ж/б конструкций - фундаментная плита 1 и 2 корпус. Калькуляция №3",
+        "fromStart": 5214965.260000001,
+        "fromYearStart": 5214965.260000001,
+        "forPeriod": 5214965.260000001,
+        "vat": null
+      }
+    ],
+    "totals": {
+      "fromStart": 5214965.260000001,
+      "fromYearStart": 5214965.260000001,
+      "forPeriod": 5214965.260000001,
+      "vat": 1042993.0520000001
+    }
   },
   "holdbacks": {
     "rows": [
@@ -287,44 +325,44 @@
         "name": "Разработка и согласование ППРпс и проекта на фундамент под башенные краны. Мобилизация и демобилизация башенных кранов. Калькуляция №1 (ООО \"СМП ТРЭЙД\")",
         "ks2Amount": 0,
         "materialsUsed": 0,
-        "advanceReceived": null,
+        "advanceReceived": 0,
         "advanceDoc": "",
-        "previousBalance": null,
-        "closingAmount": null,
-        "nextBalance": null,
-        "retentionAmount": null,
-        "payableAmount": null,
-        "retentionRate": 0,
+        "previousBalance": 0,
+        "closingAmount": 0,
+        "nextBalance": 0,
+        "retentionRate": 3,
+        "retentionAmount": 0,
+        "payableAmount": 0,
         "comment": "БК№3"
       },
       {
         "kind": "subitem",
         "name": "",
-        "ks2Amount": null,
-        "materialsUsed": null,
+        "ks2Amount": 0,
+        "materialsUsed": 0,
         "advanceReceived": 1956000.0,
         "advanceDoc": "443 от 09.10.2025 г.",
         "previousBalance": 1956000.0,
         "closingAmount": null,
         "nextBalance": 1956000.0,
-        "retentionAmount": null,
-        "payableAmount": null,
         "retentionRate": 0,
+        "retentionAmount": 0,
+        "payableAmount": 0,
         "comment": "БК№3"
       },
       {
         "kind": "subitem",
         "name": "",
-        "ks2Amount": null,
-        "materialsUsed": null,
+        "ks2Amount": 0,
+        "materialsUsed": 0,
         "advanceReceived": 515000.0,
         "advanceDoc": "444 от 09.10.2025 г.",
         "previousBalance": 515000.0,
         "closingAmount": null,
         "nextBalance": 515000.0,
-        "retentionAmount": null,
-        "payableAmount": null,
         "retentionRate": 0,
+        "retentionAmount": 0,
+        "payableAmount": 0,
         "comment": "ППРпс"
       },
       {
@@ -332,29 +370,29 @@
         "name": "Монтаж виброизоляции Калькуляция №2 (ООО \"Гавари Трейд\")",
         "ks2Amount": 0,
         "materialsUsed": 0,
-        "advanceReceived": null,
+        "advanceReceived": 0,
         "advanceDoc": "",
-        "previousBalance": null,
-        "closingAmount": null,
-        "nextBalance": null,
-        "retentionAmount": null,
-        "payableAmount": null,
-        "retentionRate": 0,
+        "previousBalance": 0,
+        "closingAmount": 0,
+        "nextBalance": 0,
+        "retentionRate": 3,
+        "retentionAmount": 0,
+        "payableAmount": 0,
         "comment": "виброзащита (работа)"
       },
       {
         "kind": "subitem",
         "name": "",
-        "ks2Amount": null,
-        "materialsUsed": null,
+        "ks2Amount": 0,
+        "materialsUsed": 0,
         "advanceReceived": 2433535.48,
         "advanceDoc": "510 от 21.10.2025 г.",
         "previousBalance": 2433535.48,
         "closingAmount": null,
         "nextBalance": 2433535.48,
-        "retentionAmount": null,
-        "payableAmount": null,
         "retentionRate": 0,
+        "retentionAmount": 0,
+        "payableAmount": 0,
         "comment": "виброзащита (работа)"
       },
       {
@@ -362,127 +400,125 @@
         "name": "КС-2 №1. Выполнение комплекса строительно-монтажных работ по возведению монолитных ж/б конструкций - фундаментная плита 1 и 2 корпус. Калькуляция №3",
         "ks2Amount": 6257958.3100000005,
         "materialsUsed": 2816688.81,
-        "advanceReceived": null,
+        "advanceReceived": 0,
         "advanceDoc": "",
-        "previousBalance": null,
-        "closingAmount": null,
-        "nextBalance": null,
-        "retentionAmount": null,
-        "payableAmount": null,
+        "previousBalance": 0,
+        "closingAmount": 0,
+        "nextBalance": 0,
         "retentionRate": 3,
+        "retentionAmount": 187738.75,
+        "payableAmount": 1962530.4598460495,
         "comment": "монолит (работа, гидроизоляция)"
       },
       {
         "kind": "subitem",
         "name": "",
-        "ks2Amount": null,
-        "materialsUsed": null,
+        "ks2Amount": 0,
+        "materialsUsed": 0,
         "advanceReceived": 5000000.0,
         "advanceDoc": "871 от 12.08.2025 г. (соглашение №1 от 30.09.2025 г. к дог. № 1АС/ХОР - зачет аванса)",
         "previousBalance": 5000000.0,
         "closingAmount": 1327091.8901539512,
         "nextBalance": 3672908.109846049,
-        "retentionAmount": null,
-        "payableAmount": null,
         "retentionRate": 0,
+        "retentionAmount": 0,
+        "payableAmount": 0,
         "comment": "монолит (работа, гидроизоляция)"
       },
       {
         "kind": "subitem",
         "name": "",
-        "ks2Amount": null,
-        "materialsUsed": null,
+        "ks2Amount": 0,
+        "materialsUsed": 0,
         "advanceReceived": 19000000.0,
         "advanceDoc": "926 от 21.08.2025 г.  (соглашение №1 от 30.09.2025 г. к дог. № 1АС/ХОР - зачет аванса)",
         "previousBalance": 19000000.0,
         "closingAmount": null,
         "nextBalance": 19000000.0,
-        "retentionAmount": null,
-        "payableAmount": null,
         "retentionRate": 0,
+        "retentionAmount": 0,
+        "payableAmount": 0,
         "comment": "монолит (работа, гидроизоляция)"
       },
       {
         "kind": "subitem",
         "name": "",
-        "ks2Amount": null,
-        "materialsUsed": null,
+        "ks2Amount": 0,
+        "materialsUsed": 0,
         "advanceReceived": 25703400.0,
         "advanceDoc": "445 от 09.10.2025 г.",
         "previousBalance": 25703400.0,
         "closingAmount": 1223812.23,
         "nextBalance": 24479587.77,
-        "retentionAmount": null,
-        "payableAmount": null,
         "retentionRate": 0,
+        "retentionAmount": 0,
+        "payableAmount": 0,
         "comment": "металлопрокат"
       },
       {
         "kind": "subitem",
         "name": "",
-        "ks2Amount": null,
-        "materialsUsed": null,
+        "ks2Amount": 0,
+        "materialsUsed": 0,
         "advanceReceived": 5000000.0,
         "advanceDoc": "446 от 09.10.2025 г.",
         "previousBalance": 5000000.0,
         "closingAmount": 1556784.98,
         "nextBalance": 3443215.02,
-        "retentionAmount": null,
-        "payableAmount": null,
         "retentionRate": 0,
+        "retentionAmount": 0,
+        "payableAmount": 0,
         "comment": "бетон"
       },
       {
         "kind": "subitem",
         "name": "",
-        "ks2Amount": null,
-        "materialsUsed": null,
+        "ks2Amount": 0,
+        "materialsUsed": 0,
         "advanceReceived": 2454614.0,
         "advanceDoc": "447 от 09.10.2025 г.",
         "previousBalance": 2454614.0,
         "closingAmount": null,
         "nextBalance": 2454614.0,
-        "retentionAmount": null,
-        "payableAmount": null,
         "retentionRate": 0,
+        "retentionAmount": 0,
+        "payableAmount": 0,
         "comment": "каркас"
       },
       {
         "kind": "subitem",
         "name": "",
-        "ks2Amount": null,
-        "materialsUsed": null,
+        "ks2Amount": 0,
+        "materialsUsed": 0,
         "advanceReceived": 26000000.0,
         "advanceDoc": "498 от 16.10.2025 г.",
         "previousBalance": 26000000.0,
         "closingAmount": null,
         "nextBalance": 26000000.0,
-        "retentionAmount": null,
-        "payableAmount": null,
         "retentionRate": 0,
+        "retentionAmount": 0,
+        "payableAmount": 0,
         "comment": "монолит (работа, гидроизоляция)"
       },
       {
         "kind": "subitem",
         "name": "",
-        "ks2Amount": null,
-        "materialsUsed": null,
+        "ks2Amount": 0,
+        "materialsUsed": 0,
         "advanceReceived": 5000032.0,
         "advanceDoc": "515 от 23.10.2025 г.",
         "previousBalance": 5000032.0,
         "closingAmount": null,
         "nextBalance": 5000032.0,
-        "retentionAmount": null,
-        "payableAmount": null,
         "retentionRate": 0,
+        "retentionAmount": 0,
+        "payableAmount": 0,
         "comment": "бетон"
       }
     ]
   },
   "xmlExtras": {
-    "generated": {
-      "programVersion": "KC2-KC3-XML-webapp"
-    },
+    "generated": {},
     "constants": {
       "isGovMunicipal": "0",
       "vatCalcInTotalOnly": "0",
@@ -494,7 +530,7 @@
       "economicSubjectName": "Общество с ограниченной ответственностью «ЛегендаЭлит», 109028, г. Москва, пер. Дурасовский, д. 5, стр. 2",
       "estimateVersionCode": "1",
       "supplementDocType": "Дополнительное соглашение",
-      "supplementDocNumber": "1",
+      "supplementDocNumber": "ДС-1",
       "supplementDocDate": "2025-10-31",
       "contractorInn": "7701234567",
       "customerInn": "7701234567",
