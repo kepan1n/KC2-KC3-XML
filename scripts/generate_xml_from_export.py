@@ -325,13 +325,16 @@ def build_xml(data: dict) -> ET._ElementTree:
                 amount = float(item.get('amount') or 0)
                 price = float(item.get('price') or 0)
                 qty = item.get('quantity')
+                vat_amount = max(round(amount * vat_rate_default / 100, 2), 0)
                 item_attrs = {
                     'НомСтр': str(item.get('xmlRowNo')),
                     'НомПоз': str(item.get('lineNo') or item.get('xmlRowNo')),
                     'НаимТов': item.get('name') or f"Работа {item.get('xmlRowNo')}",
                     'ТипЗатр': '1',
                     'ЦенаТов': fmt_money(price),
+                    'СтПоСметеБезНДС': fmt_money(amount),
                     'СтТовБезНДС': fmt_money(amount),
+                    'СтТовУчНал': fmt_money(amount + vat_amount),
                     'ОКЕИ_Стройка': '796',
                     'НаимЕдИзм': item.get('unit') or 'шт',
                 }
@@ -345,7 +348,6 @@ def build_xml(data: dict) -> ET._ElementTree:
                 if qty not in (None, ''):
                     ET.SubElement(work_el, 'КолТов').text = str(qty)
                 tax = ET.SubElement(work_el, 'СумНал')
-                vat_amount = max(round(amount * vat_rate_default / 100, 2), 0)
                 ET.SubElement(tax, 'СумНал').text = fmt_money(vat_amount)
                 if not trace_attached:
                     tg = traceable_goods[0] if traceable_goods else {}
