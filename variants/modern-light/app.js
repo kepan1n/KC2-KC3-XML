@@ -778,6 +778,14 @@ function buildValidationReport(model) {
 
   requireValue(model.xml.manual.contractorInn, 'xml.manual.contractorInn', 'ИНН подрядчика', 'warning');
   requireValue(model.xml.manual.customerInn, 'xml.manual.customerInn', 'ИНН заказчика', 'warning');
+  requireValue(model.xml.manual.economicSubjectName || model.common.contractorName, 'xml.manual.economicSubjectName', 'Составитель XML', 'warning');
+  requireValue(model.xml.manual.estimateVersionCode, 'xml.manual.estimateVersionCode', 'Версия сметы (КодСмет)', 'warning');
+  requireValue(model.xml.manual.supplementDocType, 'xml.manual.supplementDocType', 'Тип допсоглашения', 'warning');
+  requireValue(model.xml.manual.supplementDocNumber, 'xml.manual.supplementDocNumber', 'Номер допсоглашения', 'warning');
+  requireValue(model.xml.manual.supplementDocDate, 'xml.manual.supplementDocDate', 'Дата допсоглашения', 'warning');
+  requireValue(model.xml.manual.developerPostalIndex, 'xml.manual.developerPostalIndex', 'Индекс адреса', 'warning');
+  requireValue(model.xml.manual.developerRegionCode, 'xml.manual.developerRegionCode', 'Код региона', 'warning');
+  requireValue(model.xml.manual.signerName || model.common.contractorSignerName, 'xml.manual.signerName', 'Подписант XML: ФИО', 'warning');
 
   return {
     errors,
@@ -1533,8 +1541,10 @@ function renderXmlPane() {
           ${renderInput('Дата допсоглашения', 'xmlExtras.manual.supplementDocDate', manual.supplementDocDate, 'string', 'quarter')}
           ${renderInput('ИНН подрядчика', 'xmlExtras.manual.contractorInn', manual.contractorInn, 'string', 'quarter')}
           ${renderInput('ИНН заказчика', 'xmlExtras.manual.customerInn', manual.customerInn, 'string', 'quarter')}
-          ${renderInput('Индекс застройщика', 'xmlExtras.manual.developerPostalIndex', manual.developerPostalIndex, 'string', 'quarter')}
-          ${renderInput('Код региона застройщика', 'xmlExtras.manual.developerRegionCode', manual.developerRegionCode, 'string', 'quarter')}
+          ${renderInput('Индекс застройщика / адреса работ', 'xmlExtras.manual.developerPostalIndex', manual.developerPostalIndex, 'string', 'quarter')}
+          ${renderInput('Код региона застройщика / адреса работ', 'xmlExtras.manual.developerRegionCode', manual.developerRegionCode, 'string', 'quarter')}
+          ${renderInput('Подписант XML — ФИО', 'xmlExtras.manual.signerName', manual.signerName || app.state.common.contractorSignerName, 'string', 'quarter')}
+          ${renderInput('Подписант XML — должность', 'xmlExtras.manual.signerPosition', manual.signerPosition || app.state.common.contractorSignerPosition, 'string', 'half')}
           ${renderInput('Индекс подрядчика', 'xmlExtras.manual.contractorPostalIndex', manual.contractorPostalIndex, 'string', 'quarter')}
           ${renderInput('Код региона подрядчика', 'xmlExtras.manual.contractorRegionCode', manual.contractorRegionCode, 'string', 'quarter')}
           ${renderInput('Исправление №', 'xmlExtras.manual.correctionNumber', manual.correctionNumber, 'string', 'quarter')}
@@ -1596,14 +1606,14 @@ function buildGeneratedXmlFields() {
   const date = now.toISOString().slice(0, 10);
   const time = now.toTimeString().slice(0, 8);
   const documentNumber = app.state.ks2Sheets[0]?.documentNumber || '1';
-  const contractorInn = app.state.xmlExtras.manual.contractorInn || 'INN';
+  const contractorInn = app.state.xmlExtras.manual.contractorInn || '0000000000000';
   return {
     fileDate: generated.fileDate || date,
     fileTime: generated.fileTime || time,
     knd: generated.knd || '1110335',
     formatVersion: generated.formatVersion || '1.00',
-    programVersion: generated.programVersion || 'prototype-0.1.0',
-    fileId: `ON_AKT_${contractorInn}_${date.replaceAll('-', '')}_${String(documentNumber).padStart(3, '0')}`,
+    programVersion: generated.programVersion || 'KC2-KC3-XML-webapp',
+    fileId: `ON_AKTREZRABP_0000000000000_${contractorInn}_${date.replaceAll('-', '')}_${String(documentNumber).padStart(3, '0')}`,
   };
 }
 
@@ -1641,7 +1651,7 @@ function buildXmlExportString(model) {
   const traceableGoods = model.xml.traceableGoods || [];
   const settlement = model.xml.settlement || { totalRetention: 0, totalClaims: 0, settlementRows: [] };
   const firstSheet = model.ks2Sheets[0] || { document: {}, items: [] };
-  const signer = splitSignerName(common.contractorSigner || common.contractorResponsible || 'Иванов Иван');
+  const signer = splitSignerName(manual.signerName || common.contractorSignerName || common.contractorSigner || common.contractorResponsible || 'Иванов Иван');
   const signerAttr = signer.patronymic ? ` Отчество="${xmlEscape(signer.patronymic)}"` : '';
   let globalRowNo = 1;
   const worksXml = model.ks2Sheets.flatMap((sheet, sheetIndex) => (
