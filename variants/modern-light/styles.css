@@ -817,13 +817,14 @@ body[data-sidebar="closed"] .sidebar {
 
 .holdback-inline-add {
   width: 100%;
-  min-height: 26px;
+  min-height: 22px;
   border: 1px dashed #c8d2e1;
   background: #fcfdff;
   color: #245bdb;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
+  padding: 2px 6px;
 }
 
 .holdback-subitem-row td {
@@ -962,12 +963,13 @@ body[data-sidebar="closed"] .sidebar {
   right: calc(100% + 8px);
   top: 0;
   z-index: 8;
-  min-width: 132px;
+  min-width: 120px;
+  max-width: 140px;
   background: white;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 8px;
   box-shadow: var(--shadow);
-  padding: 6px;
+  padding: 4px;
 }
 
 .row-action-menu {
@@ -982,10 +984,11 @@ body[data-sidebar="closed"] .sidebar {
   border: 1px solid var(--line);
   background: #f8fafc;
   color: var(--text);
-  border-radius: 8px;
-  padding: 7px 8px;
-  font-size: 12px;
+  border-radius: 6px;
+  padding: 5px 6px;
+  font-size: 11px;
   font-weight: 600;
+  line-height: 1.2;
   text-align: left;
 }
 

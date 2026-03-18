@@ -1212,7 +1212,7 @@ function renderKs2Pane(sheetIndex) {
 
 function renderHoldbackRowActions(rowIndex, rowKind) {
   const effectiveIndex = rowKind === 'subitem' ? findHoldbackSectionIndex(rowIndex) : rowIndex;
-  const menuOpen = app.state.ui.holdbackActionMenu === effectiveIndex;
+  const menuOpen = app.state.ui.holdbackActionMenu === rowIndex;
   const confirmDelete = app.state.ui.holdbackDeleteConfirm === rowIndex;
   return `
     <div class="row-action-stack">
@@ -1604,7 +1604,7 @@ function renderHoldbackGroup(group) {
     <tr class="holdback-section-row">
       ${renderHoldbackSectionCells(section.index, section.row, sectionComputed)}
       <td class="holdback-subitems-slot" colspan="5">
-        ${subitems.length ? '<div class="holdback-subitems-hint">Детализация ниже</div>' : '<button class="holdback-inline-add" data-action="insert-holdback-subitem" data-hold-index="' + section.index + '">+ Добавить подпункт внутри раздела</button>'}
+        ${subitems.length ? '<div class="holdback-subitems-hint">Детализация ниже</div>' : '<div class="holdback-subitems-hint">Подпунктов пока нет</div>'}
       </td>
       ${renderHoldbackSectionRightCells(section.index, section.row, sectionComputed)}
       <td class="actions-cell">${renderHoldbackRowActions(section.index, 'section')}</td>
