@@ -202,14 +202,23 @@ def build_xml(data: dict) -> ET._ElementTree:
              НомерДок=common.get('contractNumber') or 'без номера',
              ДатаДок=fmt_date(common.get('contractDate')))
 
-    estimate_id = act.find('ИдСмет/ТипИдДок')
-    if estimate_id is not None:
-        set_attr(
-            estimate_id,
-            НаимДок='Смета',
-            НомерДок=manual.get('estimateVersionCode') or '1',
-            ДатаДок=fmt_date(manual.get('supplementDocDate') or first_doc.get('date') or common.get('contractDate')),
-        )
+    estimate_container = act.find('ИдСмет')
+    estimate = act.find('ИзмСмет')
+    if estimate_container is None:
+        estimate_container = ET.Element('ИдСмет')
+        if estimate is not None:
+            act.insert(list(act).index(estimate), estimate_container)
+        else:
+            act.append(estimate_container)
+    estimate_id = estimate_container.find('ТипИдДок')
+    if estimate_id is None:
+        estimate_id = ET.SubElement(estimate_container, 'ТипИдДок')
+    set_attr(
+        estimate_id,
+        НаимДок='Смета',
+        НомерДок=manual.get('estimateVersionCode') or '1',
+        ДатаДок=fmt_date(manual.get('supplementDocDate') or first_doc.get('date') or common.get('contractDate')),
+    )
 
     correction = act.find('ИспрАктСдПр')
     set_attr(correction,
