@@ -149,20 +149,22 @@ def build_xml(data: dict) -> ET._ElementTree:
     set_attr(currency, КодОКВ='643')
 
     info_block = act.find('ИнфПолФХЖ1')
-    if info_block is not None and not list(info_block):
-        ET.SubElement(info_block, 'ТекстИнф', Идентиф='customField', Значение='generated')
+    clear_children(info_block)
+    ET.SubElement(info_block, 'ТекстИнф', Идентиф='customField', Значение='generated')
 
     works = doc.find('НаимИСт')
     clear_children(works)
 
+    traceable_goods = xml.get('traceableGoods', [])
     row_no = 1
     for sheet in ks2_sheets:
         rows = sheet.get('items', [])
         for item in rows:
+            amount = float(item.get('amount') or 0)
             attrs = {
                 'НаимТов': item.get('name') or f'Работа {row_no}',
                 'ЦенаТов': fmt_money(item.get('price')),
-                'СтТовБезНДС': fmt_money(item.get('amount')),
+                'СтТовБезНДС': fmt_money(amount),
                 'НомСтр': str(row_no),
                 'НомПоз': item.get('lineNo') or str(row_no),
                 'ТипЗатр': '1',
@@ -176,8 +178,18 @@ def build_xml(data: dict) -> ET._ElementTree:
             ET.SubElement(err, 'УвелКол').text = '1'
             tax = ET.SubElement(work_el, 'СумНал')
             vat_rate = float(sheet.get('document', {}).get('vatRate') or 20)
-            vat_amount = max(round(float(item.get('amount') or 0) * vat_rate / 100, 2), 0)
+            vat_amount = max(round(amount * vat_rate / 100, 2), 0)
             ET.SubElement(tax, 'СумНал').text = fmt_money(vat_amount)
+            if row_no == 1 and traceable_goods:
+                tg = traceable_goods[0]
+                ET.SubElement(
+                    work_el,
+                    'СвПрослежСтройка',
+                    НомТовПрослеж=tg.get('registrationNumber') or '123456789012345678901234567',
+                    ЕдИзмПрослеж=tg.get('unitCode') or '796',
+                    НаимЕдИзмПрослеж=tg.get('unitName') or 'шт',
+                    КолВЕдПрослеж=fmt_money(tg.get('quantity') or 1).rstrip('0').rstrip('.') or '1',
+                )
             row_no += 1
 
     for idx, section in enumerate(sections, start=1):
@@ -207,9 +219,10 @@ def build_xml(data: dict) -> ET._ElementTree:
              СумУдержВсегоОтч=fmt_money(settlement.get('totalRetention')),
              СумТребВсегоОтч=fmt_money(settlement.get('totalClaims')),
              ВсегоКОплатОтч=fmt_money(holdbacks.get('totals', {}).get('payableAmount') or ks3_totals.get('forPeriod')))
-    settlement_rows = settlement.get('settlementRows', []) or [{'amount': 0, 'kindCode': '31'}]
+    settlement_rows = settlement.get('settlementRows', []) or [{'amount': 1, 'kindCode': '31'}]
     for row in settlement_rows:
-        item = ET.SubElement(settlement_el, 'УчетТребУдерж', СумТребУдерж=fmt_money(row.get('amount')))
+        amount = max(float(row.get('amount') or 0), 0)
+        item = ET.SubElement(settlement_el, 'УчетТребУдерж', СумТребУдерж=fmt_money(amount if amount > 0 else 1))
         if row.get('kindCode', '').startswith('3'):
             child = ET.SubElement(item, 'ВидУдерж')
             child.text = str(row.get('kindCode'))

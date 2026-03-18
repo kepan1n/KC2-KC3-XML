@@ -1636,19 +1636,24 @@ function buildXmlExportString(model) {
   const manual = model.xml.manual;
   const generated = model.xml.generated;
   const constants = model.xml.constants;
+  const traceableGoods = model.xml.traceableGoods || [];
   const settlement = model.xml.settlement || { totalRetention: 0, totalClaims: 0, settlementRows: [] };
   const firstSheet = model.ks2Sheets[0] || { document: {}, items: [] };
   const signer = splitSignerName(common.contractorSigner || common.contractorResponsible || 'Иванов Иван');
   const signerAttr = signer.patronymic ? ` Отчество="${xmlEscape(signer.patronymic)}"` : '';
+  let globalRowNo = 1;
   const worksXml = model.ks2Sheets.flatMap((sheet, sheetIndex) => (
     (sheet.items || []).map((item, itemIndex) => {
       const amount = numberOrZero(item.amount);
       const vat = Math.max(round2(amount * 0.2), 0);
-      return `      <ВидРаб НаимТов="${xmlEscape(item.name || `Работа ${sheetIndex + 1}.${itemIndex + 1}`)}" ЦенаТов="${formatMoney(numberOrZero(item.price))}" СтТовБезНДС="${formatMoney(amount)}" НомСтр="${itemIndex + 1}" НомПоз="${xmlEscape(item.lineNo || String(itemIndex + 1))}" ТипЗатр="1" ОКЕИ_Стройка="796" НаимЕдИзм="${xmlEscape(item.unit || 'шт')}">\n        <УчОшИНовОбстСт>\n          <ОшибПрПер>\n            <УвелДен>1</УвелДен>\n            <УвелКол>1</УвелКол>\n          </ОшибПрПер>\n        </УчОшИНовОбстСт>\n        <СумНал>\n          <СумНал>${formatMoney(vat)}</СумНал>\n        </СумНал>\n      </ВидРаб>`;
+      const traceXml = globalRowNo === 1 && traceableGoods.length ? `\n        <СвПрослежСтройка НомТовПрослеж="${xmlEscape(traceableGoods[0].registrationNumber || '123456789012345678901234567')}" ЕдИзмПрослеж="${xmlEscape(traceableGoods[0].unitCode || '796')}" НаимЕдИзмПрослеж="${xmlEscape(traceableGoods[0].unitName || 'шт')}" КолВЕдПрослеж="${xmlEscape(String(numberOrZero(traceableGoods[0].quantity) || 1))}"/>` : '';
+      const xml = `      <ВидРаб НаимТов="${xmlEscape(item.name || `Работа ${sheetIndex + 1}.${itemIndex + 1}`)}" ЦенаТов="${formatMoney(numberOrZero(item.price))}" СтТовБезНДС="${formatMoney(amount)}" НомСтр="${globalRowNo}" НомПоз="${xmlEscape(item.lineNo || String(globalRowNo))}" ТипЗатр="1" ОКЕИ_Стройка="796" НаимЕдИзм="${xmlEscape(item.unit || 'шт')}">\n        <УчОшИНовОбстСт>\n          <ОшибПрПер>\n            <УвелДен>1</УвелДен>\n            <УвелКол>1</УвелКол>\n          </ОшибПрПер>\n        </УчОшИНовОбстСт>\n        <СумНал>\n          <СумНал>${formatMoney(vat)}</СумНал>\n        </СумНал>${traceXml}\n      </ВидРаб>`;
+      globalRowNo += 1;
+      return xml;
     })
   )).join('\n');
   const sectionsXml = (model.holdbacks.sections || []).map((section, idx) => `      <Раздел НаимРаздел="${xmlEscape(section.name || `Раздел №${idx + 1}`)}" СтБезНДСРаздОтч="${formatMoney(numberOrZero(section.ks2Amount))}">\n${(section.subitems || []).map((sub, subIdx) => `        <СвВидРаб НаимТов="${xmlEscape(sub.advanceDoc || `Подпункт ${idx + 1}.${subIdx + 1}`)}" ЦенаТов="${formatMoney(numberOrZero(sub.advanceReceived))}" СтТовБезНДС="${formatMoney(numberOrZero(sub.closingAmount))}"/>`).join('\n') || `        <СвВидРаб НаимТов="${xmlEscape(section.name || `Раздел №${idx + 1}`)}" ЦенаТов="${formatMoney(numberOrZero(section.ks2Amount))}" СтТовБезНДС="${formatMoney(numberOrZero(section.ks2Amount))}"/>`}\n      </Раздел>`).join('\n');
-  const settlementRowsXml = (settlement.settlementRows?.length ? settlement.settlementRows : [{ amount: 0, kindCode: '31' }]).map((row) => `      <УчетТребУдерж СумТребУдерж="${formatMoney(numberOrZero(row.amount))}">\n        <ВидУдерж>${xmlEscape(row.kindCode || '31')}</ВидУдерж>\n      </УчетТребУдерж>`).join('\n');
+  const settlementRowsXml = (settlement.settlementRows?.length ? settlement.settlementRows : [{ amount: 1, kindCode: '31' }]).map((row) => `      <УчетТребУдерж СумТребУдерж="${formatMoney(Math.max(numberOrZero(row.amount), 1))}">\n        <ВидУдерж>${xmlEscape(row.kindCode || '31')}</ВидУдерж>\n      </УчетТребУдерж>`).join('\n');
 
   return `<?xml version="1.0" encoding="windows-1251"?>
 <Файл ИдФайл="${xmlEscape(generated.fileId)}" ВерсПрог="${xmlEscape(generated.programVersion)}" ВерсФорм="${xmlEscape(generated.formatVersion)}">
