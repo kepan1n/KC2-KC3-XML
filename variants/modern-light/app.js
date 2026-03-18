@@ -8,6 +8,8 @@ const refs = {
   flash: document.getElementById('flash'),
   loadSample: document.getElementById('load-sample'),
   saveLocal: document.getElementById('save-local'),
+  saveServer: document.getElementById('save-server'),
+  loadServer: document.getElementById('load-server'),
   exportJson: document.getElementById('export-json'),
   exportXml: document.getElementById('export-xml'),
   addSheet: document.getElementById('add-ks2-sheet'),
@@ -55,6 +57,59 @@ function bindGlobalEvents() {
   refs.saveLocal.addEventListener('click', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(app.state));
     flash('Форма сохранена в localStorage браузера.');
+  });
+
+  refs.saveServer?.addEventListener('click', async () => {
+    const name = window.prompt('Имя сохранения на сервере:', app.state?.meta?.serverSaveName || `form-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}`);
+    if (!name) return;
+    try {
+      const response = await fetch('/api/forms/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, state: app.state }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || `Ошибка ${response.status}`);
+      app.state.meta ||= {};
+      app.state.meta.serverSaveName = data.name;
+      flash(`Форма сохранена на сервере: ${data.name}`);
+    } catch (error) {
+      flash(`Не удалось сохранить на сервер: ${error.message}`);
+    }
+  });
+
+  refs.loadServer?.addEventListener('click', async () => {
+    try {
+      const listResponse = await fetch('/api/forms/list');
+      const listData = await listResponse.json();
+      if (!listResponse.ok || !listData.ok) throw new Error(listData.error || `Ошибка ${listResponse.status}`);
+      if (!Array.isArray(listData.items) || !listData.items.length) {
+        flash('На сервере пока нет сохранённых форм.');
+        return;
+      }
+      const options = listData.items.map((item, index) => `${index + 1}. ${item.name}`).join('\n');
+      const answer = window.prompt(`Выбери форму для загрузки:\n${options}\n\nВведи номер или имя:`);
+      if (!answer) return;
+      let target = listData.items.find((item) => item.name === answer.trim());
+      if (!target) {
+        const index = Number(answer) - 1;
+        if (Number.isInteger(index) && index >= 0 && index < listData.items.length) target = listData.items[index];
+      }
+      if (!target) {
+        flash('Не удалось определить сохранённую форму.');
+        return;
+      }
+      const loadResponse = await fetch(`/api/forms/load/${encodeURIComponent(target.name)}`);
+      const loadData = await loadResponse.json();
+      if (!loadResponse.ok || !loadData.ok) throw new Error(loadData.error || `Ошибка ${loadResponse.status}`);
+      app.state = prepareState(loadData.state);
+      app.state.meta ||= {};
+      app.state.meta.serverSaveName = target.name;
+      render();
+      flash(`Загружена форма: ${target.name}`);
+    } catch (error) {
+      flash(`Не удалось загрузить с сервера: ${error.message}`);
+    }
   });
 
   refs.exportJson.addEventListener('click', () => {
