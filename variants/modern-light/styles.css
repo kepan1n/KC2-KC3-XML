@@ -822,7 +822,8 @@ body[data-sidebar="closed"] .sidebar {
 .subitem-money-cell,
 .subitem-doc-cell,
 .subitem-result-cell,
-.holdback-subitem-right {
+.holdback-subitem-right,
+.subitem-comment-cell {
   background: #fcfdff;
 }
 
@@ -834,7 +835,8 @@ body[data-sidebar="closed"] .sidebar {
 .subitem-money-cell,
 .subitem-doc-cell,
 .subitem-result-cell,
-.holdback-subitem-right {
+.holdback-subitem-right,
+.subitem-comment-cell {
   border-top: 0;
 }
 
@@ -847,6 +849,10 @@ body[data-sidebar="closed"] .sidebar {
 .holdback-subitem-right {
   color: #667085;
   font-size: 11px;
+}
+
+.subitem-comment-cell textarea {
+  min-height: 28px;
 }
 
 .holdback-subitem-caption {

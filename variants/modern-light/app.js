@@ -1873,7 +1873,10 @@ function renderHoldbackGroup(group) {
         <td class="subitem-money-cell"><input data-path="holdbacks.rows.${entry.index}.previousBalance" data-value-type="number" value="${formatEditableNumber(entry.row.previousBalance)}" /></td>
         <td class="subitem-money-cell"><input data-path="holdbacks.rows.${entry.index}.closingAmount" data-value-type="number" value="${formatEditableNumber(entry.row.closingAmount)}" /></td>
         <td class="subitem-result-cell">${formatMoney(subComputed.nextBalance)}</td>
-        <td class="holdback-subitem-right" colspan="4">${subIndex === 0 ? '<span class="holdback-subitem-caption">Подпункты / документы по разделу</span>' : ''}</td>
+        <td class="holdback-subitem-right">${subIndex === 0 ? '<span class="holdback-subitem-caption">Подпункты / документы по разделу</span>' : ''}</td>
+        <td class="holdback-subitem-right"></td>
+        <td class="holdback-subitem-right"></td>
+        <td class="subitem-comment-cell"><textarea data-path="holdbacks.rows.${entry.index}.comment" placeholder="Комментарий подпункта">${escapeHtml(entry.row.comment)}</textarea></td>
         <td class="actions-cell">${renderHoldbackRowActions(entry.index, 'subitem')}</td>
       </tr>
     `;
