@@ -611,6 +611,7 @@ function buildDocumentModel() {
     return acc;
   }, { fromStart: 0, fromYearStart: 0, forPeriod: 0, vat: 0 });
 
+  const holdbackGroups = buildHoldbackGroups();
   const holdbacksRows = app.state.holdbacks.rows.map((row, rowIndex) => {
     const computed = computeHoldbackRow(row);
     return {
@@ -620,17 +621,34 @@ function buildDocumentModel() {
     };
   });
 
-  const holdbacksTotals = holdbacksRows.reduce((acc, row) => {
+  const holdbackSections = holdbackGroups.map((group, sectionIndex) => {
+    const computed = computeHoldbackSectionComputed(group);
+    return {
+      sectionIndex,
+      rowIndex: group.section.index,
+      ...clone(group.section.row),
+      ...computed,
+      subitems: group.subitems.map((item) => ({
+        rowIndex: item.index,
+        ...clone(item.row),
+        ...computeHoldbackRow(item.row),
+      })),
+    };
+  });
+
+  const holdbacksTotals = holdbackSections.reduce((acc, row) => {
     acc.ks2Amount += numberOrZero(row.ks2Amount);
     acc.materialsUsed += numberOrZero(row.materialsUsed);
     acc.advanceReceived += numberOrZero(row.advanceReceived);
-    acc.previousBalance += numberOrZero(row.previousBalance == null ? row.advanceReceived : row.previousBalance);
+    acc.previousBalance += numberOrZero(row.previousBalance);
     acc.closingAmount += numberOrZero(row.closingAmount);
     acc.nextBalance += numberOrZero(row.nextBalance);
     acc.retentionAmount += numberOrZero(row.retentionAmount);
     acc.payableAmount += numberOrZero(row.payableAmount);
     return acc;
   }, { ks2Amount: 0, materialsUsed: 0, advanceReceived: 0, previousBalance: 0, closingAmount: 0, nextBalance: 0, retentionAmount: 0, payableAmount: 0 });
+
+  const holdbacksXml = buildHoldbacksXmlSettlementModel();
 
   return {
     generatedAt: new Date().toISOString(),
@@ -643,6 +661,7 @@ function buildDocumentModel() {
     },
     holdbacks: {
       rows: holdbacksRows,
+      sections: holdbackSections,
       totals: holdbacksTotals,
     },
     xml: {
@@ -650,6 +669,7 @@ function buildDocumentModel() {
       constants: clone(app.state.xmlExtras.constants),
       manual: clone(app.state.xmlExtras.manual),
       traceableGoods: clone(app.state.xmlExtras.traceableGoods),
+      settlement: holdbacksXml,
     },
   };
 }
