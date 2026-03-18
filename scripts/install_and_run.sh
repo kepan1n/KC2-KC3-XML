@@ -24,9 +24,18 @@ if ! python -m pip install -r "$ROOT/requirements.txt"; then
   python -m pip install --no-binary lxml 'lxml>=6,<7'
 fi
 
+if command -v ufw >/dev/null 2>&1; then
+  if command -v sudo >/dev/null 2>&1; then
+    sudo ufw allow "${PORT}/tcp" || true
+  else
+    ufw allow "${PORT}/tcp" || true
+  fi
+fi
+
 echo
 echo "KC2-KC3-XML is starting..."
-echo "URL: http://127.0.0.1:${PORT}/variants/modern-light/"
+echo "Local URL:   http://127.0.0.1:${PORT}/variants/modern-light/"
+echo "Network URL: http://<this-host-ip>:${PORT}/variants/modern-light/"
 echo
 
 exec python "$ROOT/scripts/run_local_server.py" "$PORT"

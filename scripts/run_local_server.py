@@ -130,8 +130,9 @@ class AppHandler(SimpleHTTPRequestHandler):
 
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 4173
-    server = ThreadingHTTPServer(('127.0.0.1', port), AppHandler)
-    print(f'Serving KC2-KC3-XML on http://127.0.0.1:{port}')
+    server = ThreadingHTTPServer(('0.0.0.0', port), AppHandler)
+    print(f'Serving KC2-KC3-XML on http://0.0.0.0:{port}')
+    print(f'Open locally: http://127.0.0.1:{port}/variants/modern-light/')
     print('API: POST /api/export-xml -> validate against XSD and return XML only if valid')
     try:
         server.serve_forever()
