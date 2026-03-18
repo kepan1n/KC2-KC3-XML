@@ -765,12 +765,12 @@ body[data-sidebar="closed"] .sidebar {
 }
 
 .holdback-section-title textarea {
-  min-height: 78px;
+  min-height: 52px;
   font-weight: 700;
 }
 
 .holdback-comment-cell textarea {
-  min-height: 78px;
+  min-height: 52px;
 }
 
 .holdback-result-cell {
@@ -783,10 +783,48 @@ body[data-sidebar="closed"] .sidebar {
   text-align: center;
 }
 
+.holdback-subitems-slot {
+  background: #fafbfd;
+  border-left: 1px dashed #d6dbe6;
+  border-right: 1px dashed #d6dbe6;
+}
+
+.holdback-subitems-hint {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.holdback-inline-add {
+  width: 100%;
+  min-height: 36px;
+  border: 1px dashed #c8d2e1;
+  background: #f8fbff;
+  color: #245bdb;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.holdback-subitem-indent,
+.subitem-money-cell,
+.subitem-doc-cell,
+.subitem-result-cell,
+.holdback-subitem-right {
+  background: #fbfcfe;
+}
+
+.holdback-subitem-indent {
+  border-top: 0;
+}
+
 .subitem-money-cell,
 .subitem-doc-cell,
 .subitem-result-cell {
-  background: #fbfcfe;
+  border-top: 0;
 }
 
 .subitem-result-cell {
@@ -795,13 +833,15 @@ body[data-sidebar="closed"] .sidebar {
   font-weight: 700;
 }
 
-.subitem-placeholder {
-  min-height: 34px;
-  display: flex;
-  align-items: center;
-  padding: 0 10px;
+.holdback-subitem-right {
   color: var(--muted);
-  font-style: italic;
+  font-size: 12px;
+  border-top: 0;
+}
+
+.holdback-subitem-caption {
+  display: inline-block;
+  padding-left: 8px;
 }
 
 .mini-readonly {

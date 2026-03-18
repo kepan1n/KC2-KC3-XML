@@ -1599,41 +1599,53 @@ function buildHoldbackGroups() {
 function renderHoldbackGroup(group) {
   const { section, subitems } = group;
   const sectionComputed = computeHoldbackSectionComputed(group);
-  const bodyRows = subitems.length ? subitems : [{ row: createBlankHoldbackRow('subitem'), index: null, ghost: true }];
-  const rowspan = bodyRows.length;
 
-  return bodyRows.map((entry, rowOffset) => {
-    const isGhost = Boolean(entry.ghost);
-    const subComputed = isGhost ? { nextBalance: 0 } : computeHoldbackRow(entry.row);
+  const sectionRow = `
+    <tr class="holdback-section-row">
+      ${renderHoldbackSectionCells(section.index, section.row, sectionComputed)}
+      <td class="holdback-subitems-slot" colspan="5">
+        ${subitems.length ? '<div class="holdback-subitems-hint">Детализация ниже</div>' : '<button class="holdback-inline-add" data-action="insert-holdback-subitem" data-hold-index="' + section.index + '">+ Добавить подпункт внутри раздела</button>'}
+      </td>
+      ${renderHoldbackSectionRightCells(section.index, section.row, sectionComputed)}
+      <td class="actions-cell">${renderHoldbackRowActions(section.index, 'section')}</td>
+    </tr>
+  `;
+
+  const subitemRows = subitems.map((entry, subIndex) => {
+    const subComputed = computeHoldbackRow(entry.row);
     return `
-      <tr class="${isGhost ? 'holdback-subitem-row holdback-subitem-placeholder' : 'holdback-subitem-row'}">
-        ${rowOffset === 0 ? renderHoldbackSectionCells(section.index, section.row, sectionComputed, rowspan) : ''}
-        <td class="subitem-money-cell">${isGhost ? '<div class="subitem-placeholder">Добавьте подпункт внутри раздела</div>' : `<input data-path="holdbacks.rows.${entry.index}.advanceReceived" data-value-type="number" value="${formatEditableNumber(entry.row.advanceReceived)}" />`}</td>
-        <td class="subitem-doc-cell">${isGhost ? '<div class="readonly mini-readonly"></div>' : `<input data-path="holdbacks.rows.${entry.index}.advanceDoc" value="${escapeAttr(entry.row.advanceDoc)}" placeholder="№, дата документа" />`}</td>
-        <td class="subitem-money-cell">${isGhost ? '<div class="readonly mini-readonly"></div>' : `<input data-path="holdbacks.rows.${entry.index}.previousBalance" data-value-type="number" value="${formatEditableNumber(entry.row.previousBalance)}" />`}</td>
-        <td class="subitem-money-cell">${isGhost ? '<div class="readonly mini-readonly"></div>' : `<input data-path="holdbacks.rows.${entry.index}.closingAmount" data-value-type="number" value="${formatEditableNumber(entry.row.closingAmount)}" />`}</td>
-        <td class="subitem-result-cell">${isGhost ? '<div class="readonly mini-readonly"></div>' : formatMoney(subComputed.nextBalance)}</td>
-        ${rowOffset === 0 ? renderHoldbackSectionRightCells(section.index, section.row, sectionComputed, rowspan) : ''}
-        <td class="actions-cell">${isGhost ? renderHoldbackRowActions(section.index, 'section') : renderHoldbackRowActions(entry.index, 'subitem')}</td>
+      <tr class="holdback-subitem-row">
+        <td class="holdback-subitem-indent"></td>
+        <td class="holdback-subitem-indent"></td>
+        <td class="holdback-subitem-indent"></td>
+        <td class="subitem-money-cell"><input data-path="holdbacks.rows.${entry.index}.advanceReceived" data-value-type="number" value="${formatEditableNumber(entry.row.advanceReceived)}" /></td>
+        <td class="subitem-doc-cell"><input data-path="holdbacks.rows.${entry.index}.advanceDoc" value="${escapeAttr(entry.row.advanceDoc)}" placeholder="№, дата документа" /></td>
+        <td class="subitem-money-cell"><input data-path="holdbacks.rows.${entry.index}.previousBalance" data-value-type="number" value="${formatEditableNumber(entry.row.previousBalance)}" /></td>
+        <td class="subitem-money-cell"><input data-path="holdbacks.rows.${entry.index}.closingAmount" data-value-type="number" value="${formatEditableNumber(entry.row.closingAmount)}" /></td>
+        <td class="subitem-result-cell">${formatMoney(subComputed.nextBalance)}</td>
+        <td class="holdback-subitem-right" colspan="4">${subIndex === 0 ? '<span class="holdback-subitem-caption">Подпункты / документы по разделу</span>' : ''}</td>
+        <td class="actions-cell">${renderHoldbackRowActions(entry.index, 'subitem')}</td>
       </tr>
     `;
   }).join('');
+
+  return sectionRow + subitemRows;
 }
 
-function renderHoldbackSectionCells(rowIndex, row, computed, rowspan) {
+function renderHoldbackSectionCells(rowIndex, row, computed) {
   return `
-    <td class="holdback-section-cell holdback-section-title" rowspan="${rowspan}"><textarea data-path="holdbacks.rows.${rowIndex}.name" placeholder="Наименование раздела / акта">${escapeHtml(row.name)}</textarea></td>
-    <td class="holdback-section-cell" rowspan="${rowspan}"><input data-path="holdbacks.rows.${rowIndex}.ks2Amount" data-value-type="number" value="${formatEditableNumber(row.ks2Amount)}" /></td>
-    <td class="holdback-section-cell" rowspan="${rowspan}"><input data-path="holdbacks.rows.${rowIndex}.materialsUsed" data-value-type="number" value="${formatEditableNumber(row.materialsUsed)}" /></td>
+    <td class="holdback-section-cell holdback-section-title"><textarea data-path="holdbacks.rows.${rowIndex}.name" placeholder="Наименование раздела / акта">${escapeHtml(row.name)}</textarea></td>
+    <td class="holdback-section-cell"><input data-path="holdbacks.rows.${rowIndex}.ks2Amount" data-value-type="number" value="${formatEditableNumber(row.ks2Amount)}" /></td>
+    <td class="holdback-section-cell"><input data-path="holdbacks.rows.${rowIndex}.materialsUsed" data-value-type="number" value="${formatEditableNumber(row.materialsUsed)}" /></td>
   `;
 }
 
-function renderHoldbackSectionRightCells(rowIndex, row, computed, rowspan) {
+function renderHoldbackSectionRightCells(rowIndex, row, computed) {
   return `
-    <td class="holdback-section-cell holdback-percent-cell" rowspan="${rowspan}"><input data-path="holdbacks.rows.${rowIndex}.retentionRate" data-value-type="number" value="${formatEditableNumber(row.retentionRate)}" /></td>
-    <td class="holdback-section-cell holdback-result-cell" rowspan="${rowspan}">${formatMoney(computed.retentionAmount)}</td>
-    <td class="holdback-section-cell holdback-result-cell" rowspan="${rowspan}">${formatMoney(computed.payableAmount)}</td>
-    <td class="holdback-section-cell holdback-comment-cell" rowspan="${rowspan}"><textarea data-path="holdbacks.rows.${rowIndex}.comment" placeholder="Комментарий по разделу">${escapeHtml(row.comment)}</textarea></td>
+    <td class="holdback-section-cell holdback-percent-cell"><input data-path="holdbacks.rows.${rowIndex}.retentionRate" data-value-type="number" value="${formatEditableNumber(row.retentionRate)}" /></td>
+    <td class="holdback-section-cell holdback-result-cell">${formatMoney(computed.retentionAmount)}</td>
+    <td class="holdback-section-cell holdback-result-cell">${formatMoney(computed.payableAmount)}</td>
+    <td class="holdback-section-cell holdback-comment-cell"><textarea data-path="holdbacks.rows.${rowIndex}.comment" placeholder="Комментарий по разделу">${escapeHtml(row.comment)}</textarea></td>
   `;
 }
 
