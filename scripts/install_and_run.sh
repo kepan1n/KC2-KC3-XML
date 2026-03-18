@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(realpath "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)")"
 VENV="$ROOT/.venv"
 PORT="${1:-4173}"
 
@@ -16,7 +16,13 @@ fi
 
 source "$VENV/bin/activate"
 python -m pip install --upgrade pip setuptools wheel >/dev/null
-python -m pip install -r "$ROOT/requirements.txt"
+
+if ! python -m pip install -r "$ROOT/requirements.txt"; then
+  echo
+  echo "Primary pip install failed. Retrying lxml from source..."
+  python -m pip install 'openpyxl>=3.1,<4'
+  python -m pip install --no-binary lxml 'lxml>=6,<7'
+fi
 
 echo
 echo "KC2-KC3-XML is starting..."
