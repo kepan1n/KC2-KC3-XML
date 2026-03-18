@@ -315,6 +315,8 @@ def build_xml(data: dict) -> ET._ElementTree:
                 'НомСтр': str(entry['rowNo']),
                 'НомРазд': str(entry['sectionNo']),
                 'НаимРаздел': entry['name'],
+                'СтБезНДСРаздСмет': fmt_money(section_amount),
+                'СтСНДСРаздСмет': fmt_money(section_amount + section_vat),
                 'СтБезНДСРаздОтч': fmt_money(section_amount),
                 'СтСНДСРаздОтч': fmt_money(section_amount + section_vat),
             }
