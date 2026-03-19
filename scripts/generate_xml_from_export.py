@@ -209,6 +209,22 @@ def build_operation_text(common: dict):
     )
 
 
+def add_info_pairs(parent: ET._Element, pairs: list[tuple[str, str | None]]):
+    normalized = []
+    for key, value in pairs:
+        prepared = first_non_empty(value)
+        if prepared is None:
+            continue
+        normalized.append((str(key), str(prepared)))
+    if not normalized:
+        return None
+
+    info = ET.SubElement(parent, 'ИнфПолФХЖ2')
+    for key, value in normalized:
+        ET.SubElement(info, 'ТекстИнф', Идентиф=key[:255], Значение=value[:1000])
+    return info
+
+
 def build_xml(data: dict) -> ET._ElementTree:
     validation_errors = validate_export_payload(data)
     if validation_errors:
@@ -384,13 +400,13 @@ def build_xml(data: dict) -> ET._ElementTree:
         doc.insert(works_insert_index, works)
 
         all_items = []
-        for sheet in ks2_sheets:
+        for sheet_index, sheet in enumerate(ks2_sheets):
             for item in sheet.get('items', []):
-                all_items.append((sheet, item))
+                all_items.append((sheet_index, sheet, item))
 
         export_items = all_items[:1] if all_items else []
         row_no = 1
-        for sheet, item in export_items:
+        for sheet_index, sheet, item in export_items:
             amount = float(item.get('amount') or 0)
             attrs = {
                 'НаимТов': item.get('name') or f'Работа {row_no}',
@@ -403,6 +419,7 @@ def build_xml(data: dict) -> ET._ElementTree:
                 'НаимЕдИзм': item.get('unit') or 'шт',
             }
             work_el = ET.SubElement(works, 'ВидРаб', **attrs)
+            sheet_doc = sheet.get('document', {})
             changes = ET.SubElement(work_el, 'УчОшИНовОбстСт')
             err = ET.SubElement(changes, 'ОшибПрПер')
             ET.SubElement(err, 'УвелДен').text = '1'
@@ -419,6 +436,15 @@ def build_xml(data: dict) -> ET._ElementTree:
                 НаимЕдИзмПрослеж=tg.get('unitName') or 'шт',
                 КолВЕдПрослеж=fmt_money(tg.get('quantity') or 1).rstrip('0').rstrip('.') or '1',
             )
+            add_info_pairs(work_el, [
+                ('ks2.sheetIndex', str(sheet_index + 1)),
+                ('ks2.sheetTitle', sheet.get('title')),
+                ('ks2.documentNumber', first_non_empty(sheet_doc.get('number'), sheet.get('documentNumber'))),
+                ('ks2.documentDate', fmt_date(first_non_empty(sheet_doc.get('date'), sheet.get('documentDate'))) if first_non_empty(sheet_doc.get('date'), sheet.get('documentDate')) else None),
+                ('ks2.periodFrom', fmt_date(first_non_empty(sheet_doc.get('periodFrom'), sheet.get('periodFrom'))) if first_non_empty(sheet_doc.get('periodFrom'), sheet.get('periodFrom')) else None),
+                ('ks2.periodTo', fmt_date(first_non_empty(sheet_doc.get('periodTo'), sheet.get('periodTo'))) if first_non_empty(sheet_doc.get('periodTo'), sheet.get('periodTo')) else None),
+                ('ks2.basis', first_non_empty(sheet_doc.get('basis'), sheet.get('basis'))),
+            ])
             row_no += 1
 
         export_sections = sections[:1] if sections else []
@@ -461,6 +487,7 @@ def build_xml(data: dict) -> ET._ElementTree:
 
             sheet_doc = sheet.get('document', {})
             vat_rate_default = float(sheet_doc.get('vatRate') or first_doc.get('vatRate') or 20)
+            sheet_metadata_attached = False
             for entry in sheet_sections:
                 items = entry['items']
                 if not items:
@@ -519,6 +546,18 @@ def build_xml(data: dict) -> ET._ElementTree:
                             КолВЕдПрослеж=fmt_money(tg.get('quantity') or 1).rstrip('0').rstrip('.') or '1',
                         )
                         trace_attached = True
+                    if not sheet_metadata_attached:
+                        add_info_pairs(work_el, [
+                            ('ks2.sheetIndex', str(sheet_index + 1)),
+                            ('ks2.sheetTitle', sheet.get('title')),
+                            ('ks2.documentNumber', first_non_empty(sheet_doc.get('number'), sheet.get('documentNumber'))),
+                            ('ks2.documentDate', fmt_date(first_non_empty(sheet_doc.get('date'), sheet.get('documentDate'))) if first_non_empty(sheet_doc.get('date'), sheet.get('documentDate')) else None),
+                            ('ks2.periodFrom', fmt_date(first_non_empty(sheet_doc.get('periodFrom'), sheet.get('periodFrom'))) if first_non_empty(sheet_doc.get('periodFrom'), sheet.get('periodFrom')) else None),
+                            ('ks2.periodTo', fmt_date(first_non_empty(sheet_doc.get('periodTo'), sheet.get('periodTo'))) if first_non_empty(sheet_doc.get('periodTo'), sheet.get('periodTo')) else None),
+                            ('ks2.basis', first_non_empty(sheet_doc.get('basis'), sheet.get('basis'))),
+                            ('ks2.vatRate', str(first_non_empty(sheet_doc.get('vatRate'), first_doc.get('vatRate')))),
+                        ])
+                        sheet_metadata_attached = True
 
     transfer = doc.find('СвПродПер')
     clear_children(transfer)
