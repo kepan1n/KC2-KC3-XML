@@ -53,16 +53,34 @@ def fmt_date(value: str | None) -> str:
     return value[:10]
 
 
+def _initials_from_token(token: str) -> list[str]:
+    value = (token or '').strip()
+    if not value or '.' not in value:
+        return []
+    return [part for part in value.replace(' ', '').split('.') if part]
+
+
 def split_fio(text: str | None):
     parts = [p for p in (text or '').replace(',', ' ').split() if p]
     if not parts:
         return 'Иванов', 'Иван', None
     if len(parts) == 1:
         return parts[0], 'Иван', None
-    if len(parts) == 2 and parts[0].endswith('.'):
-        return parts[0].rstrip('.'), parts[1], None
+
     if len(parts) == 2:
+        first_initials = _initials_from_token(parts[0])
+        second_initials = _initials_from_token(parts[1])
+        if first_initials and not second_initials:
+            return parts[1], first_initials[0], first_initials[1] if len(first_initials) > 1 else None
+        if second_initials and not first_initials:
+            return parts[0], second_initials[0], second_initials[1] if len(second_initials) > 1 else None
         return parts[0], parts[1], None
+
+    if len(parts) == 3 and parts[0].endswith('.') and parts[1].endswith('.'):
+        return parts[2], parts[0].rstrip('.'), parts[1].rstrip('.')
+    if len(parts) == 3 and parts[1].endswith('.') and parts[2].endswith('.'):
+        return parts[0], parts[1].rstrip('.'), parts[2].rstrip('.')
+
     return parts[0], parts[1], ' '.join(parts[2:])
 
 
@@ -199,6 +217,56 @@ def build_customer_signers(common: dict, manual: dict) -> list[dict]:
             'storageId': storage_id,
         })
     return enriched
+
+
+def add_signer_authority(signer_parent: ET._Element, signer_data: dict, manual: dict):
+    status = str(signer_data.get('status') or '')
+
+    if status == '2':
+        attrs = {}
+        power_id = first_non_empty(manual.get('customerSignerPowerId'), manual.get('customerSignerPowerNumber'))
+        power_date = first_non_empty(manual.get('customerSignerPowerDate'), manual.get('customerAuthorityDocDate'))
+        internal_number = first_non_empty(manual.get('customerSignerPowerInternalNumber'), manual.get('customerAuthorityDocNumber'))
+        registration_date = first_non_empty(manual.get('customerSignerPowerRegistrationDate'))
+        system_mark = first_non_empty(manual.get('customerSignerPowerSystemMark'))
+
+        if power_id and len(str(power_id)) == 36:
+            attrs['НомДовер'] = str(power_id)
+        if power_date:
+            attrs['ДатаНач'] = fmt_date(power_date)
+        if internal_number:
+            attrs['ВнНомДовер'] = str(internal_number)
+        if registration_date:
+            attrs['ДатаВнРегДовер'] = fmt_date(registration_date)
+        if system_mark:
+            attrs['СведСистОтм'] = str(system_mark)
+
+        if attrs:
+            ET.SubElement(signer_parent, 'СвДовер', **attrs)
+        return
+
+    if status == '3':
+        attrs = {}
+        paper_date = first_non_empty(manual.get('customerSignerPaperPowerDate'), manual.get('customerAuthorityDocDate'))
+        internal_number = first_non_empty(manual.get('customerSignerPaperPowerInternalNumber'), manual.get('customerAuthorityDocNumber'))
+        power_identity = first_non_empty(manual.get('customerSignerPaperPowerIdentity'), manual.get('customerAuthorityDocId'))
+        paper_fio = first_non_empty(manual.get('customerSignerPaperPowerFio'))
+
+        if paper_date:
+            attrs['ДатаНач'] = fmt_date(paper_date)
+        if internal_number:
+            attrs['ВнНомДовер'] = str(internal_number)
+        if power_identity:
+            attrs['СвИдДовер'] = str(power_identity)
+
+        if attrs or paper_fio:
+            paper = ET.SubElement(signer_parent, 'СвДоверБум', **attrs)
+            if paper_fio:
+                family, name, patronymic = split_fio(paper_fio)
+                fio = ET.SubElement(paper, 'ФИО', Фамилия=family, Имя=name)
+                if patronymic:
+                    fio.set('Отчество', patronymic)
+
 
 
 def add_settlement_notice(content: ET._Element, manual: dict):
@@ -439,6 +507,7 @@ def build_customer_xml(data: dict, contractor_xml_path: Path | None = None) -> E
         fio = ET.SubElement(signer_parent, 'ФИО', Фамилия=family, Имя=name)
         if patronymic:
             fio.set('Отчество', patronymic)
+        add_signer_authority(signer_parent, signer_data, manual)
 
     return ET.ElementTree(root)
 
