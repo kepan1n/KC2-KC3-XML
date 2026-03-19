@@ -433,8 +433,8 @@ function prepareState(raw) {
   data.xmlExtras.traceableGoods ??= [];
 
   data.common.okudKs3 = data.common.okudKs3 && data.common.okudKs3 !== 'Форма по ОКУД' ? data.common.okudKs3 : '0322001';
-  data.common.showDocumentHeaders = data.common.showDocumentHeaders ?? true;
-  data.common.showDocumentSignatures = data.common.showDocumentSignatures ?? true;
+  data.common.showDocumentHeaders = data.common.showDocumentHeaders ?? false;
+  data.common.showDocumentSignatures = data.common.showDocumentSignatures ?? false;
   data.common.contractorSignLabel ||= 'Сдал';
   data.common.contractorSignerPosition ||= 'Генеральный директор ООО «ЛегендаЭлит»';
   data.common.contractorSignerName ||= 'А. Дылюк';
@@ -1588,7 +1588,7 @@ function renderXmlPane() {
       </div>
 
       <div class="section-block">
-        <h3>Ручные поля, которых нет в Excel</h3>
+        <h3>Подрядчик / общий XML (P)</h3>
         <div class="form-grid">
           ${renderInput('Наименование экономического субъекта-составителя', 'xmlExtras.manual.economicSubjectName', manual.economicSubjectName, 'string', 'half')}
           ${renderInput('Версия сметы (КодСмет)', 'xmlExtras.manual.estimateVersionCode', manual.estimateVersionCode, 'string', 'quarter')}
@@ -1608,6 +1608,24 @@ function renderXmlPane() {
           ${renderInput('Код региона подрядчика', 'xmlExtras.manual.contractorRegionCode', manual.contractorRegionCode, 'string', 'quarter')}
           ${renderInput('Исправление №', 'xmlExtras.manual.correctionNumber', manual.correctionNumber, 'string', 'quarter')}
           ${renderInput('Дата исправления', 'xmlExtras.manual.correctionDate', manual.correctionDate, 'string', 'quarter')}
+        </div>
+      </div>
+
+      <div class="section-block">
+        <h3>Заказчик / файл Z</h3>
+        <p class="kbd-note">Здесь только дополнительные поля схемы заказчика. Если оставить пустыми, генератор возьмёт данные из общих реквизитов, КС-3 и подписантов формы.</p>
+        <div class="form-grid">
+          ${renderInput('Составитель файла Z', 'xmlExtras.manual.customerEconomicSubjectName', manual.customerEconomicSubjectName || app.state.common.techCustomerName || app.state.common.developerName, 'string', 'half')}
+          ${renderInput('Основание подписания заказчика', 'xmlExtras.manual.customerAuthorityDocName', manual.customerAuthorityDocName || 'Доверенность / основание подписания заказчика', 'string', 'half')}
+          ${renderInput('Номер основания заказчика', 'xmlExtras.manual.customerAuthorityDocNumber', manual.customerAuthorityDocNumber || app.state.common.contractNumber, 'string', 'quarter')}
+          ${renderInput('Дата основания заказчика', 'xmlExtras.manual.customerAuthorityDocDate', manual.customerAuthorityDocDate || app.state.common.contractDate, 'string', 'quarter')}
+          ${renderSelect('Статус подписанта Z', 'xmlExtras.manual.customerSignerStatus', manual.customerSignerStatus || manual.signerStatus || '1', { '1': '1 — без доверенности', '2': '2 — доверенность в ЭФ', '3': '3 — доверенность на бумаге' }, 'quarter')}
+          ${renderSelect('Тип подписи Z', 'xmlExtras.manual.customerSignatureType', manual.customerSignatureType || manual.signatureType || '1', { '1': '1 — УКЭП', '2': '2 — ПЭП', '3': '3 — УНЭП' }, 'quarter')}
+          ${renderInput('Идентификатор хранения подписи Z', 'xmlExtras.manual.customerSignatureStorageId', manual.customerSignatureStorageId, 'string', 'half')}
+          ${renderSelect('Приемка работ в Z', 'xmlExtras.manual.customerAcceptanceCode', manual.customerAcceptanceCode || '1', { '1': '1 — приняты без замечаний', '2': '2 — приняты с устранимыми недостатками', '4': '4 — приняты с уменьшением стоимости', '5': '5 — приняты с возмещением расходов', '0': '0 — отказ в приемке' }, 'half')}
+          ${renderTextarea('Текст приемки Z (если нужен вместо кода)', 'xmlExtras.manual.customerAcceptanceText', manual.customerAcceptanceText, 'half')}
+          ${renderSelect('Извещение по расчетам Z', 'xmlExtras.manual.customerSettlementNotice', manual.customerSettlementNotice || '', { '': '— не заполнять —', 'С представленными подрядчиком сведениями о расчетах согласен': 'С представленными подрядчиком сведениями о расчетах согласен', 'С представленными подрядчиком сведениями о расчетах согласен, есть информация о дополнительных удержаниях заказчиком в соответствии с законодательством о контрактной системе в сфере закупок товаров, работ, услуг для обеспечения государственных и муниципальных нужд': 'Согласен, есть доп. удержания по гос/мун контракту', 'С представленными подрядчиком сведениями о расчетах не согласен': 'С представленными подрядчиком сведениями о расчетах не согласен', 'Представленные подрядчиком сведения о расчетах по договору на момент приемки работ не сверялись': 'Сведения по расчетам на момент приемки не сверялись', 'Условиями договора строительного подряда сверка расчетов по договору непосредственно в акте о приемке выполненных работ не предусмотрена': 'Сверка расчетов в акте не предусмотрена' }, 'half')}
+          ${renderTextarea('Причина несогласия по расчетам Z', 'xmlExtras.manual.customerSettlementDisagreementReason', manual.customerSettlementDisagreementReason, 'half')}
         </div>
       </div>
 
