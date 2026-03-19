@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+from datetime import datetime
 from pathlib import Path
 from lxml import etree as ET
 
@@ -25,6 +26,18 @@ def fmt_money(value) -> str:
     except Exception:
         number = 0.0
     return f'{number:.2f}'
+
+
+def first_non_empty(*values, default=None):
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, str):
+            if value.strip() == '':
+                continue
+            return value.strip()
+        return value
+    return default
 
 
 def fmt_date(value: str | None) -> str:
@@ -115,6 +128,7 @@ def iter_ks2_sections(ks2_sheets: list[dict]):
     current_section = None
 
     for sheet_index, sheet in enumerate(ks2_sheets):
+        current_section = None
         for row in sheet.get('rows', []):
             row_type = row.get('type')
             if row_type == 'section':
@@ -147,6 +161,52 @@ def iter_ks2_sections(ks2_sheets: list[dict]):
                     yield current_section
                 global_row_no += 1
                 current_section['items'].append({**row, 'xmlRowNo': global_row_no})
+
+
+def parse_input_date(value: str | None):
+    normalized = first_non_empty(value)
+    if not normalized:
+        return None
+    normalized = normalized.replace(' г.', '').replace(' г', '')
+    for fmt in ('%Y-%m-%d', '%d.%m.%Y'):
+        try:
+            return datetime.strptime(normalized, fmt)
+        except ValueError:
+            pass
+    return None
+
+
+def collect_document_periods(ks2_sheets: list[dict], ks3_doc: dict):
+    starts = []
+    ends = []
+
+    for sheet in ks2_sheets:
+        doc = sheet.get('document', {})
+        start_dt = parse_input_date(first_non_empty(doc.get('periodFrom'), sheet.get('periodFrom')))
+        end_dt = parse_input_date(first_non_empty(doc.get('periodTo'), sheet.get('periodTo'), doc.get('date'), sheet.get('documentDate')))
+        if start_dt:
+            starts.append(start_dt)
+        if end_dt:
+            ends.append(end_dt)
+
+    ks3_start = parse_input_date(first_non_empty(ks3_doc.get('periodFrom')))
+    ks3_end = parse_input_date(first_non_empty(ks3_doc.get('periodTo'), ks3_doc.get('documentDate')))
+    if ks3_start:
+        starts.append(ks3_start)
+    if ks3_end:
+        ends.append(ks3_end)
+
+    start_value = min(starts).strftime('%d.%m.%Y') if starts else None
+    end_value = max(ends).strftime('%d.%m.%Y') if ends else None
+    return start_value, end_value
+
+
+def build_operation_text(common: dict):
+    return first_non_empty(
+        common.get('operationType'),
+        common.get('ks2DocSubtitle'),
+        default='О ПРИЕМКЕ ВЫПОЛНЕННЫХ РАБОТ',
+    )
 
 
 def build_xml(data: dict) -> ET._ElementTree:
@@ -279,27 +339,50 @@ def build_xml(data: dict) -> ET._ElementTree:
              ДатаДок=fmt_date(manual.get('supplementDocDate') or supplement.get('ДатаДок')))
 
     currency = act.find('ДенИзм')
-    basis_value = first_doc.get('basis') or ''
-    if basis_value:
+    basis_values = []
+    seen_basis = set()
+    for sheet in ks2_sheets:
+        basis_value = first_non_empty(sheet.get('document', {}).get('basis'), sheet.get('basis'))
+        if not basis_value:
+            continue
+        key = str(basis_value).strip()
+        if key in seen_basis:
+            continue
+        seen_basis.add(key)
+        basis_values.append(key)
+
+    for el in act.findall('ОснСдачи'):
+        act.remove(el)
+    insert_index = list(act).index(currency)
+    for offset, basis_value in enumerate(basis_values):
         delivery_basis = ET.Element('ОснСдачи')
-        ET.SubElement(delivery_basis, 'ТипИдДок',
-                      НаимДок=str(basis_value)[:255],
-                      НомерДок=common.get('contractNumber') or 'без номера',
-                      ДатаДок=fmt_date(common.get('contractDate')))
-        act.insert(list(act).index(currency), delivery_basis)
+        ET.SubElement(
+            delivery_basis,
+            'ТипИдДок',
+            НаимДок=str(basis_value)[:255],
+            НомерДок=common.get('contractNumber') or 'без номера',
+            ДатаДок=fmt_date(common.get('contractDate')),
+        )
+        act.insert(insert_index + offset, delivery_basis)
     set_attr(currency, КодОКВ='643')
 
     info_block = act.find('ИнфПолФХЖ1')
     clear_children(info_block)
     ET.SubElement(info_block, 'ТекстИнф', Идентиф='customField', Значение=manual.get('customInfoValue') or 'sample')
 
-    works = doc.find('НаимИСт')
-    clear_children(works)
+    existing_works = doc.findall('НаимИСт')
+    works_insert_index = list(doc).index(existing_works[0]) if existing_works else list(doc).index(doc.find('СвПродПер'))
+    for works_el in existing_works:
+        doc.remove(works_el)
 
     traceable_goods = xml.get('traceableGoods', [])
     compact_mode = constants.get('diadocCompactMode', '0') == '1'
+    section_entries = list(iter_ks2_sections(ks2_sheets))
 
     if compact_mode:
+        works = ET.Element('НаимИСт')
+        doc.insert(works_insert_index, works)
+
         all_items = []
         for sheet in ks2_sheets:
             for item in sheet.get('items', []):
@@ -361,71 +444,93 @@ def build_xml(data: dict) -> ET._ElementTree:
                               ЦенаТов=fmt_money(section_amount),
                               СтТовБезНДС=fmt_money(section_amount))
     else:
-        vat_rate_default = float(first_doc.get('vatRate') or 20)
-        section_entries = list(iter_ks2_sections(ks2_sheets))
-        trace_attached = False
+        grouped_sections = {sheet_index: [] for sheet_index, _ in enumerate(ks2_sheets)}
         for entry in section_entries:
-            items = entry['items']
-            if not items:
+            grouped_sections.setdefault(entry['sheetIndex'], []).append(entry)
+
+        trace_attached = False
+        inserted_blocks = 0
+        for sheet_index, sheet in enumerate(ks2_sheets):
+            sheet_sections = grouped_sections.get(sheet_index, [])
+            if not sheet_sections:
                 continue
-            section_amount = sum(float(item.get('amount') or 0) for item in items)
-            section_estimate_no = entry.get('estimateNo') or next((str(it.get('estimateNo')) for it in items if it.get('estimateNo')), '')
-            section_vat = max(round(section_amount * vat_rate_default / 100, 2), 0)
-            sec_attrs = {
-                'НомСтр': str(entry['rowNo']),
-                'НомРазд': str(entry['sectionNo']),
-                'НаимРаздел': entry['name'],
-                'СтБезНДСРаздСмет': fmt_money(section_amount),
-                'СтСНДСРаздСмет': fmt_money(section_amount + section_vat),
-                'СтБезНДСРаздОтч': fmt_money(section_amount),
-                'СтСНДСРаздОтч': fmt_money(section_amount + section_vat),
-            }
-            if section_estimate_no:
-                sec_attrs['ПозРаздСмет'] = section_estimate_no
-            sec = ET.SubElement(works, 'Раздел', **sec_attrs)
-            for item in items:
-                amount = float(item.get('amount') or 0)
-                price = float(item.get('price') or 0)
-                qty = item.get('quantity')
-                vat_amount = max(round(amount * vat_rate_default / 100, 2), 0)
-                item_attrs = {
-                    'НомСтр': str(item.get('xmlRowNo')),
-                    'НомПоз': str(item.get('lineNo') or item.get('xmlRowNo')),
-                    'НаимТов': item.get('name') or f"Работа {item.get('xmlRowNo')}",
-                    'ТипЗатр': '1',
-                    'ЦенаТов': fmt_money(price),
-                    'СтПоСметеБезНДС': fmt_money(amount),
-                    'СтТовБезНДС': fmt_money(amount),
-                    'СтТовУчНал': fmt_money(amount + vat_amount),
-                    'ОКЕИ_Стройка': '796',
-                    'НаимЕдИзм': item.get('unit') or 'шт',
+
+            works = ET.Element('НаимИСт')
+            doc.insert(works_insert_index + inserted_blocks, works)
+            inserted_blocks += 1
+
+            sheet_doc = sheet.get('document', {})
+            vat_rate_default = float(sheet_doc.get('vatRate') or first_doc.get('vatRate') or 20)
+            for entry in sheet_sections:
+                items = entry['items']
+                if not items:
+                    continue
+                section_amount = sum(float(item.get('amount') or 0) for item in items)
+                section_estimate_no = entry.get('estimateNo') or next((str(it.get('estimateNo')) for it in items if it.get('estimateNo')), '')
+                section_vat = max(round(section_amount * vat_rate_default / 100, 2), 0)
+                sec_attrs = {
+                    'НомСтр': str(entry['rowNo']),
+                    'НомРазд': str(entry['sectionNo']),
+                    'НаимРаздел': entry['name'],
+                    'СтБезНДСРаздСмет': fmt_money(section_amount),
+                    'СтСНДСРаздСмет': fmt_money(section_amount + section_vat),
+                    'СтБезНДСРаздОтч': fmt_money(section_amount),
+                    'СтСНДСРаздОтч': fmt_money(section_amount + section_vat),
                 }
-                if item.get('estimateNo'):
-                    item_attrs['ПозСмет'] = str(item.get('estimateNo'))
-                work_el = ET.SubElement(sec, 'СвВидРаб', **item_attrs)
-                changes = ET.SubElement(work_el, 'УчОшИНовОбстСт')
-                err = ET.SubElement(changes, 'ОшибПрПер')
-                ET.SubElement(err, 'УвелДен').text = '1'
-                ET.SubElement(err, 'УвелКол').text = '1'
-                if qty not in (None, ''):
-                    ET.SubElement(work_el, 'КолТов').text = str(qty)
-                tax = ET.SubElement(work_el, 'СумНал')
-                ET.SubElement(tax, 'СумНал').text = fmt_money(vat_amount)
-                if not trace_attached:
-                    tg = traceable_goods[0] if traceable_goods else {}
-                    ET.SubElement(
-                        work_el,
-                        'СвПрослежСтройка',
-                        НомТовПрослеж=tg.get('registrationNumber') or '123456789012345678901234567',
-                        ЕдИзмПрослеж=tg.get('unitCode') or '796',
-                        НаимЕдИзмПрослеж=tg.get('unitName') or 'шт',
-                        КолВЕдПрослеж=fmt_money(tg.get('quantity') or 1).rstrip('0').rstrip('.') or '1',
-                    )
-                    trace_attached = True
+                if section_estimate_no:
+                    sec_attrs['ПозРаздСмет'] = section_estimate_no
+                sec = ET.SubElement(works, 'Раздел', **sec_attrs)
+                for item in items:
+                    amount = float(item.get('amount') or 0)
+                    price = float(item.get('price') or 0)
+                    qty = item.get('quantity')
+                    vat_amount = max(round(amount * vat_rate_default / 100, 2), 0)
+                    item_attrs = {
+                        'НомСтр': str(item.get('xmlRowNo')),
+                        'НомПоз': str(item.get('lineNo') or item.get('xmlRowNo')),
+                        'НаимТов': item.get('name') or f"Работа {item.get('xmlRowNo')}",
+                        'ТипЗатр': '1',
+                        'ЦенаТов': fmt_money(price),
+                        'СтПоСметеБезНДС': fmt_money(amount),
+                        'СтТовБезНДС': fmt_money(amount),
+                        'СтТовУчНал': fmt_money(amount + vat_amount),
+                        'ОКЕИ_Стройка': '796',
+                        'НаимЕдИзм': item.get('unit') or 'шт',
+                    }
+                    if item.get('estimateNo'):
+                        item_attrs['ПозСмет'] = str(item.get('estimateNo'))
+                    work_el = ET.SubElement(sec, 'СвВидРаб', **item_attrs)
+                    changes = ET.SubElement(work_el, 'УчОшИНовОбстСт')
+                    err = ET.SubElement(changes, 'ОшибПрПер')
+                    ET.SubElement(err, 'УвелДен').text = '1'
+                    ET.SubElement(err, 'УвелКол').text = '1'
+                    if qty not in (None, ''):
+                        ET.SubElement(work_el, 'КолТов').text = str(qty)
+                    tax = ET.SubElement(work_el, 'СумНал')
+                    ET.SubElement(tax, 'СумНал').text = fmt_money(vat_amount)
+                    if not trace_attached:
+                        tg = traceable_goods[0] if traceable_goods else {}
+                        ET.SubElement(
+                            work_el,
+                            'СвПрослежСтройка',
+                            НомТовПрослеж=tg.get('registrationNumber') or '123456789012345678901234567',
+                            ЕдИзмПрослеж=tg.get('unitCode') or '796',
+                            НаимЕдИзмПрослеж=tg.get('unitName') or 'шт',
+                            КолВЕдПрослеж=fmt_money(tg.get('quantity') or 1).rstrip('0').rstrip('.') or '1',
+                        )
+                        trace_attached = True
 
     transfer = doc.find('СвПродПер')
     clear_children(transfer)
-    ET.SubElement(transfer, 'СвПер', СодОпер='О ПРИЕМКЕ ВЫПОЛНЕННЫХ РАБОТ')
+    period_from, period_to = collect_document_periods(ks2_sheets, ks3_doc)
+    transfer_attrs = {
+        'СодОпер': build_operation_text(common),
+    }
+    if period_from:
+        transfer_attrs['НачПерВДок'] = fmt_date(period_from)
+    if period_to:
+        transfer_attrs['ОконПерВДок'] = fmt_date(period_to)
+    ET.SubElement(transfer, 'СвПер', **transfer_attrs)
 
     settlement_el = doc.find('СвОРасч')
     clear_children(settlement_el)
@@ -434,30 +539,31 @@ def build_xml(data: dict) -> ET._ElementTree:
              СумТребВсегоОтч=fmt_money(settlement.get('totalClaims')),
              ВсегоКОплатОтч=fmt_money(holdbacks.get('totals', {}).get('payableAmount') or ks3_totals.get('forPeriod')))
     settlement_rows = settlement.get('settlementRows', []) or [{'amount': 1, 'kindCode': '31'}]
-    if compact_mode:
-        # XSD-профиль для compact/Diadoc-ready сценария допускает один УчетТребУдерж.
-        aggregated_amount = sum(max(float(row.get('amount') or 0), 0) for row in settlement_rows)
-        preferred_kind = '31' if any(str(row.get('kindCode')) == '31' for row in settlement_rows) else str(settlement_rows[0].get('kindCode') or '31')
-        item = ET.SubElement(settlement_el, 'УчетТребУдерж', СумТребУдерж=fmt_money(aggregated_amount if aggregated_amount > 0 else 1))
-        if preferred_kind.startswith('3'):
-            child = ET.SubElement(item, 'ВидУдерж')
-            child.text = preferred_kind
-        else:
-            child = ET.SubElement(item, 'ВидТреб')
-            child.text = preferred_kind
+    aggregated_amount = sum(max(float(row.get('amount') or 0), 0) for row in settlement_rows)
+    preferred_kind = '31' if any(str(row.get('kindCode')) == '31' for row in settlement_rows) else str(settlement_rows[0].get('kindCode') or '31')
+    item = ET.SubElement(settlement_el, 'УчетТребУдерж', СумТребУдерж=fmt_money(aggregated_amount if aggregated_amount > 0 else 1))
+    if preferred_kind.startswith('3'):
+        child = ET.SubElement(item, 'ВидУдерж')
+        child.text = preferred_kind
     else:
-        # Для production-full табличной части оставляем детальность КС-2,
-        # но блок СвОРасч пока удерживаем в одном элементе, поскольку XSD текущего профиля
-        # ожидает единственную запись УчетТребУдерж.
-        aggregated_amount = sum(max(float(row.get('amount') or 0), 0) for row in settlement_rows)
-        preferred_kind = '31' if any(str(row.get('kindCode')) == '31' for row in settlement_rows) else str(settlement_rows[0].get('kindCode') or '31')
-        item = ET.SubElement(settlement_el, 'УчетТребУдерж', СумТребУдерж=fmt_money(aggregated_amount if aggregated_amount > 0 else 1))
-        if preferred_kind.startswith('3'):
-            child = ET.SubElement(item, 'ВидУдерж')
-            child.text = preferred_kind
-        else:
-            child = ET.SubElement(item, 'ВидТреб')
-            child.text = preferred_kind
+        child = ET.SubElement(item, 'ВидТреб')
+        child.text = preferred_kind
+
+    # Для текущего XSD-профиля УчетТребУдерж оставляем агрегированным,
+    # но передаем подтверждающий документ из первой релевантной строки удержания/требования.
+    supporting_row = next((row for row in settlement_rows if row.get('documentRef')), None)
+    if supporting_row:
+        document_ref = str(supporting_row.get('documentRef') or '').strip()
+        doc_name = 'Документ-основание удержания'
+        doc_number = document_ref or 'Без номера'
+        doc_date = fmt_date(common.get('contractDate'))
+        import re
+        m = re.search(r'^(.*?)\s+от\s+(\d{2}\.\d{2}\.\d{4})', document_ref)
+        if m:
+            doc_number = m.group(1).strip() or doc_number
+            doc_date = m.group(2)
+        doc_block = ET.SubElement(item, 'ДокПодтСумУд')
+        ET.SubElement(doc_block, 'ТипИдДок', НаимДок=doc_name, НомерДок=doc_number, ДатаДок=doc_date)
 
     total_el = doc.find('ВсегоАктОтч')
     clear_children(total_el)
