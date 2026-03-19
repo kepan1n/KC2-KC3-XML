@@ -50,19 +50,34 @@ def fmt_date(value: str | None) -> str:
     return value[:10]
 
 
+def _initials_from_token(token: str) -> list[str]:
+    value = (token or '').strip()
+    if not value or '.' not in value:
+        return []
+    return [part for part in value.replace(' ', '').split('.') if part]
+
+
 def split_fio(text: str | None):
     parts = [p for p in (text or '').replace(',', ' ').split() if p]
     if not parts:
         return 'Иванов', 'Иван', None
     if len(parts) == 1:
         return parts[0], 'Иван', None
-    # Для small sample и проходного sample_1110335.xml
-    # подпись часто выглядит как "А. Дылюк". Чтобы быть ближе к проходному примеру,
-    # в таком случае отдаем Фамилия="А", Имя="Дылюк".
-    if len(parts) == 2 and parts[0].endswith('.'):
-        return parts[0].rstrip('.'), parts[1], None
+
     if len(parts) == 2:
+        first_initials = _initials_from_token(parts[0])
+        second_initials = _initials_from_token(parts[1])
+        if first_initials and not second_initials:
+            return parts[1], first_initials[0], first_initials[1] if len(first_initials) > 1 else None
+        if second_initials and not first_initials:
+            return parts[0], second_initials[0], second_initials[1] if len(second_initials) > 1 else None
         return parts[0], parts[1], None
+
+    if len(parts) == 3 and parts[0].endswith('.') and parts[1].endswith('.'):
+        return parts[2], parts[0].rstrip('.'), parts[1].rstrip('.')
+    if len(parts) == 3 and parts[1].endswith('.') and parts[2].endswith('.'):
+        return parts[0], parts[1].rstrip('.'), parts[2].rstrip('.')
+
     return parts[0], parts[1], ' '.join(parts[2:])
 
 
@@ -223,6 +238,56 @@ def add_info_pairs(parent: ET._Element, pairs: list[tuple[str, str | None]]):
     for key, value in normalized:
         ET.SubElement(info, 'ТекстИнф', Идентиф=key[:255], Значение=value[:1000])
     return info
+
+
+def add_signer_authority(signer_parent: ET._Element, manual: dict):
+    status = str(first_non_empty(manual.get('signerStatus'), default='1'))
+
+    if status == '2':
+        attrs = {}
+        power_id = first_non_empty(manual.get('signerPowerId'), manual.get('signerPowerNumber'))
+        power_date = first_non_empty(manual.get('signerPowerDate'))
+        internal_number = first_non_empty(manual.get('signerPowerInternalNumber'))
+        registration_date = first_non_empty(manual.get('signerPowerRegistrationDate'))
+        system_mark = first_non_empty(manual.get('signerPowerSystemMark'))
+
+        if power_id and len(str(power_id)) == 36:
+            attrs['НомДовер'] = str(power_id)
+        if power_date:
+            attrs['ДатаНач'] = fmt_date(power_date)
+        if internal_number:
+            attrs['ВнНомДовер'] = str(internal_number)
+        if registration_date:
+            attrs['ДатаВнРегДовер'] = fmt_date(registration_date)
+        if system_mark:
+            attrs['СведСистОтм'] = str(system_mark)
+
+        if attrs:
+            ET.SubElement(signer_parent, 'СвДовер', **attrs)
+        return
+
+    if status == '3':
+        attrs = {}
+        paper_date = first_non_empty(manual.get('signerPaperPowerDate'))
+        internal_number = first_non_empty(manual.get('signerPaperPowerInternalNumber'))
+        power_identity = first_non_empty(manual.get('signerPaperPowerIdentity'))
+        paper_fio = first_non_empty(manual.get('signerPaperPowerFio'))
+
+        if paper_date:
+            attrs['ДатаНач'] = fmt_date(paper_date)
+        if internal_number:
+            attrs['ВнНомДовер'] = str(internal_number)
+        if power_identity:
+            attrs['СвИдДовер'] = str(power_identity)
+
+        if attrs or paper_fio:
+            paper = ET.SubElement(signer_parent, 'СвДоверБум', **attrs)
+            if paper_fio:
+                family, name, patronymic = split_fio(paper_fio)
+                fio = ET.SubElement(paper, 'ФИО', Фамилия=family, Имя=name)
+                if patronymic:
+                    fio.set('Отчество', patronymic)
+
 
 
 def build_xml(data: dict) -> ET._ElementTree:
@@ -625,6 +690,7 @@ def build_xml(data: dict) -> ET._ElementTree:
         signer_parent,
         СтатПодп=manual.get('signerStatus') or '1',
         ТипПодпис=manual.get('signatureType') or '1',
+        ИдСистХран=first_non_empty(manual.get('signatureStorageId')),
         Должн=manual.get('signerPosition') or common.get('contractorSignerPosition') or '',
     )
 
@@ -636,6 +702,7 @@ def build_xml(data: dict) -> ET._ElementTree:
         signer.set('Отчество', patronymic)
     elif 'Отчество' in signer.attrib:
         del signer.attrib['Отчество']
+    add_signer_authority(signer_parent, manual)
 
     return tree
 
