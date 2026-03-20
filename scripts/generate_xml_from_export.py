@@ -149,6 +149,7 @@ def build_ks3_sheet_map(ks2_sheets: list[dict], ks3_rows: list[dict]):
 def resolve_cumulative_amount(source: dict | None, period_amount: float):
     source = source or {}
     return first_number(
+        source.get('effectiveFromStart'),
         source.get('fromStart'),
         source.get('amountFromStart'),
         source.get('cumulativeAmount'),
@@ -161,12 +162,104 @@ def resolve_cumulative_amount(source: dict | None, period_amount: float):
 def resolve_cumulative_quantity(source: dict | None, period_quantity):
     source = source or {}
     return first_number(
+        source.get('effectiveQuantityFromStart'),
         source.get('quantityFromStart'),
         source.get('fromStartQuantity'),
         source.get('cumulativeQuantity'),
         source.get('quantityCumulative'),
         default=period_quantity,
     )
+
+
+def is_correction_row(source: dict | None) -> bool:
+    source = source or {}
+    calc_mode = str(source.get('calcMode') or '').strip().lower()
+    if calc_mode in {'subtract', 'correction', 'corrective'}:
+        return True
+    if str(source.get('isCorrection') or '').strip().lower() in {'1', 'true', 'yes'}:
+        return True
+    for key in ['effectiveAmount', 'effectiveQuantity', 'effectiveFromStart', 'effectiveQuantityFromStart', 'amount', 'quantity', 'fromStart', 'amountFromStart', 'quantityFromStart']:
+        numeric = first_number(source.get(key), default=None)
+        if numeric is not None and numeric < 0:
+            return True
+    return False
+
+
+def resolve_row_amount(source: dict | None):
+    source = source or {}
+    raw = first_number(source.get('amount'), source.get('effectiveAmount'), default=0.0)
+    if is_correction_row(source):
+        return abs(raw)
+    return raw
+
+
+def resolve_effective_row_amount(source: dict | None):
+    source = source or {}
+    explicit = first_number(source.get('effectiveAmount'), default=None)
+    if explicit is not None:
+        return explicit
+    raw = first_number(source.get('amount'), default=0.0)
+    return -abs(raw) if is_correction_row(source) else raw
+
+
+def resolve_row_quantity(source: dict | None):
+    source = source or {}
+    raw = first_number(source.get('quantity'), source.get('effectiveQuantity'), default=None)
+    if raw is None:
+        return source.get('quantity')
+    if is_correction_row(source):
+        return abs(raw)
+    return raw
+
+
+def resolve_effective_row_quantity(source: dict | None):
+    source = source or {}
+    explicit = first_number(source.get('effectiveQuantity'), default=None)
+    if explicit is not None:
+        return explicit
+    raw = first_number(source.get('quantity'), default=None)
+    if raw is None:
+        return None
+    return -abs(raw) if is_correction_row(source) else raw
+
+
+def resolve_xml_cumulative_amount(source: dict | None, period_amount: float):
+    raw = resolve_cumulative_amount(source, period_amount)
+    if raw is None:
+        return None
+    return abs(raw) if is_correction_row(source) else raw
+
+
+def resolve_effective_cumulative_amount(source: dict | None, period_amount: float):
+    raw = resolve_cumulative_amount(source, period_amount)
+    if raw is None:
+        return period_amount
+    if is_correction_row(source) and first_number((source or {}).get('effectiveFromStart'), default=None) is None:
+        return -abs(raw)
+    return raw
+
+
+def resolve_xml_cumulative_quantity(source: dict | None, period_quantity):
+    raw = resolve_cumulative_quantity(source, period_quantity)
+    if raw is None:
+        return None
+    return abs(raw) if is_correction_row(source) else raw
+
+
+def resolve_effective_cumulative_quantity(source: dict | None, period_quantity):
+    raw = resolve_cumulative_quantity(source, period_quantity)
+    if raw is None:
+        return period_quantity
+    if is_correction_row(source) and first_number((source or {}).get('effectiveQuantityFromStart'), default=None) is None:
+        return -abs(raw)
+    return raw
+
+
+def fmt_quantity(value):
+    numeric = first_number(value, default=None)
+    if numeric is None:
+        return str(value)
+    return f'{numeric:.11f}'.rstrip('0').rstrip('.') or '0'
 
 
 def _initials_from_token(token: str) -> list[str]:
@@ -737,11 +830,13 @@ def build_xml(data: dict) -> ET._ElementTree:
                 items = entry['items']
                 if not items:
                     continue
-                section_amount = sum(safe_float(item.get('amount') or 0) for item in items)
+                section_amount_raw = sum(resolve_effective_row_amount(item) for item in items)
+                section_amount = max(round(section_amount_raw, 2), 0)
                 section_estimate_no = entry.get('estimateNo') or next((str(it.get('estimateNo')) for it in items if it.get('estimateNo')), '')
-                section_cumulative_amount = resolve_cumulative_amount(entry.get('sourceRow'), section_amount)
+                section_cumulative_amount_raw = sum(resolve_effective_cumulative_amount(item, resolve_effective_row_amount(item)) for item in items)
+                section_cumulative_amount = max(round(section_cumulative_amount_raw, 2), 0)
                 if section_cumulative_amount == section_amount and len(sheet_sections) == 1 and sheet_cumulative_base is not None:
-                    section_cumulative_amount = sheet_cumulative_base
+                    section_cumulative_amount = max(round(sheet_cumulative_base, 2), 0)
                 section_vat = calc_vat(section_amount, vat_rate_default)
                 section_cumulative_vat = calc_vat(section_cumulative_amount, vat_rate_default)
                 sec_attrs = {
@@ -760,13 +855,16 @@ def build_xml(data: dict) -> ET._ElementTree:
                     sec_attrs['ПозРаздСмет'] = section_estimate_no
                 sec = ET.SubElement(works, 'Раздел', **sec_attrs)
                 for item in items:
-                    amount = safe_float(item.get('amount') or 0)
+                    correction_row = is_correction_row(item)
+                    amount = resolve_row_amount(item)
+                    effective_amount = resolve_effective_row_amount(item)
                     price = safe_float(item.get('price') or 0)
-                    qty = item.get('quantity')
-                    cumulative_amount = resolve_cumulative_amount(item, amount)
+                    qty = resolve_row_quantity(item)
+                    effective_qty = resolve_effective_row_quantity(item)
+                    cumulative_amount = resolve_xml_cumulative_amount(item, amount)
                     if cumulative_amount == amount and len(items) == 1 and cumulative_mode == '1':
                         cumulative_amount = section_cumulative_amount
-                    cumulative_qty = resolve_cumulative_quantity(item, qty)
+                    cumulative_qty = resolve_xml_cumulative_quantity(item, qty)
                     vat_amount = calc_vat(amount, vat_rate_default)
                     cumulative_vat_amount = calc_vat(cumulative_amount, vat_rate_default)
                     item_attrs = {
@@ -783,13 +881,24 @@ def build_xml(data: dict) -> ET._ElementTree:
                     }
                     if cumulative_mode == '1':
                         item_attrs['СтСНачСтрБезНДС'] = fmt_money(cumulative_amount)
+                    if correction_row:
+                        item_attrs['ПрИспрОш'] = '1'
                     if item.get('estimateNo'):
                         item_attrs['ПозСмет'] = str(item.get('estimateNo'))
                     work_el = ET.SubElement(sec, 'СвВидРаб', **item_attrs)
+                    if correction_row:
+                        changes = ET.SubElement(work_el, 'УчОшИНовОбстСт')
+                        err = ET.SubElement(changes, 'ОшибПрПер')
+                        ET.SubElement(err, 'УменьшДен').text = fmt_money(abs(effective_amount))
+                        qty_delta = abs(first_number(effective_qty, default=0.0) or 0.0)
+                        if qty_delta > 0:
+                            ET.SubElement(err, 'УменьшКол').text = fmt_quantity(qty_delta)
+                        else:
+                            ET.SubElement(err, 'НетИзмКол').text = 'без изм'
                     if qty not in (None, ''):
-                        ET.SubElement(work_el, 'КолТов').text = str(qty)
+                        ET.SubElement(work_el, 'КолТов').text = fmt_quantity(qty)
                     if cumulative_mode == '1' and cumulative_qty not in (None, ''):
-                        ET.SubElement(work_el, 'КолСНач').text = str(cumulative_qty)
+                        ET.SubElement(work_el, 'КолСНач').text = fmt_quantity(cumulative_qty)
                     tax = ET.SubElement(work_el, 'СумНал')
                     ET.SubElement(tax, 'СумНал').text = fmt_money(vat_amount)
                     if not trace_attached:
@@ -806,6 +915,9 @@ def build_xml(data: dict) -> ET._ElementTree:
                     add_info_pairs(work_el, [
                         ('ks2.rowCode', item.get('code')),
                         ('ks2.unitConsumption', str(item.get('unitConsumption')) if item.get('unitConsumption') not in (None, '') else None),
+                        ('ks2.calcMode', item.get('calcMode')),
+                        ('ks2.isCorrection', '1' if correction_row else None),
+                        ('ks2.effectiveAmount', fmt_money(effective_amount) if correction_row else None),
                     ])
                     if not sheet_metadata_attached:
                         add_info_pairs(work_el, [
