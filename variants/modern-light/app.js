@@ -312,14 +312,50 @@ function handleContentClick(event) {
   }
 
   if (action === 'add-ks3-row') {
+    clearTransientRowUi();
     app.state.ks3.rows.push(createBlankKs3Row());
     render();
     return;
   }
 
-  if (action === 'delete-ks3-row') {
-    app.state.ks3.rows.splice(Number(event.target.dataset.ks3Index), 1);
+  if (action === 'toggle-ks3-row-menu') {
+    const idx = Number(actionButton.dataset.ks3Index);
+    const sameRow = app.state.ui.ks3RowActionMenu === idx;
+    app.state.ui.ks3RowActionMenu = sameRow ? null : idx;
+    app.state.ui.ks3RowDeleteConfirm = null;
     render();
+    return;
+  }
+
+  if (action === 'insert-ks3-row-after') {
+    clearTransientRowUi();
+    const idx = Number(actionButton.dataset.ks3Index);
+    app.state.ks3.rows.splice(idx + 1, 0, createBlankKs3Row());
+    render();
+    flash('Строка КС-3 добавлена.');
+    return;
+  }
+
+  if (action === 'prompt-delete-ks3-row') {
+    const idx = Number(actionButton.dataset.ks3Index);
+    app.state.ui.ks3RowActionMenu = null;
+    app.state.ui.ks3RowDeleteConfirm = idx;
+    render();
+    return;
+  }
+
+  if (action === 'cancel-delete-ks3-row') {
+    app.state.ui.ks3RowDeleteConfirm = null;
+    render();
+    return;
+  }
+
+  if (action === 'confirm-delete-ks3-row') {
+    const idx = Number(actionButton.dataset.ks3Index);
+    app.state.ks3.rows.splice(idx, 1);
+    clearTransientRowUi();
+    render();
+    flash('Строка КС-3 удалена.');
     return;
   }
 
@@ -432,6 +468,8 @@ function prepareState(raw) {
   data.ui.sidebarOpen = data.ui.sidebarOpen ?? true;
   data.ui.rowActionMenu ??= null;
   data.ui.rowDeleteConfirm ??= null;
+  data.ui.ks3RowActionMenu ??= null;
+  data.ui.ks3RowDeleteConfirm ??= null;
   data.ui.holdbackActionMenu ??= null;
   data.ui.holdbackDeleteConfirm ??= null;
   data.ui.columnWidths ??= {};
@@ -580,12 +618,19 @@ function normalizeScale(value) {
 }
 
 function hasTransientRowUi() {
-  return Boolean(app.state.ui.rowActionMenu || app.state.ui.rowDeleteConfirm);
+  return Boolean(
+    app.state.ui.rowActionMenu
+    || app.state.ui.rowDeleteConfirm
+    || app.state.ui.ks3RowActionMenu != null
+    || app.state.ui.ks3RowDeleteConfirm != null
+  );
 }
 
 function clearTransientRowUi() {
   app.state.ui.rowActionMenu = null;
   app.state.ui.rowDeleteConfirm = null;
+  app.state.ui.ks3RowActionMenu = null;
+  app.state.ui.ks3RowDeleteConfirm = null;
 }
 
 function applyColumnWidths() {
@@ -1410,6 +1455,31 @@ function renderHoldbackRowActions(rowIndex, rowKind) {
 }
 
 
+function renderKs3RowActions(rowIndex) {
+  const menuOpen = app.state.ui.ks3RowActionMenu === rowIndex;
+  const confirmOpen = app.state.ui.ks3RowDeleteConfirm === rowIndex;
+  return `
+    <div class="row-action-stack">
+      <button class="stack-button add" title="Добавить строку ниже" aria-label="Добавить строку ниже" data-action="toggle-ks3-row-menu" data-ks3-index="${rowIndex}">+</button>
+      <button class="stack-button remove" title="Удалить строку" aria-label="Удалить строку" data-action="prompt-delete-ks3-row" data-ks3-index="${rowIndex}">×</button>
+      ${menuOpen ? `
+        <div class="row-action-menu">
+          <button class="row-action-menu-item" data-action="insert-ks3-row-after" data-ks3-index="${rowIndex}">+ Строка</button>
+        </div>
+      ` : ''}
+      ${confirmOpen ? `
+        <div class="row-action-confirm">
+          <div class="row-action-confirm-title">Удалить?</div>
+          <div class="row-action-confirm-buttons">
+            <button class="confirm-icon confirm-yes" title="Подтвердить" aria-label="Подтвердить" data-action="confirm-delete-ks3-row" data-ks3-index="${rowIndex}">✓</button>
+            <button class="confirm-icon confirm-no" title="Отмена" aria-label="Отмена" data-action="cancel-delete-ks3-row" data-ks3-index="${rowIndex}">×</button>
+          </div>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
 function renderKs3Pane() {
   const ks3 = app.state.ks3;
   const rows = buildKs3Rows();
@@ -1451,35 +1521,54 @@ function renderKs3Pane() {
         <h3>Ручные строки КС-3</h3>
         <p class="kbd-note">Можно добавлять строки, которых нет среди листов КС-2. КС-3 больше не строится как автосвод по актам.</p>
         <div class="table-wrapper">
-          <table class="table table-ks3-like">
+          <table class="table table-ks3-like" data-table-id="ks3">
+            <colgroup>
+              <col class="ks3-col-order" />
+              <col class="ks3-col-name" />
+              <col class="ks3-col-code" />
+              <col class="ks3-col-start" />
+              <col class="ks3-col-year" />
+              <col class="ks3-col-period" />
+              <col class="ks3-col-actions" />
+            </colgroup>
             <thead>
               <tr>
-                <th>№ п/п</th>
-                <th>Наименование пусковых комплексов / объектов / работ</th>
-                <th>Код</th>
-                <th>С начала работ</th>
-                <th>С начала года</th>
-                <th>За отчетный период</th>
-                <th></th>
+                <th data-table-id="ks3" data-col-selector="ks3-col-order" data-min-width="46">№ п/п<span class="resize-handle"></span></th>
+                <th data-table-id="ks3" data-col-selector="ks3-col-name" data-min-width="260">Наименование пусковых комплексов, этапов, объектов, видов выполненных работ, оборудования, затрат<span class="resize-handle"></span></th>
+                <th data-table-id="ks3" data-col-selector="ks3-col-code" data-min-width="64">Код<span class="resize-handle"></span></th>
+                <th data-table-id="ks3" data-col-selector="ks3-col-start" data-min-width="120">С начала проведения работ<span class="resize-handle"></span></th>
+                <th data-table-id="ks3" data-col-selector="ks3-col-year" data-min-width="110">С начала года<span class="resize-handle"></span></th>
+                <th data-table-id="ks3" data-col-selector="ks3-col-period" data-min-width="120">В том числе за отчетный период<span class="resize-handle"></span></th>
+                <th data-table-id="ks3" data-col-selector="ks3-col-actions" data-min-width="24"><span class="resize-handle"></span></th>
               </tr>
               <tr class="numbering-row">
                 <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th></th>
               </tr>
             </thead>
             <tbody>
-              ${rows.map((row, index) => `
-                <tr>
-                  <td><input data-path="ks3.rows.${index}.order" value="${escapeAttr(row.order)}" /></td>
-                  <td><input data-path="ks3.rows.${index}.name" value="${escapeAttr(row.name)}" /></td>
-                  <td><input data-path="ks3.rows.${index}.code" value="${escapeAttr(row.code)}" /></td>
-                  <td><input data-path="ks3.rows.${index}.fromStart" data-value-type="number" value="${formatEditableNumber(row.fromStart)}" /></td>
-                  <td><input data-path="ks3.rows.${index}.fromYearStart" data-value-type="number" value="${formatEditableNumber(row.fromYearStart)}" /></td>
-                  <td><input data-path="ks3.rows.${index}.forPeriod" data-value-type="number" value="${formatEditableNumber(row.forPeriod)}" /></td>
-                  <td><button class="icon-button danger" title="Удалить строку" aria-label="Удалить строку" data-action="delete-ks3-row" data-ks3-index="${index}">×</button></td>
-                </tr>
-              `).join('')}
+              ${rows.map((row, index) => {
+                const rowClass = /всего работ и затрат/i.test(row.name || '')
+                  ? 'ks3-row-total'
+                  : /^в том числе/i.test(row.name || '')
+                    ? 'ks3-row-subhead'
+                    : '';
+                return `
+                  <tr class="${rowClass}">
+                    <td><input data-path="ks3.rows.${index}.order" value="${escapeAttr(row.order)}" /></td>
+                    <td class="ks3-name-cell"><textarea data-path="ks3.rows.${index}.name">${escapeHtml(row.name)}</textarea></td>
+                    <td><input data-path="ks3.rows.${index}.code" value="${escapeAttr(row.code)}" /></td>
+                    <td class="number-cell"><input data-path="ks3.rows.${index}.fromStart" data-value-type="number" value="${formatEditableNumber(row.fromStart)}" /></td>
+                    <td class="number-cell"><input data-path="ks3.rows.${index}.fromYearStart" data-value-type="number" value="${formatEditableNumber(row.fromYearStart)}" /></td>
+                    <td class="number-cell"><input data-path="ks3.rows.${index}.forPeriod" data-value-type="number" value="${formatEditableNumber(row.forPeriod)}" /></td>
+                    <td class="actions-cell">${renderKs3RowActions(index)}</td>
+                  </tr>
+                `;
+              }).join('')}
             </tbody>
           </table>
+        </div>
+        <div class="inline-actions">
+          <button class="mini" data-action="add-ks3-row">+ Строка КС-3</button>
         </div>
       </div>
 

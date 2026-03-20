@@ -893,6 +893,18 @@ body[data-sidebar="closed"] .sidebar {
   white-space: nowrap;
   font-weight: 700;
 }
+.ks3-name-cell textarea {
+  min-height: var(--table-textarea-min);
+}
+.ks3-row-total td {
+  background: #f8fafc;
+  font-weight: 700;
+}
+.ks3-row-subhead td {
+  background: #fcfdff;
+  color: var(--muted);
+  font-weight: 600;
+}
 .actions-cell {
   min-width: 44px;
   position: relative;
