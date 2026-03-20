@@ -235,9 +235,16 @@ function handleContentClick(event) {
     return;
   }
 
-  if (action === 'add-correction-row') {
+  if (action === 'add-error-correction-row') {
     clearTransientRowUi();
-    app.state.ks2Sheets[Number(sheetIndex)].rows.push(createBlankRow('item', { calcMode: 'subtract' }));
+    app.state.ks2Sheets[Number(sheetIndex)].rows.push(createBlankRow('item', { calcMode: 'errorCorrection' }));
+    render();
+    return;
+  }
+
+  if (action === 'add-new-circumstance-row' || action === 'add-correction-row') {
+    clearTransientRowUi();
+    app.state.ks2Sheets[Number(sheetIndex)].rows.push(createBlankRow('item', { calcMode: 'newCircumstances' }));
     render();
     return;
   }
@@ -267,12 +274,19 @@ function handleContentClick(event) {
 
   if (action === 'insert-row-after') {
     clearTransientRowUi();
-    const nextRow = rowKind === 'correction'
-      ? createBlankRow('item', { calcMode: 'subtract' })
-      : createBlankRow(rowKind || 'item');
+    const nextRow = rowKind === 'errorCorrection'
+      ? createBlankRow('item', { calcMode: 'errorCorrection' })
+      : rowKind === 'newCircumstances' || rowKind === 'correction'
+        ? createBlankRow('item', { calcMode: 'newCircumstances' })
+        : createBlankRow(rowKind || 'item');
     app.state.ks2Sheets[rowCoords.sheetIndex].rows.splice(rowCoords.rowIndex + 1, 0, nextRow);
     render();
-    flash(rowKind === 'correction' ? 'Строка-корректировка добавлена.' : 'Строка добавлена.');
+    const flashText = rowKind === 'errorCorrection'
+      ? 'Строка-корректировка «исправление ошибок» добавлена.'
+      : rowKind === 'newCircumstances' || rowKind === 'correction'
+        ? 'Строка-корректировка «новые обстоятельства» добавлена.'
+        : 'Строка добавлена.';
+    flash(flashText);
     return;
   }
 
@@ -523,7 +537,7 @@ function prepareState(raw) {
       rows: (sheet.rows || []).map((row) => ({
         ...row,
         type: row.type || 'item',
-        calcMode: row.calcMode || 'normal',
+        calcMode: normalizeCalcMode(row.calcMode, row),
         code: row.code ?? '',
         lineNo: row.lineNo ?? '',
         estimateNo: row.estimateNo ?? '',
@@ -771,7 +785,8 @@ function buildDocumentModel() {
     const rows = sheet.rows.map((row, rowIndex) => ({
       rowIndex,
       type: row.type,
-      calcMode: row.calcMode || 'normal',
+      calcMode: normalizeCalcMode(row.calcMode, row),
+      correctionKind: getCorrectionKind(row),
       isCorrection: isCorrectionRow(row),
       code: row.code || '',
       lineNo: row.lineNo || '',
@@ -1301,7 +1316,8 @@ function renderKs2RowActions(sheetIndex, rowIndex) {
         <div class="row-action-menu">
           <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="section" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Раздел</button>
           <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="item" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Строка</button>
-          <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="correction" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Корректировка</button>
+          <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="errorCorrection" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Испр. ошибок</button>
+          <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="newCircumstances" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Новые обстоятельства</button>
           <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="note" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Примечание</button>
         </div>
       ` : ''}
@@ -1341,7 +1357,7 @@ function renderKs2Pane(sheetIndex) {
       <td class="amount-cell">
         <div class="amount-stack">
           <strong>${formatMoney(computeRowDisplayAmount(row))}</strong>
-          ${isCorrectionRow(row) ? '<span class="calc-mode-chip subtract">вычитается</span>' : ''}
+          ${isCorrectionRow(row) ? `<span class="calc-mode-chip subtract">${correctionModeLabel(row)}</span>` : ''}
         </div>
       </td>
       <td class="number-cell"><input data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.unitConsumption" data-value-type="number" value="${formatEditableNumber(row.unitConsumption)}" /></td>
@@ -1360,9 +1376,10 @@ function renderKs2Pane(sheetIndex) {
       <td>
         ${row.type === 'item' ? `
           <select data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.calcMode">
-            ${renderOptions(['normal', 'subtract'], row.calcMode || 'normal', {
+            ${renderOptions(['normal', 'errorCorrection', 'newCircumstances'], normalizeCalcMode(row.calcMode, row), {
               normal: 'Обычная',
-              subtract: 'Корректировка',
+              errorCorrection: 'Исправление ошибок',
+              newCircumstances: 'Новые обстоятельства',
             })}
           </select>
         ` : '<div class="table-muted-cell">—</div>'}
@@ -1469,7 +1486,8 @@ function renderKs2Pane(sheetIndex) {
         </div>
         <div class="inline-actions">
           <button class="mini" data-action="add-item-row" data-sheet-index="${sheetIndex}">+ Строка работы</button>
-          <button class="mini secondary" data-action="add-correction-row" data-sheet-index="${sheetIndex}">+ Корректировка</button>
+          <button class="mini secondary" data-action="add-error-correction-row" data-sheet-index="${sheetIndex}">+ Испр. ошибок</button>
+          <button class="mini secondary" data-action="add-new-circumstance-row" data-sheet-index="${sheetIndex}">+ Новые обстоятельства</button>
           <button class="mini secondary" data-action="add-section-row" data-sheet-index="${sheetIndex}">+ Раздел</button>
           <button class="mini secondary" data-action="add-note-row" data-sheet-index="${sheetIndex}">+ Примечание</button>
         </div>
@@ -2266,8 +2284,37 @@ function firstNumberOrNull(...values) {
   return null;
 }
 
+function hasNegativeCorrectionSignals(row = {}) {
+  return ['effectiveAmount', 'effectiveQuantity', 'effectiveFromStart', 'effectiveQuantityFromStart', 'amount', 'quantity', 'fromStart', 'amountFromStart', 'quantityFromStart']
+    .some((key) => {
+      const numeric = numberOrNull(row?.[key]);
+      return numeric != null && numeric < 0;
+    });
+}
+
+function normalizeCalcMode(value, row = {}) {
+  const normalized = String(value ?? '').trim();
+  const lowered = normalized.toLowerCase();
+  if (['errorcorrection', 'error_correction', 'pasterror', 'error', 'mistake'].includes(lowered)) return 'errorCorrection';
+  if (['newcircumstances', 'new_circumstances', 'newcircumstance', 'new', 'subtract', 'correction', 'corrective'].includes(lowered)) return 'newCircumstances';
+  if (String(row?.correctionKind || '').toLowerCase() === 'errorcorrection') return 'errorCorrection';
+  if (String(row?.correctionKind || '').toLowerCase() === 'newcircumstances') return 'newCircumstances';
+  if (row?.isCorrection || hasNegativeCorrectionSignals(row)) return 'newCircumstances';
+  return 'normal';
+}
+
+function getCorrectionKind(row) {
+  const mode = normalizeCalcMode(row?.calcMode, row);
+  if (mode === 'errorCorrection' || mode === 'newCircumstances') return mode;
+  return null;
+}
+
 function isCorrectionRow(row) {
-  return row?.type === 'item' && row?.calcMode === 'subtract';
+  return row?.type === 'item' && getCorrectionKind(row) != null;
+}
+
+function correctionModeLabel(row) {
+  return getCorrectionKind(row) === 'errorCorrection' ? 'испр. ошибок' : 'новые обстоятельства';
 }
 
 function computeRowDisplayAmount(row) {

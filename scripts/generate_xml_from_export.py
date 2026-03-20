@@ -171,18 +171,29 @@ def resolve_cumulative_quantity(source: dict | None, period_quantity):
     )
 
 
-def is_correction_row(source: dict | None) -> bool:
+def get_correction_kind(source: dict | None) -> str | None:
     source = source or {}
     calc_mode = str(source.get('calcMode') or '').strip().lower()
-    if calc_mode in {'subtract', 'correction', 'corrective'}:
-        return True
+    correction_kind = str(source.get('correctionKind') or '').strip().lower()
+    if calc_mode in {'errorcorrection', 'error_correction', 'pasterror', 'error', 'mistake'}:
+        return 'errorCorrection'
+    if calc_mode in {'newcircumstances', 'new_circumstances', 'newcircumstance', 'new', 'subtract', 'correction', 'corrective'}:
+        return 'newCircumstances'
+    if correction_kind in {'errorcorrection', 'error_correction', 'pasterror', 'error'}:
+        return 'errorCorrection'
+    if correction_kind in {'newcircumstances', 'new_circumstances', 'newcircumstance', 'new'}:
+        return 'newCircumstances'
     if str(source.get('isCorrection') or '').strip().lower() in {'1', 'true', 'yes'}:
-        return True
+        return 'newCircumstances'
     for key in ['effectiveAmount', 'effectiveQuantity', 'effectiveFromStart', 'effectiveQuantityFromStart', 'amount', 'quantity', 'fromStart', 'amountFromStart', 'quantityFromStart']:
         numeric = first_number(source.get(key), default=None)
         if numeric is not None and numeric < 0:
-            return True
-    return False
+            return 'newCircumstances'
+    return None
+
+
+def is_correction_row(source: dict | None) -> bool:
+    return get_correction_kind(source) is not None
 
 
 def resolve_row_amount(source: dict | None):
@@ -855,7 +866,8 @@ def build_xml(data: dict) -> ET._ElementTree:
                     sec_attrs['ПозРаздСмет'] = section_estimate_no
                 sec = ET.SubElement(works, 'Раздел', **sec_attrs)
                 for item in items:
-                    correction_row = is_correction_row(item)
+                    correction_kind = get_correction_kind(item)
+                    correction_row = correction_kind is not None
                     amount = resolve_row_amount(item)
                     effective_amount = resolve_effective_row_amount(item)
                     price = safe_float(item.get('price') or 0)
@@ -881,14 +893,17 @@ def build_xml(data: dict) -> ET._ElementTree:
                     }
                     if cumulative_mode == '1':
                         item_attrs['СтСНачСтрБезНДС'] = fmt_money(cumulative_amount)
-                    if correction_row:
+                    if correction_kind == 'errorCorrection':
                         item_attrs['ПрИспрОш'] = '1'
+                    elif correction_kind == 'newCircumstances':
+                        item_attrs['ПрНовОбст'] = '1'
                     if item.get('estimateNo'):
                         item_attrs['ПозСмет'] = str(item.get('estimateNo'))
                     work_el = ET.SubElement(sec, 'СвВидРаб', **item_attrs)
                     if correction_row:
                         changes = ET.SubElement(work_el, 'УчОшИНовОбстСт')
-                        err = ET.SubElement(changes, 'ОшибПрПер')
+                        change_tag = 'ОшибПрПер' if correction_kind == 'errorCorrection' else 'НовОбстПрПер'
+                        err = ET.SubElement(changes, change_tag)
                         ET.SubElement(err, 'УменьшДен').text = fmt_money(abs(effective_amount))
                         qty_delta = abs(first_number(effective_qty, default=0.0) or 0.0)
                         if qty_delta > 0:
@@ -916,6 +931,7 @@ def build_xml(data: dict) -> ET._ElementTree:
                         ('ks2.rowCode', item.get('code')),
                         ('ks2.unitConsumption', str(item.get('unitConsumption')) if item.get('unitConsumption') not in (None, '') else None),
                         ('ks2.calcMode', item.get('calcMode')),
+                        ('ks2.correctionKind', correction_kind),
                         ('ks2.isCorrection', '1' if correction_row else None),
                         ('ks2.effectiveAmount', fmt_money(effective_amount) if correction_row else None),
                     ])
