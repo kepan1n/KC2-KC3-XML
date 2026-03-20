@@ -893,6 +893,37 @@ body[data-sidebar="closed"] .sidebar {
   white-space: nowrap;
   font-weight: 700;
 }
+.amount-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.calc-mode-chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+.calc-mode-chip.subtract {
+  background: #fff4e5;
+  color: #b54708;
+}
+.table-muted-cell {
+  color: var(--muted);
+  text-align: center;
+  font-weight: 600;
+}
+.correction-row td {
+  background: #fffaf5;
+}
+.correction-row td:first-child,
+.correction-row td.amount-cell {
+  box-shadow: inset 3px 0 0 #f79009;
+}
 .ks3-name-cell textarea {
   min-height: var(--table-textarea-min);
 }

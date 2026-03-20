@@ -235,6 +235,13 @@ function handleContentClick(event) {
     return;
   }
 
+  if (action === 'add-correction-row') {
+    clearTransientRowUi();
+    app.state.ks2Sheets[Number(sheetIndex)].rows.push(createBlankRow('item', { calcMode: 'subtract' }));
+    render();
+    return;
+  }
+
   if (action === 'add-section-row') {
     clearTransientRowUi();
     app.state.ks2Sheets[Number(sheetIndex)].rows.push(createBlankRow('section'));
@@ -260,9 +267,12 @@ function handleContentClick(event) {
 
   if (action === 'insert-row-after') {
     clearTransientRowUi();
-    app.state.ks2Sheets[rowCoords.sheetIndex].rows.splice(rowCoords.rowIndex + 1, 0, createBlankRow(rowKind || 'item'));
+    const nextRow = rowKind === 'correction'
+      ? createBlankRow('item', { calcMode: 'subtract' })
+      : createBlankRow(rowKind || 'item');
+    app.state.ks2Sheets[rowCoords.sheetIndex].rows.splice(rowCoords.rowIndex + 1, 0, nextRow);
     render();
-    flash('Строка добавлена.');
+    flash(rowKind === 'correction' ? 'Строка-корректировка добавлена.' : 'Строка добавлена.');
     return;
   }
 
@@ -513,6 +523,7 @@ function prepareState(raw) {
       rows: (sheet.rows || []).map((row) => ({
         ...row,
         type: row.type || 'item',
+        calcMode: row.calcMode || 'normal',
         code: row.code ?? '',
         lineNo: row.lineNo ?? '',
         estimateNo: row.estimateNo ?? '',
@@ -535,7 +546,7 @@ function prepareState(raw) {
     };
 
     prepared.rows.forEach((row) => {
-      row.amount = computeRowAmount(row);
+      row.amount = computeRowDisplayAmount(row);
     });
 
     return prepared;
@@ -760,6 +771,8 @@ function buildDocumentModel() {
     const rows = sheet.rows.map((row, rowIndex) => ({
       rowIndex,
       type: row.type,
+      calcMode: row.calcMode || 'normal',
+      isCorrection: isCorrectionRow(row),
       code: row.code || '',
       lineNo: row.lineNo || '',
       estimateNo: row.estimateNo || '',
@@ -767,7 +780,11 @@ function buildDocumentModel() {
       unit: row.unit || '',
       quantity: numberOrNull(row.quantity),
       price: numberOrNull(row.price),
-      amount: numberOrNull(computeRowAmount(row)),
+      amount: numberOrNull(computeRowDisplayAmount(row)),
+      effectiveAmount: numberOrNull(computeRowEffectiveAmount(row)),
+      effectiveQuantity: applyRowSign(numberOrNull(row.quantity), row),
+      effectiveFromStart: applyRowSign(firstNumberOrNull(row.fromStart, row.amountFromStart, row.baseFromStart, row.cumulativeAmount), row),
+      effectiveQuantityFromStart: applyRowSign(firstNumberOrNull(row.quantityFromStart, row.fromStartQuantity, row.cumulativeQuantity), row),
       unitConsumption: numberOrNull(row.unitConsumption),
       category: row.category || '',
       note: row.note || '',
@@ -1284,6 +1301,7 @@ function renderKs2RowActions(sheetIndex, rowIndex) {
         <div class="row-action-menu">
           <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="section" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Раздел</button>
           <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="item" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Строка</button>
+          <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="correction" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Корректировка</button>
           <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="note" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Примечание</button>
         </div>
       ` : ''}
@@ -1307,7 +1325,7 @@ function renderKs2Pane(sheetIndex) {
   const ks2TableId = `ks2-${sheetIndex}`;
 
   const rows = sheet.rows.map((row, rowIndex) => `
-    <tr class="${row.type === 'section' ? 'section-row' : row.type === 'note' ? 'note-row' : ''}">
+    <tr class="${row.type === 'section' ? 'section-row' : row.type === 'note' ? 'note-row' : isCorrectionRow(row) ? 'correction-row' : ''}">
       <td>
         <select data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.type">
           ${renderOptions(['item', 'section', 'note'], row.type, { item: 'Строка', section: 'Раздел', note: 'Примечание' })}
@@ -1320,7 +1338,12 @@ function renderKs2Pane(sheetIndex) {
       <td><input data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.unit" value="${escapeAttr(row.unit)}" /></td>
       <td class="number-cell"><input data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.quantity" data-value-type="number" value="${formatEditableNumber(row.quantity)}" /></td>
       <td class="number-cell"><input data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.price" data-value-type="number" value="${formatEditableNumber(row.price)}" /></td>
-      <td class="amount-cell">${formatMoney(row.amount)}</td>
+      <td class="amount-cell">
+        <div class="amount-stack">
+          <strong>${formatMoney(computeRowDisplayAmount(row))}</strong>
+          ${isCorrectionRow(row) ? '<span class="calc-mode-chip subtract">вычитается</span>' : ''}
+        </div>
+      </td>
       <td class="number-cell"><input data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.unitConsumption" data-value-type="number" value="${formatEditableNumber(row.unitConsumption)}" /></td>
       <td>
         <select data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.category">
@@ -1333,6 +1356,16 @@ function renderKs2Pane(sheetIndex) {
             material: 'Материал',
           })}
         </select>
+      </td>
+      <td>
+        ${row.type === 'item' ? `
+          <select data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.calcMode">
+            ${renderOptions(['normal', 'subtract'], row.calcMode || 'normal', {
+              normal: 'Обычная',
+              subtract: 'Корректировка',
+            })}
+          </select>
+        ` : '<div class="table-muted-cell">—</div>'}
       </td>
       <td><textarea data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.note">${escapeHtml(row.note)}</textarea></td>
       <td class="actions-cell">${renderKs2RowActions(sheetIndex, rowIndex)}</td>
@@ -1406,6 +1439,7 @@ function renderKs2Pane(sheetIndex) {
               <col class="ks2-col-amount" />
               <col class="ks2-col-consumption" />
               <col class="ks2-col-category" />
+              <col class="ks2-col-mode" />
               <col class="ks2-col-note" />
               <col class="ks2-col-actions" />
             </colgroup>
@@ -1422,11 +1456,12 @@ function renderKs2Pane(sheetIndex) {
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-amount" data-min-width="96">Общая стоимость, руб. с НДС<span class="resize-handle"></span></th>
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-consumption" data-min-width="42">Расход на единицу<span class="resize-handle"></span></th>
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-category" data-min-width="90">Категория<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-mode" data-min-width="96">Режим строки<span class="resize-handle"></span></th>
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-note" data-min-width="120">Примечание<span class="resize-handle"></span></th>
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-actions" data-min-width="24"><span class="resize-handle"></span></th>
               </tr>
               <tr class="numbering-row">
-                <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th></th>
+                <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>13</th><th></th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -1434,6 +1469,7 @@ function renderKs2Pane(sheetIndex) {
         </div>
         <div class="inline-actions">
           <button class="mini" data-action="add-item-row" data-sheet-index="${sheetIndex}">+ Строка работы</button>
+          <button class="mini secondary" data-action="add-correction-row" data-sheet-index="${sheetIndex}">+ Корректировка</button>
           <button class="mini secondary" data-action="add-section-row" data-sheet-index="${sheetIndex}">+ Раздел</button>
           <button class="mini secondary" data-action="add-note-row" data-sheet-index="${sheetIndex}">+ Примечание</button>
         </div>
@@ -2019,7 +2055,7 @@ ${settlementRowsXml}
 function computeSheetTotals(sheet) {
   const gross = sheet.rows
     .filter((row) => row.type === 'item')
-    .reduce((sum, row) => sum + numberOrZero(computeRowAmount(row)), 0);
+    .reduce((sum, row) => sum + numberOrZero(computeRowEffectiveAmount(row)), 0);
   const vatRate = numberOrZero(sheet.vatRate);
   const vat = vatRate ? round2(gross * vatRate / (100 + vatRate)) : 0;
   const base = round2(gross - vat);
@@ -2027,7 +2063,7 @@ function computeSheetTotals(sheet) {
 
   sheet.rows.filter((row) => row.type === 'item').forEach((row) => {
     const category = row.category || 'work';
-    breakdown[category] = round2((breakdown[category] || 0) + numberOrZero(row.amount));
+    breakdown[category] = round2((breakdown[category] || 0) + numberOrZero(computeRowEffectiveAmount(row)));
   });
 
   return { gross: round2(gross), vat, base, breakdown };
@@ -2217,12 +2253,37 @@ function buildHoldbacksXmlSettlementModel() {
   };
 }
 
-function computeRowAmount(row) {
+function applyRowSign(value, row) {
+  if (value == null) return null;
+  return isCorrectionRow(row) ? round2(-Math.abs(value)) : value;
+}
+
+function firstNumberOrNull(...values) {
+  for (const value of values) {
+    const numeric = numberOrNull(value);
+    if (numeric != null) return numeric;
+  }
+  return null;
+}
+
+function isCorrectionRow(row) {
+  return row?.type === 'item' && row?.calcMode === 'subtract';
+}
+
+function computeRowDisplayAmount(row) {
   if (row.type !== 'item') return null;
   const quantity = numberOrNull(row.quantity);
   const price = numberOrNull(row.price);
-  if (quantity == null || price == null) return numberOrNull(row.amount);
-  return round2(quantity * price);
+  if (quantity == null || price == null) {
+    const fallback = numberOrNull(row.amount);
+    return fallback == null ? null : round2(Math.abs(fallback));
+  }
+  return round2(Math.abs(quantity * price));
+}
+
+function computeRowEffectiveAmount(row) {
+  const displayAmount = computeRowDisplayAmount(row);
+  return applyRowSign(displayAmount, row);
 }
 
 function createBlankSheet(number) {
@@ -2240,9 +2301,10 @@ function createBlankSheet(number) {
   };
 }
 
-function createBlankRow(type = 'item') {
+function createBlankRow(type = 'item', overrides = {}) {
   return {
     type,
+    calcMode: 'normal',
     code: '',
     lineNo: '',
     estimateNo: '',
@@ -2261,6 +2323,7 @@ function createBlankRow(type = 'item') {
     quantityFromStart: null,
     fromStartQuantity: null,
     cumulativeQuantity: null,
+    ...overrides,
   };
 }
 
