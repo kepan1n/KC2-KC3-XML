@@ -360,3 +360,34 @@
   - `output/small-sample-full-cumulative.xml` -> `VALID`
   - `output/multi-ks2-test-full-cumulative.xml` -> `VALID`.
 - Следующий подэтап по `P`: дотянуть уже не только итоговый cumulative-слой, но и более точный источник накопительных значений по разделам/строкам из формы/экспорта, чтобы уйти от fallback на отчетные суммы там, где Excel реально дает отдельный накопительный разрез.
+
+
+Дополнительно по следующему слою full cumulative / KS3-as-source:
+- В `variants/modern-light/app.js` сохранение данных КС-3 переведено из purely-auto режима в mixed режим:
+  - если в состоянии формы уже есть `ks3.rows`, они больше не затираются автосборкой из КС-2;
+  - если в состоянии формы есть `ks3.totals`, они используются как authoritative totals и не пересчитываются суммированием строк.
+- Это устраняет ключевую проблему предыдущего слоя: реальный накопительный разрез КС-3 из Excel больше не теряется при сборке export-модели перед XML.
+- В export-модель `ks2Sheets[*].rows[*]` добавлено сохранение optional cumulative-полей строки:
+  - `fromStart`
+  - `amountFromStart`
+  - `baseFromStart`
+  - `cumulativeAmount`
+  - `quantityFromStart`
+  - `fromStartQuantity`
+  - `cumulativeQuantity`
+- Эти поля пока не выведены в отдельный UI-блок, но уже не теряются при импорте / сохранении / сборке export JSON и могут использоваться генератором `P`.
+- В `scripts/generate_xml_from_export.py` улучшена привязка `ks3.rows` к листам `КС-2`:
+  - сначала матч по номеру акта (`Акт №...`, `КС-2 №...`),
+  - затем матч по тексту основания/названия,
+  - затем fallback по порядку.
+- В генераторе исправлена валидация и входной парсер так, чтобы он принимал не только готовый export bundle (`xml` + вложенный `document`), но и raw saved-form/sample формат (`xmlExtras` + плоские `documentNumber/documentDate` у листа КС-2).
+- Это позволяет прогонять генератор `P` напрямую на `data/sample-data.json` и `saved-forms/small-sample.json`.
+- Проверка после этого слоя:
+  - `output/raw-sample-cumulative.xml` -> `VALID`
+  - `output/saved-small-cumulative.xml` -> `VALID`
+- Отдельно сделан proof-test на row-level cumulative:
+  - в тестовый export вручную добавлены `amountFromStart` и `quantityFromStart` для первой строки работ;
+  - генератор корректно поднял их в `СтСНачСтрБезНДС` и `КолСНач`;
+  - файл `output/small-sample-row-cumulative.xml` прошел XSD (`VALID`).
+- Практический результат: `P` уже умеет брать cumulative не только из общих итогов КС-3, но и из строковой export-модели, если эти данные в нее положить.
+- Следующий шаг: решить, откуда именно в UI/импорте брать строковой cumulative-разрез production-данных (ручной ввод, импорт из Excel КС-3, либо отдельная нормализация входного файла) и вывести это в устойчивую форму для пользователя.

@@ -424,6 +424,7 @@ function prepareState(raw) {
   data.ui.holdbackDeleteConfirm ??= null;
   data.ui.columnWidths ??= {};
   data.common ??= {};
+  data.ks3 ??= {};
   data.holdbacks ??= { rows: [] };
   data.holdbacks.rows ??= [];
   data.xmlExtras ??= {};
@@ -467,6 +468,13 @@ function prepareState(raw) {
         unitConsumption: numberOrNull(row.unitConsumption),
         note: row.note ?? '',
         category: row.category || inferCategory(row.name || '', row.note || ''),
+        fromStart: numberOrNull(row.fromStart),
+        amountFromStart: numberOrNull(row.amountFromStart),
+        baseFromStart: numberOrNull(row.baseFromStart),
+        cumulativeAmount: numberOrNull(row.cumulativeAmount),
+        quantityFromStart: numberOrNull(row.quantityFromStart),
+        fromStartQuantity: numberOrNull(row.fromStartQuantity),
+        cumulativeQuantity: numberOrNull(row.cumulativeQuantity),
       })),
     };
 
@@ -476,6 +484,19 @@ function prepareState(raw) {
 
     return prepared;
   });
+
+  data.ks3.title ||= `КС-3 №${data.ks2Sheets[0]?.documentNumber || '1'}`;
+  data.ks3.documentNumber ||= data.ks2Sheets[0]?.documentNumber || '1';
+  data.ks3.documentDate ||= data.ks2Sheets[0]?.documentDate || new Date().toISOString().slice(0, 10);
+  data.ks3.periodFrom ||= data.ks2Sheets[0]?.periodFrom || new Date().toISOString().slice(0, 10);
+  data.ks3.periodTo ||= data.ks2Sheets[0]?.periodTo || new Date().toISOString().slice(0, 10);
+  data.ks3.rows = (data.ks3.rows || []).map((row) => normalizeKs3Row(row));
+  data.ks3.totals = {
+    fromStart: numberOrNull(data.ks3.totals?.fromStart),
+    fromYearStart: numberOrNull(data.ks3.totals?.fromYearStart),
+    forPeriod: numberOrNull(data.ks3.totals?.forPeriod),
+    vat: numberOrNull(data.ks3.totals?.vat),
+  };
 
   data.holdbacks.rows = (data.holdbacks.rows || []).map((row) => {
     const kind = row.kind || row.type || 'section';
@@ -686,6 +707,13 @@ function buildDocumentModel() {
       unitConsumption: numberOrNull(row.unitConsumption),
       category: row.category || '',
       note: row.note || '',
+      fromStart: numberOrNull(row.fromStart),
+      amountFromStart: numberOrNull(row.amountFromStart),
+      baseFromStart: numberOrNull(row.baseFromStart),
+      cumulativeAmount: numberOrNull(row.cumulativeAmount),
+      quantityFromStart: numberOrNull(row.quantityFromStart),
+      fromStartQuantity: numberOrNull(row.fromStartQuantity),
+      cumulativeQuantity: numberOrNull(row.cumulativeQuantity),
     }));
     return {
       sheetIndex,
@@ -706,13 +734,7 @@ function buildDocumentModel() {
   });
 
   const ks3Rows = buildKs3Rows();
-  const ks3Totals = ks3Rows.reduce((acc, row) => {
-    acc.fromStart += row.fromStart;
-    acc.fromYearStart += row.fromYearStart;
-    acc.forPeriod += row.forPeriod;
-    acc.vat += row.vat;
-    return acc;
-  }, { fromStart: 0, fromYearStart: 0, forPeriod: 0, vat: 0 });
+  const ks3Totals = buildKs3Totals(ks3Rows);
 
   const holdbackGroups = buildHoldbackGroups();
   const holdbacksRows = app.state.holdbacks.rows.map((row, rowIndex) => {
@@ -758,7 +780,13 @@ function buildDocumentModel() {
     common: clone(app.state.common),
     ks2Sheets,
     ks3: {
-      document: clone(app.state.ks3),
+      document: {
+        title: app.state.ks3.title,
+        documentNumber: app.state.ks3.documentNumber,
+        documentDate: app.state.ks3.documentDate,
+        periodFrom: app.state.ks3.periodFrom,
+        periodTo: app.state.ks3.periodTo,
+      },
       rows: ks3Rows,
       totals: ks3Totals,
     },
@@ -1372,13 +1400,8 @@ function renderHoldbackRowActions(rowIndex, rowKind) {
 function renderKs3Pane() {
   const ks3 = app.state.ks3;
   const rows = buildKs3Rows();
-  const totals = rows.reduce((acc, row) => {
-    acc.fromStart += row.fromStart;
-    acc.fromYearStart += row.fromYearStart;
-    acc.forPeriod += row.forPeriod;
-    return acc;
-  }, { fromStart: 0, fromYearStart: 0, forPeriod: 0 });
-  const vat = rows.reduce((sum, row) => sum + row.vat, 0);
+  const totals = buildKs3Totals(rows);
+  const vat = totals.vat;
 
   return `
     <div class="panel">
@@ -1665,7 +1688,17 @@ function renderXmlPane() {
   `;
 }
 
-function buildKs3Rows() {
+function normalizeKs3Row(row = {}) {
+  return {
+    name: row.name || '',
+    fromStart: numberOrNull(row.fromStart),
+    fromYearStart: numberOrNull(row.fromYearStart),
+    forPeriod: numberOrNull(row.forPeriod),
+    vat: numberOrNull(row.vat),
+  };
+}
+
+function buildAutoKs3Rows() {
   return app.state.ks2Sheets.map((sheet) => {
     const totals = computeSheetTotals(sheet);
     return {
@@ -1676,6 +1709,34 @@ function buildKs3Rows() {
       vat: totals.vat,
     };
   });
+}
+
+function buildKs3Rows() {
+  const manualRows = (app.state.ks3?.rows || [])
+    .map((row) => normalizeKs3Row(row))
+    .filter((row) => row.name || row.fromStart != null || row.fromYearStart != null || row.forPeriod != null || row.vat != null);
+  return manualRows.length ? manualRows : buildAutoKs3Rows();
+}
+
+function buildKs3Totals(rows = buildKs3Rows()) {
+  const explicit = app.state.ks3?.totals || {};
+  const hasExplicit = ['fromStart', 'fromYearStart', 'forPeriod', 'vat'].some((key) => explicit[key] != null && explicit[key] !== '');
+  if (hasExplicit) {
+    return {
+      fromStart: numberOrZero(explicit.fromStart),
+      fromYearStart: numberOrZero(explicit.fromYearStart),
+      forPeriod: numberOrZero(explicit.forPeriod),
+      vat: numberOrZero(explicit.vat),
+    };
+  }
+
+  return rows.reduce((acc, row) => {
+    acc.fromStart += numberOrZero(row.fromStart);
+    acc.fromYearStart += numberOrZero(row.fromYearStart);
+    acc.forPeriod += numberOrZero(row.forPeriod);
+    acc.vat += numberOrZero(row.vat);
+    return acc;
+  }, { fromStart: 0, fromYearStart: 0, forPeriod: 0, vat: 0 });
 }
 
 function buildGeneratedXmlFields() {
@@ -2050,6 +2111,13 @@ function createBlankRow(type = 'item') {
     unitConsumption: null,
     note: '',
     category: type === 'item' ? 'work' : 'misc',
+    fromStart: null,
+    amountFromStart: null,
+    baseFromStart: null,
+    cumulativeAmount: null,
+    quantityFromStart: null,
+    fromStartQuantity: null,
+    cumulativeQuantity: null,
   };
 }
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from lxml import etree as ET
@@ -85,12 +86,64 @@ def resolve_cumulative_mode(constants: dict) -> str:
 
 
 def build_ks3_sheet_map(ks2_sheets: list[dict], ks3_rows: list[dict]):
-    rows = list(ks3_rows or [])
-    if len(rows) == len(ks2_sheets) + 1:
-        first_name = str((rows[0] or {}).get('name') or '').lower()
-        if 'всего' in first_name or 'итого' in first_name:
-            rows = rows[1:]
-    return {index: (rows[index] if index < len(rows) else {}) for index, _ in enumerate(ks2_sheets)}
+    def normalize_name(value):
+        return ' '.join(str(value or '').lower().replace('ё', 'е').split())
+
+    def is_total_or_header(row):
+        name = normalize_name((row or {}).get('name'))
+        if not name:
+            return True
+        if 'в том числе' in name:
+            return True
+        if name.startswith('всего') or 'всего работ и затрат' in name or name == 'итого':
+            return True
+        return False
+
+    rows = [row for row in (ks3_rows or []) if row and not is_total_or_header(row)]
+    unused = list(rows)
+    mapping = {}
+
+    for index, sheet in enumerate(ks2_sheets):
+        sheet_doc = sheet.get('document', {})
+        doc_number = str(first_non_empty(sheet_doc.get('number'), sheet.get('documentNumber'), default='')).strip()
+        basis = normalize_name(first_non_empty(sheet_doc.get('basis'), sheet.get('basis'), sheet.get('title'), default=''))
+
+        matched = None
+        if doc_number:
+            patterns = [
+                f'акт №{doc_number}',
+                f'акт n{doc_number}',
+                f'кс-2 №{doc_number}',
+                f'кс2 №{doc_number}',
+                f'кс-2 n{doc_number}',
+                f'кс2 n{doc_number}',
+            ]
+            for row in unused:
+                name = normalize_name(row.get('name'))
+                if any(pattern in name for pattern in patterns):
+                    matched = row
+                    break
+
+        if matched is None and basis:
+            tokens = [token for token in re.findall(r'[a-zа-я0-9]+', basis) if len(token) >= 6]
+            scored = []
+            for row in unused:
+                name = normalize_name(row.get('name'))
+                score = sum(1 for token in tokens if token in name)
+                if score > 0:
+                    scored.append((score, row))
+            if scored:
+                scored.sort(key=lambda item: item[0], reverse=True)
+                matched = scored[0][1]
+
+        if matched is None and unused:
+            matched = unused[0]
+
+        mapping[index] = matched or {}
+        if matched in unused:
+            unused.remove(matched)
+
+    return mapping
 
 
 def resolve_cumulative_amount(source: dict | None, period_amount: float):
@@ -161,11 +214,18 @@ def load_json(path: Path):
 
 def validate_export_payload(data: dict):
     common = data.get('common', {})
-    xml = data.get('xml', {})
+    xml = resolve_xml_payload(data)
     manual = xml.get('manual', {})
     ks2_sheets = data.get('ks2Sheets', [])
     first_sheet = ks2_sheets[0] if ks2_sheets else {}
-    first_doc = first_sheet.get('document', {})
+    first_doc = first_sheet.get('document') or {
+        'number': first_sheet.get('documentNumber'),
+        'date': first_sheet.get('documentDate'),
+        'periodFrom': first_sheet.get('periodFrom'),
+        'periodTo': first_sheet.get('periodTo'),
+        'basis': first_sheet.get('basis'),
+        'vatRate': first_sheet.get('vatRate'),
+    }
 
     required = [
         ('common.contractorName', common.get('contractorName'), 'Не заполнен генподрядчик'),
@@ -377,7 +437,14 @@ def build_xml(data: dict) -> ET._ElementTree:
     sections = holdbacks.get('sections', [])
     ks2_sheets = data.get('ks2Sheets', [])
     first_sheet = ks2_sheets[0] if ks2_sheets else {}
-    first_doc = first_sheet.get('document', {})
+    first_doc = first_sheet.get('document') or {
+        'number': first_sheet.get('documentNumber'),
+        'date': first_sheet.get('documentDate'),
+        'periodFrom': first_sheet.get('periodFrom'),
+        'periodTo': first_sheet.get('periodTo'),
+        'basis': first_sheet.get('basis'),
+        'vatRate': first_sheet.get('vatRate'),
+    }
     ks3 = data.get('ks3', {})
     ks3_doc = ks3.get('document', {})
     ks3_totals = ks3.get('totals', {})
