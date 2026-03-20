@@ -600,7 +600,9 @@ def build_xml(data: dict) -> ET._ElementTree:
             ДатаДок=fmt_date(common.get('contractDate')),
         )
         act.insert(insert_index + offset, delivery_basis)
-    set_attr(currency, КодОКВ=currency_code)
+    set_attr(currency,
+             КодОКВ=currency_code,
+             НаимОКВ=currency_name)
 
     info_block = act.find('ИнфПолФХЖ1')
     clear_children(info_block)
@@ -664,10 +666,6 @@ def build_xml(data: dict) -> ET._ElementTree:
             }
             work_el = ET.SubElement(works, 'ВидРаб', **attrs)
             sheet_doc = sheet.get('document', {})
-            changes = ET.SubElement(work_el, 'УчОшИНовОбстСт')
-            err = ET.SubElement(changes, 'ОшибПрПер')
-            ET.SubElement(err, 'УвелДен').text = '1'
-            ET.SubElement(err, 'УвелКол').text = '1'
             tax = ET.SubElement(work_el, 'СумНал')
             vat_amount = max(float(ks3_totals.get('vat') or 0), 0) if ks3_totals.get('vat') is not None else 0
             ET.SubElement(tax, 'СумНал').text = fmt_money(vat_amount)
@@ -788,10 +786,6 @@ def build_xml(data: dict) -> ET._ElementTree:
                     if item.get('estimateNo'):
                         item_attrs['ПозСмет'] = str(item.get('estimateNo'))
                     work_el = ET.SubElement(sec, 'СвВидРаб', **item_attrs)
-                    changes = ET.SubElement(work_el, 'УчОшИНовОбстСт')
-                    err = ET.SubElement(changes, 'ОшибПрПер')
-                    ET.SubElement(err, 'УвелДен').text = '1'
-                    ET.SubElement(err, 'УвелКол').text = '1'
                     if qty not in (None, ''):
                         ET.SubElement(work_el, 'КолТов').text = str(qty)
                     if cumulative_mode == '1' and cumulative_qty not in (None, ''):
@@ -883,9 +877,15 @@ def build_xml(data: dict) -> ET._ElementTree:
     total_base = first_number(ks3_totals.get('forPeriod'), default=0.0)
     vat_total = first_number(ks3_totals.get('vatForPeriod'), ks3_totals.get('vat'), default=0.0)
     total_with_vat = total_base + vat_total
-    set_attr(total_el,
-             СтТовБезНДСВсего=fmt_money(total_base),
-             СтТовУчНалВсего=fmt_money(total_with_vat))
+    total_attrs = {
+        'СтТовБезНДСВсего': fmt_money(total_base),
+        'СтТовУчНалВсего': fmt_money(total_with_vat),
+    }
+    if currency_code != '643':
+        total_attrs['СтУчНалВсВалДог'] = fmt_money(total_with_vat)
+        if vat_total > 0:
+            total_attrs['СумНалВсВалДог'] = fmt_money(vat_total)
+    set_attr(total_el, **total_attrs)
     ET.SubElement(total_el, 'СумНалВсего').text = fmt_money(vat_total)
     by_rate = ET.SubElement(total_el, 'СумПоСтавке', НалСт='20%', НалБаза=fmt_money(total_base))
     ET.SubElement(by_rate, 'СумНДС').text = fmt_money(vat_total)
@@ -906,9 +906,15 @@ def build_xml(data: dict) -> ET._ElementTree:
             default=vat_total,
         )
         total_with_vat_start = total_base_start + vat_total_start
-        set_attr(total_start_el,
-                 СтТовБезНДСВсего=fmt_money(total_base_start),
-                 СтТовУчНалВсего=fmt_money(total_with_vat_start))
+        total_start_attrs = {
+            'СтТовБезНДСВсего': fmt_money(total_base_start),
+            'СтТовУчНалВсего': fmt_money(total_with_vat_start),
+        }
+        if currency_code != '643':
+            total_start_attrs['СтУчНалВсВалДог'] = fmt_money(total_with_vat_start)
+            if vat_total_start > 0:
+                total_start_attrs['СумНалВсВалДог'] = fmt_money(vat_total_start)
+        set_attr(total_start_el, **total_start_attrs)
         ET.SubElement(total_start_el, 'СумНалВсего').text = fmt_money(vat_total_start)
         by_rate_start = ET.SubElement(total_start_el, 'СумПоСтавке', НалСт='20%', НалБаза=fmt_money(total_base_start))
         ET.SubElement(by_rate_start, 'СумНДС').text = fmt_money(vat_total_start)
