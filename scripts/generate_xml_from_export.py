@@ -352,13 +352,27 @@ def build_operation_text(common: dict):
     )
 
 
-def add_info_pairs(parent: ET._Element, pairs: list[tuple[str, str | None]]):
+def normalize_info_pairs(pairs: list[tuple[str, str | None]]):
     normalized = []
     for key, value in pairs:
         prepared = first_non_empty(value)
         if prepared is None:
             continue
         normalized.append((str(key), str(prepared)))
+    return normalized
+
+
+def add_text_info_pairs(info_parent: ET._Element, pairs: list[tuple[str, str | None]]):
+    normalized = normalize_info_pairs(pairs)
+    if not normalized:
+        return None
+    for key, value in normalized:
+        ET.SubElement(info_parent, 'ТекстИнф', Идентиф=key[:255], Значение=value[:1000])
+    return info_parent
+
+
+def add_info_pairs(parent: ET._Element, pairs: list[tuple[str, str | None]]):
+    normalized = normalize_info_pairs(pairs)
     if not normalized:
         return None
 
@@ -468,12 +482,15 @@ def build_xml(data: dict) -> ET._ElementTree:
     if org is not None:
         org.text = manual.get('contractorInn') or (org.text or '7701234567')
 
+    currency_code = str(first_non_empty(common.get('currencyCode'), default='643'))
+    currency_name = first_non_empty(common.get('currencyName'))
+
     act = doc.find('СвАктСдПр')
     set_attr(act,
              НомерДок=first_doc.get('number') or 'без номера',
              ДатаДок=fmt_date(first_doc.get('date') or ks3_doc.get('documentDate')),
              НаимОб=common.get('objectName') or common.get('constructionObject') or act.get('НаимОб'),
-             КодОКВДог='643')
+             КодОКВДог=currency_code)
 
     contract_id = act.find('ИдДог/ТипИдДок')
     set_attr(contract_id,
@@ -583,11 +600,35 @@ def build_xml(data: dict) -> ET._ElementTree:
             ДатаДок=fmt_date(common.get('contractDate')),
         )
         act.insert(insert_index + offset, delivery_basis)
-    set_attr(currency, КодОКВ='643')
+    set_attr(currency, КодОКВ=currency_code)
 
     info_block = act.find('ИнфПолФХЖ1')
     clear_children(info_block)
-    ET.SubElement(info_block, 'ТекстИнф', Идентиф='customField', Значение=manual.get('customInfoValue') or 'sample')
+    add_text_info_pairs(info_block, [
+        ('customField', manual.get('customInfoValue') or 'sample'),
+        ('form.okudKs2', common.get('okudKs2')),
+        ('form.okudKs3', common.get('okudKs3')),
+        ('form.currencyCode', currency_code),
+        ('form.currencyName', currency_name),
+        ('form.objectOkpo', common.get('objectOkpo')),
+        ('form.okdpCode', common.get('okdpCode')),
+        ('developer.name', common.get('developerName')),
+        ('developer.okpo', common.get('developerOkpo')),
+        ('techCustomer.name', common.get('techCustomerName')),
+        ('techCustomer.okpo', common.get('techCustomerOkpo')),
+        ('contractor.signerName', common.get('contractorSignerName')),
+        ('contractor.signerPosition', common.get('contractorSignerPosition')),
+        ('customer.signerName', common.get('customerSignerName')),
+        ('customer.signerPosition', common.get('customerSignerPosition')),
+        ('techCustomer.signerName', common.get('techCustomerSignerName')),
+        ('techCustomer.signerPosition', common.get('techCustomerSignerPosition')),
+        ('ks3.documentNumber', first_non_empty(ks3_doc.get('documentNumber'), ks3_doc.get('number'))),
+        ('ks3.documentDate', fmt_date(first_non_empty(ks3_doc.get('documentDate'), ks3_doc.get('date'))) if first_non_empty(ks3_doc.get('documentDate'), ks3_doc.get('date')) else None),
+        ('ks3.periodFrom', fmt_date(first_non_empty(ks3_doc.get('periodFrom'))) if first_non_empty(ks3_doc.get('periodFrom')) else None),
+        ('ks3.periodTo', fmt_date(first_non_empty(ks3_doc.get('periodTo'))) if first_non_empty(ks3_doc.get('periodTo')) else None),
+        ('ks3.totalFromStart', fmt_money(first_number(ks3_totals.get('fromStart'), default=0.0)) if ks3_totals else None),
+        ('ks3.totalForPeriod', fmt_money(first_number(ks3_totals.get('forPeriod'), default=0.0)) if ks3_totals else None),
+    ])
 
     existing_works = doc.findall('НаимИСт')
     works_insert_index = list(doc).index(existing_works[0]) if existing_works else list(doc).index(doc.find('СвПродПер'))
@@ -768,6 +809,10 @@ def build_xml(data: dict) -> ET._ElementTree:
                             КолВЕдПрослеж=fmt_money(tg.get('quantity') or 1).rstrip('0').rstrip('.') or '1',
                         )
                         trace_attached = True
+                    add_info_pairs(work_el, [
+                        ('ks2.rowCode', item.get('code')),
+                        ('ks2.unitConsumption', str(item.get('unitConsumption')) if item.get('unitConsumption') not in (None, '') else None),
+                    ])
                     if not sheet_metadata_attached:
                         add_info_pairs(work_el, [
                             ('ks2.sheetIndex', str(sheet_index + 1)),
