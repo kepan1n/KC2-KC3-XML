@@ -18,7 +18,21 @@
     "contractDate": "22.09.2025 г.",
     "operationType": "",
     "currencyCode": "643",
-    "currencyName": "Российский рубль"
+    "currencyName": "Российский рубль",
+    "showDocumentHeaders": true,
+    "showDocumentSignatures": true,
+    "ks3DeveloperPosition": "ООО «СЗ «АСПЕЙС Хорошевская» в лице Генерального директора управляющей организации ООО «АСПЕЙС Девелопмент»",
+    "ks3DeveloperName": "О.В. Смирнов",
+    "ks3TechCustomerPosition": "Генеральный директор ООО «А+»",
+    "ks3TechCustomerName": "Е.С. Воронин",
+    "ks3ContractorPosition": "Генеральный директор ООО «ЛегендаЭлит»",
+    "ks3ContractorName": "Дылюк А.",
+    "customerSignerPosition": "ООО «СЗ «АСПЕЙС Хорошевская» в лице Генерального директора управляющей организации ООО «АСПЕЙС Девелопмент»",
+    "customerSignerName": "О.В. Смирнов",
+    "techCustomerSignerPosition": "Генеральный директор ООО «А+»",
+    "techCustomerSignerName": "Е.С. Воронин",
+    "contractorSignerPosition": "Генеральный директор ООО «ЛегендаЭлит»",
+    "contractorSignerName": "Дылюк А."
   },
   "ks2Sheets": [
     {
@@ -1548,18 +1562,23 @@
     },
     "manual": {
       "economicSubjectName": "ООО «ЛегендаЭлит»",
-      "estimateVersionCode": "",
-      "supplementDocType": "",
-      "supplementDocNumber": "",
-      "supplementDocDate": "",
-      "contractorInn": "",
-      "customerInn": "",
-      "developerPostalIndex": "",
-      "developerRegionCode": "",
-      "contractorPostalIndex": "",
-      "contractorRegionCode": "",
-      "correctionNumber": "",
-      "correctionDate": ""
+      "estimateVersionCode": "1",
+      "supplementDocType": "Дополнительное соглашение",
+      "supplementDocNumber": "ДС-1",
+      "supplementDocDate": "2025-10-31",
+      "contractorInn": "7701234567",
+      "customerInn": "7701234567",
+      "developerPostalIndex": "123456",
+      "developerRegionCode": "77",
+      "contractorPostalIndex": "109028",
+      "contractorRegionCode": "77",
+      "correctionNumber": "1",
+      "correctionDate": "2025-10-31",
+      "signerName": "Дылюк А.",
+      "signerPosition": "Генеральный директор ООО «ЛегендаЭлит»",
+      "signerStatus": "1",
+      "signatureType": "1",
+      "customInfoValue": "sample"
     },
     "traceableGoods": [
       {

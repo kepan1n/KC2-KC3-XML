@@ -499,6 +499,12 @@ function prepareState(raw) {
   data.common.ks2DocSubtitle ||= 'О ПРИЕМКЕ ВЫПОЛНЕННЫХ РАБОТ';
   data.common.ks3DocLabel ||= 'СПРАВКА';
   data.common.ks3DocSubtitle ||= 'О СТОИМОСТИ ВЫПОЛНЕННЫХ РАБОТ И ЗАТРАТ';
+  data.common.ks3DeveloperPosition ||= data.common.customerSignerPosition || '';
+  data.common.ks3DeveloperName ||= data.common.customerSignerName || '';
+  data.common.ks3TechCustomerPosition ||= data.common.techCustomerSignerPosition || '';
+  data.common.ks3TechCustomerName ||= data.common.techCustomerSignerName || '';
+  data.common.ks3ContractorPosition ||= data.common.contractorSignerPosition || 'Генеральный директор ООО «ЛегендаЭлит»';
+  data.common.ks3ContractorName ||= data.common.contractorSignerName || 'А. Дылюк';
 
   data.ks2Sheets = (data.ks2Sheets || []).map((sheet, index) => {
     const prepared = {
@@ -1194,12 +1200,24 @@ function renderKs2TotalsBlock(sheet, totals) {
   `;
 }
 
+function inferKs3VatRate(totals, vat) {
+  const period = numberOrZero(totals?.forPeriod);
+  const vatValue = numberOrZero(vat);
+  if (period > 0 && vatValue >= 0) {
+    const rate = round2((vatValue / period) * 100);
+    if (rate > 0) return rate;
+  }
+  return app.state.ks2Sheets[0]?.vatRate || 20;
+}
+
 function renderKs3TotalsBlock(totals, vat) {
+  const vatRate = inferKs3VatRate(totals, vat);
+  const withVat = numberOrZero(totals.forPeriod) + numberOrZero(vat);
   return `
     <div class="excel-totals-block">
       <div class="excel-total-line"><span>Итого:</span><strong>${formatMoney(totals.forPeriod)}</strong></div>
-      <div class="excel-total-line"><span>Сумма НДС (22%)</span><strong>${formatMoney(vat)}</strong></div>
-      <div class="excel-total-line"><span>Всего с учетом НДС (22%):</span><strong>${formatMoney(totals.forPeriod + vat)}</strong></div>
+      <div class="excel-total-line"><span>Сумма НДС (${formatMoney(vatRate).replace('.00', '').replace(',00', '')}%)</span><strong>${formatMoney(vat)}</strong></div>
+      <div class="excel-total-line"><span>Всего с учетом НДС (${formatMoney(vatRate).replace('.00', '').replace(',00', '')}%):</span><strong>${formatMoney(withVat)}</strong></div>
     </div>
   `;
 }
