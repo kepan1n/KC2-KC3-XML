@@ -522,7 +522,7 @@
     "constants": {
       "isGovMunicipal": "0",
       "vatCalcInTotalOnly": "0",
-      "cumulativeMode": "0",
+      "cumulativeMode": "1",
       "priceIndexYear": "0000",
       "requiresSettlementApproval": "0",
       "diadocCompactMode": "0"

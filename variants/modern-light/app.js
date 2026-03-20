@@ -431,6 +431,7 @@ function prepareState(raw) {
   data.xmlExtras.constants ??= {};
   data.xmlExtras.manual ??= {};
   data.xmlExtras.traceableGoods ??= [];
+  data.xmlExtras.constants.cumulativeMode ||= '1';
 
   data.common.okudKs3 = data.common.okudKs3 && data.common.okudKs3 !== 'Форма по ОКУД' ? data.common.okudKs3 : '0322001';
   data.common.showDocumentHeaders = data.common.showDocumentHeaders ?? false;

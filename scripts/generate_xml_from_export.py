@@ -50,6 +50,72 @@ def fmt_date(value: str | None) -> str:
     return value[:10]
 
 
+def safe_float(value, default=0.0):
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
+def first_number(*values, default=None):
+    for value in values:
+        if value in (None, ''):
+            continue
+        try:
+            return float(value)
+        except Exception:
+            continue
+    return default
+
+
+def calc_vat(base_amount, vat_rate):
+    base = safe_float(base_amount, 0.0)
+    rate = safe_float(vat_rate, 0.0)
+    return max(round(base * rate / 100, 2), 0)
+
+
+def resolve_xml_payload(data: dict) -> dict:
+    return data.get('xml') or data.get('xmlExtras') or {}
+
+
+def resolve_cumulative_mode(constants: dict) -> str:
+    # Текущее проектное решение: подрядческий P-файл всегда собираем
+    # в режиме full cumulative как развернутый аналог КС-3 из Excel.
+    return '1'
+
+
+def build_ks3_sheet_map(ks2_sheets: list[dict], ks3_rows: list[dict]):
+    rows = list(ks3_rows or [])
+    if len(rows) == len(ks2_sheets) + 1:
+        first_name = str((rows[0] or {}).get('name') or '').lower()
+        if 'всего' in first_name or 'итого' in first_name:
+            rows = rows[1:]
+    return {index: (rows[index] if index < len(rows) else {}) for index, _ in enumerate(ks2_sheets)}
+
+
+def resolve_cumulative_amount(source: dict | None, period_amount: float):
+    source = source or {}
+    return first_number(
+        source.get('fromStart'),
+        source.get('amountFromStart'),
+        source.get('cumulativeAmount'),
+        source.get('amountCumulative'),
+        source.get('baseFromStart'),
+        default=period_amount,
+    )
+
+
+def resolve_cumulative_quantity(source: dict | None, period_quantity):
+    source = source or {}
+    return first_number(
+        source.get('quantityFromStart'),
+        source.get('fromStartQuantity'),
+        source.get('cumulativeQuantity'),
+        source.get('quantityCumulative'),
+        default=period_quantity,
+    )
+
+
 def _initials_from_token(token: str) -> list[str]:
     value = (token or '').strip()
     if not value or '.' not in value:
@@ -156,6 +222,7 @@ def iter_ks2_sections(ks2_sheets: list[dict]):
                     'rowNo': global_row_no,
                     'name': row.get('name') or f'Раздел {global_section_no}',
                     'estimateNo': row.get('estimateNo') or '',
+                    'sourceRow': row,
                     'items': [],
                 }
                 yield current_section
@@ -171,6 +238,7 @@ def iter_ks2_sections(ks2_sheets: list[dict]):
                         'rowNo': global_row_no,
                         'name': sheet.get('title') or f'Раздел {global_section_no}',
                         'estimateNo': '',
+                        'sourceRow': {},
                         'items': [],
                     }
                     yield current_section
@@ -300,7 +368,7 @@ def build_xml(data: dict) -> ET._ElementTree:
     root = tree.getroot()
     doc = root.find('Документ')
     common = data.get('common', {})
-    xml = data.get('xml', {})
+    xml = resolve_xml_payload(data)
     generated = xml.get('generated', {})
     manual = xml.get('manual', {})
     constants = xml.get('constants', {})
@@ -313,6 +381,9 @@ def build_xml(data: dict) -> ET._ElementTree:
     ks3 = data.get('ks3', {})
     ks3_doc = ks3.get('document', {})
     ks3_totals = ks3.get('totals', {})
+    ks3_sheet_map = build_ks3_sheet_map(ks2_sheets, ks3.get('rows', []))
+    cumulative_mode = resolve_cumulative_mode(constants)
+    vat_in_total_only = str(first_non_empty(constants.get('vatCalcInTotalOnly'), default='0')) == '1'
 
     file_id = generated.get('fileId') or root.get('ИдФайл')
     set_attr(root,
@@ -551,15 +622,22 @@ def build_xml(data: dict) -> ET._ElementTree:
             inserted_blocks += 1
 
             sheet_doc = sheet.get('document', {})
-            vat_rate_default = float(sheet_doc.get('vatRate') or first_doc.get('vatRate') or 20)
+            vat_rate_default = safe_float(sheet_doc.get('vatRate') or first_doc.get('vatRate') or 20)
+            sheet_ks3_row = ks3_sheet_map.get(sheet_index, {})
+            sheet_cumulative_base = first_number(sheet_ks3_row.get('fromStart'), default=None)
+            sheet_for_period_base = first_number(sheet_ks3_row.get('forPeriod'), default=None)
             sheet_metadata_attached = False
             for entry in sheet_sections:
                 items = entry['items']
                 if not items:
                     continue
-                section_amount = sum(float(item.get('amount') or 0) for item in items)
+                section_amount = sum(safe_float(item.get('amount') or 0) for item in items)
                 section_estimate_no = entry.get('estimateNo') or next((str(it.get('estimateNo')) for it in items if it.get('estimateNo')), '')
-                section_vat = max(round(section_amount * vat_rate_default / 100, 2), 0)
+                section_cumulative_amount = resolve_cumulative_amount(entry.get('sourceRow'), section_amount)
+                if section_cumulative_amount == section_amount and len(sheet_sections) == 1 and sheet_cumulative_base is not None:
+                    section_cumulative_amount = sheet_cumulative_base
+                section_vat = calc_vat(section_amount, vat_rate_default)
+                section_cumulative_vat = calc_vat(section_cumulative_amount, vat_rate_default)
                 sec_attrs = {
                     'НомСтр': str(entry['rowNo']),
                     'НомРазд': str(entry['sectionNo']),
@@ -569,14 +647,22 @@ def build_xml(data: dict) -> ET._ElementTree:
                     'СтБезНДСРаздОтч': fmt_money(section_amount),
                     'СтСНДСРаздОтч': fmt_money(section_amount + section_vat),
                 }
+                if cumulative_mode == '1':
+                    sec_attrs['СтБезНДСРаздСНач'] = fmt_money(section_cumulative_amount)
+                    sec_attrs['СтСНДСРаздСНач'] = fmt_money(section_cumulative_amount + section_cumulative_vat)
                 if section_estimate_no:
                     sec_attrs['ПозРаздСмет'] = section_estimate_no
                 sec = ET.SubElement(works, 'Раздел', **sec_attrs)
                 for item in items:
-                    amount = float(item.get('amount') or 0)
-                    price = float(item.get('price') or 0)
+                    amount = safe_float(item.get('amount') or 0)
+                    price = safe_float(item.get('price') or 0)
                     qty = item.get('quantity')
-                    vat_amount = max(round(amount * vat_rate_default / 100, 2), 0)
+                    cumulative_amount = resolve_cumulative_amount(item, amount)
+                    if cumulative_amount == amount and len(items) == 1 and cumulative_mode == '1':
+                        cumulative_amount = section_cumulative_amount
+                    cumulative_qty = resolve_cumulative_quantity(item, qty)
+                    vat_amount = calc_vat(amount, vat_rate_default)
+                    cumulative_vat_amount = calc_vat(cumulative_amount, vat_rate_default)
                     item_attrs = {
                         'НомСтр': str(item.get('xmlRowNo')),
                         'НомПоз': str(item.get('lineNo') or item.get('xmlRowNo')),
@@ -589,6 +675,8 @@ def build_xml(data: dict) -> ET._ElementTree:
                         'ОКЕИ_Стройка': '796',
                         'НаимЕдИзм': item.get('unit') or 'шт',
                     }
+                    if cumulative_mode == '1':
+                        item_attrs['СтСНачСтрБезНДС'] = fmt_money(cumulative_amount)
                     if item.get('estimateNo'):
                         item_attrs['ПозСмет'] = str(item.get('estimateNo'))
                     work_el = ET.SubElement(sec, 'СвВидРаб', **item_attrs)
@@ -598,6 +686,8 @@ def build_xml(data: dict) -> ET._ElementTree:
                     ET.SubElement(err, 'УвелКол').text = '1'
                     if qty not in (None, ''):
                         ET.SubElement(work_el, 'КолТов').text = str(qty)
+                    if cumulative_mode == '1' and cumulative_qty not in (None, ''):
+                        ET.SubElement(work_el, 'КолСНач').text = str(cumulative_qty)
                     tax = ET.SubElement(work_el, 'СумНал')
                     ET.SubElement(tax, 'СумНал').text = fmt_money(vat_amount)
                     if not trace_attached:
@@ -621,8 +711,15 @@ def build_xml(data: dict) -> ET._ElementTree:
                             ('ks2.periodTo', fmt_date(first_non_empty(sheet_doc.get('periodTo'), sheet.get('periodTo'))) if first_non_empty(sheet_doc.get('periodTo'), sheet.get('periodTo')) else None),
                             ('ks2.basis', first_non_empty(sheet_doc.get('basis'), sheet.get('basis'))),
                             ('ks2.vatRate', str(first_non_empty(sheet_doc.get('vatRate'), first_doc.get('vatRate')))),
+                            ('ks3.sheetFromStart', fmt_money(sheet_cumulative_base) if sheet_cumulative_base is not None else None),
+                            ('ks3.sheetForPeriod', fmt_money(sheet_for_period_base) if sheet_for_period_base is not None else None),
                         ])
                         sheet_metadata_attached = True
+                if not vat_in_total_only:
+                    ET.SubElement(sec, 'СумНалРаздСмет').text = fmt_money(section_vat)
+                    ET.SubElement(sec, 'СумНалРаздОтч').text = fmt_money(section_vat)
+                    if cumulative_mode == '1':
+                        ET.SubElement(sec, 'СумНалРаздСНач').text = fmt_money(section_cumulative_vat)
 
     transfer = doc.find('СвПродПер')
     clear_children(transfer)
@@ -671,17 +768,45 @@ def build_xml(data: dict) -> ET._ElementTree:
 
     total_el = doc.find('ВсегоАктОтч')
     clear_children(total_el)
-    total_base = float(ks3_totals.get('forPeriod') or 0)
-    vat_total = float(ks3_totals.get('vat') or 0)
-    set_attr(total_el, СтТовБезНДСВсего=fmt_money(total_base))
+    total_base = first_number(ks3_totals.get('forPeriod'), default=0.0)
+    vat_total = first_number(ks3_totals.get('vatForPeriod'), ks3_totals.get('vat'), default=0.0)
+    total_with_vat = total_base + vat_total
+    set_attr(total_el,
+             СтТовБезНДСВсего=fmt_money(total_base),
+             СтТовУчНалВсего=fmt_money(total_with_vat))
     ET.SubElement(total_el, 'СумНалВсего').text = fmt_money(vat_total)
     by_rate = ET.SubElement(total_el, 'СумПоСтавке', НалСт='20%', НалБаза=fmt_money(total_base))
     ET.SubElement(by_rate, 'СумНДС').text = fmt_money(vat_total)
 
+    total_start_el = doc.find('ВсегоАктСНач')
+    if cumulative_mode == '1':
+        if total_start_el is None:
+            total_start_el = ET.Element('ВсегоАктСНач')
+            settings_ref = doc.find('НастрФормДок')
+            doc.insert(list(doc).index(settings_ref), total_start_el)
+        clear_children(total_start_el)
+        total_base_start = first_number(ks3_totals.get('fromStart'), total_base, default=total_base)
+        vat_total_start = first_number(
+            ks3_totals.get('vatFromStart'),
+            ks3_totals.get('fromStartVat'),
+            ks3_totals.get('vatCumulative'),
+            vat_total,
+            default=vat_total,
+        )
+        total_with_vat_start = total_base_start + vat_total_start
+        set_attr(total_start_el,
+                 СтТовБезНДСВсего=fmt_money(total_base_start),
+                 СтТовУчНалВсего=fmt_money(total_with_vat_start))
+        ET.SubElement(total_start_el, 'СумНалВсего').text = fmt_money(vat_total_start)
+        by_rate_start = ET.SubElement(total_start_el, 'СумПоСтавке', НалСт='20%', НалБаза=fmt_money(total_base_start))
+        ET.SubElement(by_rate_start, 'СумНДС').text = fmt_money(vat_total_start)
+    elif total_start_el is not None:
+        doc.remove(total_start_el)
+
     settings = doc.find('НастрФормДок')
     set_attr(settings,
              ПрНДСВИтог=constants.get('vatCalcInTotalOnly') or '0',
-             ПрНакИтог=constants.get('cumulativeMode') or '0',
+             ПрНакИтог=cumulative_mode,
              ПрИндЦен=constants.get('priceIndexYear') or '0000',
              ПрСведРасчСогл=constants.get('requiresSettlementApproval') or '0')
 
