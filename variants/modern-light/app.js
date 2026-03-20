@@ -311,6 +311,18 @@ function handleContentClick(event) {
     return;
   }
 
+  if (action === 'add-ks3-row') {
+    app.state.ks3.rows.push(createBlankKs3Row());
+    render();
+    return;
+  }
+
+  if (action === 'delete-ks3-row') {
+    app.state.ks3.rows.splice(Number(event.target.dataset.ks3Index), 1);
+    render();
+    return;
+  }
+
   if (action === 'add-holdback-row') {
     app.state.holdbacks.rows.push(createBlankHoldbackRow('section'));
     render();
@@ -490,12 +502,13 @@ function prepareState(raw) {
   data.ks3.documentDate ||= data.ks2Sheets[0]?.documentDate || new Date().toISOString().slice(0, 10);
   data.ks3.periodFrom ||= data.ks2Sheets[0]?.periodFrom || new Date().toISOString().slice(0, 10);
   data.ks3.periodTo ||= data.ks2Sheets[0]?.periodTo || new Date().toISOString().slice(0, 10);
+  const legacyKs3Totals = data.ks3.totals || {};
   data.ks3.rows = (data.ks3.rows || []).map((row) => normalizeKs3Row(row));
   data.ks3.totals = {
-    fromStart: numberOrNull(data.ks3.totals?.fromStart),
-    fromYearStart: numberOrNull(data.ks3.totals?.fromYearStart),
-    forPeriod: numberOrNull(data.ks3.totals?.forPeriod),
-    vat: numberOrNull(data.ks3.totals?.vat),
+    fromStart: numberOrNull(legacyKs3Totals.fromStart),
+    fromYearStart: numberOrNull(legacyKs3Totals.fromYearStart ?? legacyKs3Totals.subtotal),
+    forPeriod: numberOrNull(legacyKs3Totals.forPeriod ?? legacyKs3Totals.subtotal),
+    vat: numberOrNull(legacyKs3Totals.vat),
   };
 
   data.holdbacks.rows = (data.holdbacks.rows || []).map((row) => {
@@ -1408,8 +1421,9 @@ function renderKs3Pane() {
       <div class="panel-header">
         <div>
           <h2 class="panel-title">КС-3 — сводная справка</h2>
-          <p class="panel-subtitle">На первом этапе сводка строится автоматически из листов КС-2. Позже сюда можно добавить накопительный итог и экспорт в финальный шаблон.</p>
+          <p class="panel-subtitle">Лист КС-3 заполняется вручную. Данные из листов КС-2 сюда автоматически не подтягиваются.</p>
         </div>
+        <button class="mini" data-action="add-ks3-row">+ Строка КС-3</button>
       </div>
 
       ${app.state.common.showDocumentHeaders ? renderExcelDocFrame({
@@ -1434,35 +1448,48 @@ function renderKs3Pane() {
       </div>
 
       <div class="section-block">
-        <h3>Автосвод по актам</h3>
+        <h3>Ручные строки КС-3</h3>
+        <p class="kbd-note">Можно добавлять строки, которых нет среди листов КС-2. КС-3 больше не строится как автосвод по актам.</p>
         <div class="table-wrapper">
           <table class="table table-ks3-like">
             <thead>
               <tr>
-                <th>#</th>
+                <th>№ п/п</th>
                 <th>Наименование пусковых комплексов / объектов / работ</th>
+                <th>Код</th>
                 <th>С начала работ</th>
                 <th>С начала года</th>
                 <th>За отчетный период</th>
-                <th>НДС</th>
+                <th></th>
               </tr>
               <tr class="numbering-row">
-                <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th>
+                <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th></th>
               </tr>
             </thead>
             <tbody>
               ${rows.map((row, index) => `
                 <tr>
-                  <td>${index + 1}</td>
-                  <td>${escapeHtml(row.name)}</td>
-                  <td>${formatMoney(row.fromStart)}</td>
-                  <td>${formatMoney(row.fromYearStart)}</td>
-                  <td>${formatMoney(row.forPeriod)}</td>
-                  <td>${formatMoney(row.vat)}</td>
+                  <td><input data-path="ks3.rows.${index}.order" value="${escapeAttr(row.order)}" /></td>
+                  <td><input data-path="ks3.rows.${index}.name" value="${escapeAttr(row.name)}" /></td>
+                  <td><input data-path="ks3.rows.${index}.code" value="${escapeAttr(row.code)}" /></td>
+                  <td><input data-path="ks3.rows.${index}.fromStart" data-value-type="number" value="${formatEditableNumber(row.fromStart)}" /></td>
+                  <td><input data-path="ks3.rows.${index}.fromYearStart" data-value-type="number" value="${formatEditableNumber(row.fromYearStart)}" /></td>
+                  <td><input data-path="ks3.rows.${index}.forPeriod" data-value-type="number" value="${formatEditableNumber(row.forPeriod)}" /></td>
+                  <td><button class="icon-button danger" title="Удалить строку" aria-label="Удалить строку" data-action="delete-ks3-row" data-ks3-index="${index}">×</button></td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div class="section-block">
+        <h3>Ручные итоги КС-3</h3>
+        <div class="form-grid">
+          ${renderInput('Итого с начала работ', 'ks3.totals.fromStart', totals.fromStart, 'number', 'quarter')}
+          ${renderInput('Итого с начала года', 'ks3.totals.fromYearStart', totals.fromYearStart, 'number', 'quarter')}
+          ${renderInput('Итого за период', 'ks3.totals.forPeriod', totals.forPeriod, 'number', 'quarter')}
+          ${renderInput('Сумма НДС', 'ks3.totals.vat', totals.vat, 'number', 'quarter')}
         </div>
       </div>
 
@@ -1690,7 +1717,9 @@ function renderXmlPane() {
 
 function normalizeKs3Row(row = {}) {
   return {
+    order: row.order ?? '',
     name: row.name || '',
+    code: row.code ?? '',
     fromStart: numberOrNull(row.fromStart),
     fromYearStart: numberOrNull(row.fromYearStart),
     forPeriod: numberOrNull(row.forPeriod),
@@ -1698,24 +1727,22 @@ function normalizeKs3Row(row = {}) {
   };
 }
 
-function buildAutoKs3Rows() {
-  return app.state.ks2Sheets.map((sheet) => {
-    const totals = computeSheetTotals(sheet);
-    return {
-      name: `Акт №${sheet.documentNumber || '—'} · ${sheet.basis || sheet.title}`,
-      fromStart: totals.gross,
-      fromYearStart: totals.gross,
-      forPeriod: totals.gross,
-      vat: totals.vat,
-    };
-  });
+function createBlankKs3Row() {
+  return {
+    order: '',
+    name: '',
+    code: '',
+    fromStart: null,
+    fromYearStart: null,
+    forPeriod: null,
+    vat: null,
+  };
 }
 
 function buildKs3Rows() {
-  const manualRows = (app.state.ks3?.rows || [])
+  return (app.state.ks3?.rows || [])
     .map((row) => normalizeKs3Row(row))
-    .filter((row) => row.name || row.fromStart != null || row.fromYearStart != null || row.forPeriod != null || row.vat != null);
-  return manualRows.length ? manualRows : buildAutoKs3Rows();
+    .filter((row) => row.order || row.name || row.code || row.fromStart != null || row.fromYearStart != null || row.forPeriod != null || row.vat != null);
 }
 
 function buildKs3Totals(rows = buildKs3Rows()) {
@@ -1730,13 +1757,22 @@ function buildKs3Totals(rows = buildKs3Rows()) {
     };
   }
 
-  return rows.reduce((acc, row) => {
-    acc.fromStart += numberOrZero(row.fromStart);
-    acc.fromYearStart += numberOrZero(row.fromYearStart);
-    acc.forPeriod += numberOrZero(row.forPeriod);
-    acc.vat += numberOrZero(row.vat);
-    return acc;
-  }, { fromStart: 0, fromYearStart: 0, forPeriod: 0, vat: 0 });
+  const totalRow = rows.find((row) => /всего работ и затрат/i.test(row.name || ''));
+  if (totalRow) {
+    return {
+      fromStart: numberOrZero(totalRow.fromStart),
+      fromYearStart: numberOrZero(totalRow.fromYearStart),
+      forPeriod: numberOrZero(totalRow.forPeriod),
+      vat: numberOrZero(explicit.vat),
+    };
+  }
+
+  return {
+    fromStart: 0,
+    fromYearStart: 0,
+    forPeriod: 0,
+    vat: numberOrZero(explicit.vat),
+  };
 }
 
 function buildGeneratedXmlFields() {
