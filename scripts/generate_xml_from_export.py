@@ -338,6 +338,9 @@ def validate_export_payload(data: dict):
         'vatRate': first_sheet.get('vatRate'),
     }
 
+    is_correction_act = str(first_non_empty(manual.get('isCorrectionAct'), default='0')) == '1'
+    has_estimate_change = str(first_non_empty(manual.get('hasEstimateChange'), default='1')) == '1'
+
     required = [
         ('common.contractorName', common.get('contractorName'), 'Не заполнен генподрядчик'),
         ('common.developerName|common.techCustomerName', common.get('developerName') or common.get('techCustomerName'), 'Не заполнен заказчик/застройщик'),
@@ -349,14 +352,22 @@ def validate_export_payload(data: dict):
         ('xml.manual.contractorInn', manual.get('contractorInn'), 'Не заполнен ИНН подрядчика'),
         ('xml.manual.customerInn', manual.get('customerInn'), 'Не заполнен ИНН заказчика'),
         ('xml.manual.economicSubjectName', manual.get('economicSubjectName') or common.get('contractorName'), 'Не заполнено наименование составителя XML'),
-        ('xml.manual.estimateVersionCode', manual.get('estimateVersionCode'), 'Не заполнена версия сметы (КодСмет)'),
-        ('xml.manual.supplementDocType', manual.get('supplementDocType'), 'Не заполнен тип допсоглашения'),
-        ('xml.manual.supplementDocNumber', manual.get('supplementDocNumber'), 'Не заполнен номер допсоглашения'),
-        ('xml.manual.supplementDocDate', manual.get('supplementDocDate'), 'Не заполнена дата допсоглашения'),
         ('xml.manual.developerPostalIndex', manual.get('developerPostalIndex'), 'Не заполнен индекс адреса'),
         ('xml.manual.developerRegionCode', manual.get('developerRegionCode'), 'Не заполнен код региона'),
         ('signer', manual.get('signerName') or common.get('contractorSignerName') or common.get('contractorSigner') or common.get('contractorResponsible') or common.get('signerName'), 'Не заполнено ФИО подписанта'),
     ]
+    if is_correction_act:
+        required.extend([
+            ('xml.manual.correctionNumber', manual.get('correctionNumber'), 'Не заполнен номер исправления'),
+            ('xml.manual.correctionDate', manual.get('correctionDate'), 'Не заполнена дата исправления'),
+        ])
+    if has_estimate_change:
+        required.extend([
+            ('xml.manual.estimateVersionCode', manual.get('estimateVersionCode'), 'Не заполнена версия сметы (КодСмет)'),
+            ('xml.manual.supplementDocType', manual.get('supplementDocType'), 'Не заполнен тип допсоглашения'),
+            ('xml.manual.supplementDocNumber', manual.get('supplementDocNumber'), 'Не заполнен номер допсоглашения'),
+            ('xml.manual.supplementDocDate', manual.get('supplementDocDate'), 'Не заполнена дата допсоглашения'),
+        ])
 
     errors = [{'path': path, 'message': message} for path, value, message in required if value in (None, '')]
     return errors
@@ -611,6 +622,7 @@ def build_xml(data: dict) -> ET._ElementTree:
 
     estimate_container = act.find('ИдСмет')
     estimate = act.find('ИзмСмет')
+    has_estimate_change = str(first_non_empty(manual.get('hasEstimateChange'), default='1')) == '1'
     if estimate_container is None:
         estimate_container = ET.Element('ИдСмет')
         if estimate is not None:
@@ -623,14 +635,18 @@ def build_xml(data: dict) -> ET._ElementTree:
     set_attr(
         estimate_id,
         НаимДок='Смета',
-        НомерДок=manual.get('estimateVersionCode') or '1',
-        ДатаДок=fmt_date(manual.get('supplementDocDate') or first_doc.get('date') or common.get('contractDate')),
+        НомерДок=(manual.get('estimateVersionCode') if has_estimate_change else first_non_empty(common.get('contractNumber'), default='1')) or '1',
+        ДатаДок=fmt_date((manual.get('supplementDocDate') if has_estimate_change else first_non_empty(first_doc.get('date'), common.get('contractDate'))) or first_doc.get('date') or common.get('contractDate')),
     )
 
     correction = act.find('ИспрАктСдПр')
-    set_attr(correction,
-             НомИспр=manual.get('correctionNumber') or correction.get('НомИспр') or '1',
-             ДатаИспр=fmt_date(manual.get('correctionDate') or first_doc.get('date') or ks3_doc.get('documentDate')))
+    is_correction_act = str(first_non_empty(manual.get('isCorrectionAct'), default='0')) == '1'
+    if is_correction_act:
+        set_attr(correction,
+                 НомИспр=manual.get('correctionNumber') or correction.get('НомИспр') or '1',
+                 ДатаИспр=fmt_date(manual.get('correctionDate') or first_doc.get('date') or ks3_doc.get('documentDate')))
+    elif correction is not None:
+        act.remove(correction)
 
     # Основания сдачи результатов работ: используем текст основания листа КС-2 как НаимДок.
     for el in act.findall('ОснСдачи'):
@@ -678,12 +694,15 @@ def build_xml(data: dict) -> ET._ElementTree:
              КодРегион=manual.get('developerRegionCode') or address.get('КодРегион') or '77')
 
     estimate = act.find('ИзмСмет')
-    set_attr(estimate, КодСмет=manual.get('estimateVersionCode') or estimate.get('КодСмет') or '1')
-    supplement = act.find('ИзмСмет/ИдДопСогл/ТипИдДок')
-    set_attr(supplement,
-             НаимДок=manual.get('supplementDocType') or supplement.get('НаимДок') or 'Дополнительное соглашение',
-             НомерДок=manual.get('supplementDocNumber') or supplement.get('НомерДок') or 'ДС-1',
-             ДатаДок=fmt_date(manual.get('supplementDocDate') or supplement.get('ДатаДок')))
+    if has_estimate_change:
+        set_attr(estimate, КодСмет=manual.get('estimateVersionCode') or estimate.get('КодСмет') or '1')
+        supplement = act.find('ИзмСмет/ИдДопСогл/ТипИдДок')
+        set_attr(supplement,
+                 НаимДок=manual.get('supplementDocType') or supplement.get('НаимДок') or 'Дополнительное соглашение',
+                 НомерДок=manual.get('supplementDocNumber') or supplement.get('НомерДок') or 'ДС-1',
+                 ДатаДок=fmt_date(manual.get('supplementDocDate') or supplement.get('ДатаДок')))
+    elif estimate is not None:
+        act.remove(estimate)
 
     currency = act.find('ДенИзм')
     basis_values = []

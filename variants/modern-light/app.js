@@ -536,6 +536,8 @@ function prepareState(raw) {
   data.xmlExtras.constants.cumulativeMode ||= '1';
   data.xmlExtras.constants.priceIndexYear ||= '0000';
   data.xmlExtras.constants.requiresSettlementApproval ||= '0';
+  data.xmlExtras.manual.isCorrectionAct ||= '0';
+  data.xmlExtras.manual.hasEstimateChange ||= '1';
 
   data.common.okudKs3 = data.common.okudKs3 && data.common.okudKs3 !== 'Форма по ОКУД' ? data.common.okudKs3 : '0322001';
   data.common.showDocumentHeaders = data.common.showDocumentHeaders ?? false;
@@ -992,10 +994,17 @@ function buildValidationReport(model) {
   requireValue(model.xml.manual.contractorInn, 'xml.manual.contractorInn', 'ИНН подрядчика', 'warning');
   requireValue(model.xml.manual.customerInn, 'xml.manual.customerInn', 'ИНН заказчика', 'warning');
   requireValue(model.xml.manual.economicSubjectName || model.common.contractorName, 'xml.manual.economicSubjectName', 'Составитель XML', 'warning');
-  requireValue(model.xml.manual.estimateVersionCode, 'xml.manual.estimateVersionCode', 'Версия сметы (КодСмет)', 'warning');
-  requireValue(model.xml.manual.supplementDocType, 'xml.manual.supplementDocType', 'Тип допсоглашения', 'warning');
-  requireValue(model.xml.manual.supplementDocNumber, 'xml.manual.supplementDocNumber', 'Номер допсоглашения', 'warning');
-  requireValue(model.xml.manual.supplementDocDate, 'xml.manual.supplementDocDate', 'Дата допсоглашения', 'warning');
+  if (String(model.xml.manual.isCorrectionAct || '0') === '1') {
+    requireValue(model.xml.manual.correctionNumber, 'xml.manual.correctionNumber', 'Исправление №', 'warning');
+    requireValue(model.xml.manual.correctionDate, 'xml.manual.correctionDate', 'Дата исправления', 'warning');
+  }
+
+  if (String(model.xml.manual.hasEstimateChange || '1') === '1') {
+    requireValue(model.xml.manual.estimateVersionCode, 'xml.manual.estimateVersionCode', 'Версия сметы (КодСмет)', 'warning');
+    requireValue(model.xml.manual.supplementDocType, 'xml.manual.supplementDocType', 'Тип допсоглашения', 'warning');
+    requireValue(model.xml.manual.supplementDocNumber, 'xml.manual.supplementDocNumber', 'Номер допсоглашения', 'warning');
+    requireValue(model.xml.manual.supplementDocDate, 'xml.manual.supplementDocDate', 'Дата допсоглашения', 'warning');
+  }
   requireValue(model.xml.manual.developerPostalIndex, 'xml.manual.developerPostalIndex', 'Индекс адреса', 'warning');
   requireValue(model.xml.manual.developerRegionCode, 'xml.manual.developerRegionCode', 'Код региона', 'warning');
   requireValue(model.xml.manual.signerName || model.common.contractorSignerName, 'xml.manual.signerName', 'Подписант XML: ФИО', 'warning');
@@ -1845,10 +1854,14 @@ function renderXmlPane() {
         <h3>Подрядчик / общий XML (P)</h3>
         <div class="form-grid">
           ${renderInput('Наименование экономического субъекта-составителя', 'xmlExtras.manual.economicSubjectName', manual.economicSubjectName, 'string', 'half')}
-          ${renderInput('Версия сметы (КодСмет)', 'xmlExtras.manual.estimateVersionCode', manual.estimateVersionCode, 'string', 'quarter')}
-          ${renderInput('Тип допсоглашения', 'xmlExtras.manual.supplementDocType', manual.supplementDocType, 'string', 'quarter')}
-          ${renderInput('Номер допсоглашения', 'xmlExtras.manual.supplementDocNumber', manual.supplementDocNumber, 'string', 'quarter')}
-          ${renderInput('Дата допсоглашения', 'xmlExtras.manual.supplementDocDate', manual.supplementDocDate, 'string', 'quarter')}
+          ${renderSelect('Тип акта', 'xmlExtras.manual.isCorrectionAct', manual.isCorrectionAct || '0', { '0': '0 — первичный акт', '1': '1 — исправленный акт' }, 'half')}
+          ${String(manual.isCorrectionAct || '0') === '1' ? renderInput('Исправление №', 'xmlExtras.manual.correctionNumber', manual.correctionNumber, 'string', 'quarter') : ''}
+          ${String(manual.isCorrectionAct || '0') === '1' ? renderInput('Дата исправления', 'xmlExtras.manual.correctionDate', manual.correctionDate, 'string', 'quarter') : ''}
+          ${renderSelect('Изменение сметы', 'xmlExtras.manual.hasEstimateChange', manual.hasEstimateChange || '1', { '0': '0 — смета не менялась', '1': '1 — смета менялась' }, 'half')}
+          ${String(manual.hasEstimateChange || '1') === '1' ? renderInput('Версия сметы (КодСмет)', 'xmlExtras.manual.estimateVersionCode', manual.estimateVersionCode, 'string', 'quarter') : ''}
+          ${String(manual.hasEstimateChange || '1') === '1' ? renderInput('Тип допсоглашения', 'xmlExtras.manual.supplementDocType', manual.supplementDocType, 'string', 'quarter') : ''}
+          ${String(manual.hasEstimateChange || '1') === '1' ? renderInput('Номер допсоглашения', 'xmlExtras.manual.supplementDocNumber', manual.supplementDocNumber, 'string', 'quarter') : ''}
+          ${String(manual.hasEstimateChange || '1') === '1' ? renderInput('Дата допсоглашения', 'xmlExtras.manual.supplementDocDate', manual.supplementDocDate, 'string', 'quarter') : ''}
           ${renderInput('ИНН подрядчика', 'xmlExtras.manual.contractorInn', manual.contractorInn, 'string', 'quarter')}
           ${renderInput('ИНН заказчика', 'xmlExtras.manual.customerInn', manual.customerInn, 'string', 'quarter')}
           ${renderInput('Индекс застройщика / адреса работ', 'xmlExtras.manual.developerPostalIndex', manual.developerPostalIndex, 'string', 'quarter')}
@@ -1860,8 +1873,6 @@ function renderXmlPane() {
           ${renderInput('ИнфПолФХЖ1 / customField', 'xmlExtras.manual.customInfoValue', manual.customInfoValue || 'sample', 'string', 'quarter')}
           ${renderInput('Индекс подрядчика', 'xmlExtras.manual.contractorPostalIndex', manual.contractorPostalIndex, 'string', 'quarter')}
           ${renderInput('Код региона подрядчика', 'xmlExtras.manual.contractorRegionCode', manual.contractorRegionCode, 'string', 'quarter')}
-          ${renderInput('Исправление №', 'xmlExtras.manual.correctionNumber', manual.correctionNumber, 'string', 'quarter')}
-          ${renderInput('Дата исправления', 'xmlExtras.manual.correctionDate', manual.correctionDate, 'string', 'quarter')}
         </div>
       </div>
 
