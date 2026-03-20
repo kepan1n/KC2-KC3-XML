@@ -273,6 +273,13 @@ def fmt_quantity(value):
     return f'{numeric:.11f}'.rstrip('0').rstrip('.') or '0'
 
 
+def resolve_expense_type(source: dict | None) -> str:
+    source = source or {}
+    value = first_non_empty(source.get('expenseType'), source.get('typeZatr'), default='1')
+    value = str(value).strip()
+    return value if value in {'1', '2', '3', '4', '5', '6'} else '1'
+
+
 def _initials_from_token(token: str) -> list[str]:
     value = (token or '').strip()
     if not value or '.' not in value:
@@ -764,7 +771,7 @@ def build_xml(data: dict) -> ET._ElementTree:
                 'СтТовБезНДС': fmt_money(amount),
                 'НомСтр': str(row_no),
                 'НомПоз': item.get('lineNo') or str(row_no),
-                'ТипЗатр': '1',
+                'ТипЗатр': resolve_expense_type(item),
                 'ОКЕИ_Стройка': '796',
                 'НаимЕдИзм': item.get('unit') or 'шт',
             }
@@ -883,7 +890,7 @@ def build_xml(data: dict) -> ET._ElementTree:
                         'НомСтр': str(item.get('xmlRowNo')),
                         'НомПоз': str(item.get('lineNo') or item.get('xmlRowNo')),
                         'НаимТов': item.get('name') or f"Работа {item.get('xmlRowNo')}",
-                        'ТипЗатр': '1',
+                        'ТипЗатр': resolve_expense_type(item),
                         'ЦенаТов': fmt_money(price),
                         'СтПоСметеБезНДС': fmt_money(amount),
                         'СтТовБезНДС': fmt_money(amount),
@@ -930,6 +937,7 @@ def build_xml(data: dict) -> ET._ElementTree:
                     add_info_pairs(work_el, [
                         ('ks2.rowCode', item.get('code')),
                         ('ks2.unitConsumption', str(item.get('unitConsumption')) if item.get('unitConsumption') not in (None, '') else None),
+                        ('ks2.expenseType', resolve_expense_type(item)),
                         ('ks2.calcMode', item.get('calcMode')),
                         ('ks2.correctionKind', correction_kind),
                         ('ks2.isCorrection', '1' if correction_row else None),

@@ -1014,6 +1014,16 @@ body[data-sidebar="closed"] .sidebar {
   gap: 4px;
 }
 
+.row-action-menu-wide {
+  min-width: 240px;
+  max-width: 280px;
+}
+
+.inline-add-stack {
+  display: inline-flex;
+  align-items: center;
+}
+
 .row-action-menu-item,
 .row-action-menu-btn {
   width: 100%;

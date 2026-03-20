@@ -29,6 +29,15 @@ const app = {
   state: null,
 };
 
+const EXPENSE_TYPE_OPTIONS = {
+  '1': '1 — работа',
+  '2': '2 — услуга',
+  '3': '3 — товар как объект ОС',
+  '4': '4 — иной товар',
+  '5': '5 — косвенные расходы',
+  '6': '6 — давальческие материалы',
+};
+
 boot();
 
 async function boot() {
@@ -228,23 +237,33 @@ function handleContentClick(event) {
   const { action, sheetIndex, rowIndex, holdIndex, traceIndex, rowKind } = actionButton.dataset;
   const rowCoords = { sheetIndex: Number(sheetIndex), rowIndex: Number(rowIndex) };
 
+  if (action === 'toggle-sheet-add-menu') {
+    const idx = Number(sheetIndex);
+    app.state.ui.sheetAddMenu = app.state.ui.sheetAddMenu === idx ? null : idx;
+    render();
+    return;
+  }
+
   if (action === 'add-item-row') {
     clearTransientRowUi();
-    app.state.ks2Sheets[Number(sheetIndex)].rows.push(createBlankRow('item'));
+    const expenseType = actionButton.dataset.expenseType || '1';
+    app.state.ks2Sheets[Number(sheetIndex)].rows.push(createBlankItemRowByExpenseType(expenseType));
     render();
     return;
   }
 
   if (action === 'add-error-correction-row') {
     clearTransientRowUi();
-    app.state.ks2Sheets[Number(sheetIndex)].rows.push(createBlankRow('item', { calcMode: 'errorCorrection' }));
+    const expenseType = actionButton.dataset.expenseType || '1';
+    app.state.ks2Sheets[Number(sheetIndex)].rows.push(createBlankItemRowByExpenseType(expenseType, { calcMode: 'errorCorrection' }));
     render();
     return;
   }
 
   if (action === 'add-new-circumstance-row' || action === 'add-correction-row') {
     clearTransientRowUi();
-    app.state.ks2Sheets[Number(sheetIndex)].rows.push(createBlankRow('item', { calcMode: 'newCircumstances' }));
+    const expenseType = actionButton.dataset.expenseType || '1';
+    app.state.ks2Sheets[Number(sheetIndex)].rows.push(createBlankItemRowByExpenseType(expenseType, { calcMode: 'newCircumstances' }));
     render();
     return;
   }
@@ -274,18 +293,23 @@ function handleContentClick(event) {
 
   if (action === 'insert-row-after') {
     clearTransientRowUi();
+    const expenseType = actionButton.dataset.expenseType || '1';
     const nextRow = rowKind === 'errorCorrection'
-      ? createBlankRow('item', { calcMode: 'errorCorrection' })
+      ? createBlankItemRowByExpenseType(expenseType, { calcMode: 'errorCorrection' })
       : rowKind === 'newCircumstances' || rowKind === 'correction'
-        ? createBlankRow('item', { calcMode: 'newCircumstances' })
-        : createBlankRow(rowKind || 'item');
+        ? createBlankItemRowByExpenseType(expenseType, { calcMode: 'newCircumstances' })
+        : rowKind === 'item'
+          ? createBlankItemRowByExpenseType(expenseType)
+          : createBlankRow(rowKind || 'item');
     app.state.ks2Sheets[rowCoords.sheetIndex].rows.splice(rowCoords.rowIndex + 1, 0, nextRow);
     render();
     const flashText = rowKind === 'errorCorrection'
       ? 'Строка-корректировка «исправление ошибок» добавлена.'
       : rowKind === 'newCircumstances' || rowKind === 'correction'
         ? 'Строка-корректировка «новые обстоятельства» добавлена.'
-        : 'Строка добавлена.';
+        : rowKind === 'item'
+          ? `Строка типа ${expenseTypeLabel(expenseType)} добавлена.`
+          : 'Строка добавлена.';
     flash(flashText);
     return;
   }
@@ -494,6 +518,7 @@ function prepareState(raw) {
   data.ui.rowDeleteConfirm ??= null;
   data.ui.ks3RowActionMenu ??= null;
   data.ui.ks3RowDeleteConfirm ??= null;
+  data.ui.sheetAddMenu ??= null;
   data.ui.holdbackActionMenu ??= null;
   data.ui.holdbackDeleteConfirm ??= null;
   data.ui.columnWidths ??= {};
@@ -506,7 +531,11 @@ function prepareState(raw) {
   data.xmlExtras.constants ??= {};
   data.xmlExtras.manual ??= {};
   data.xmlExtras.traceableGoods ??= [];
+  data.xmlExtras.constants.isGovMunicipal ||= '0';
+  data.xmlExtras.constants.vatCalcInTotalOnly ||= '0';
   data.xmlExtras.constants.cumulativeMode ||= '1';
+  data.xmlExtras.constants.priceIndexYear ||= '0000';
+  data.xmlExtras.constants.requiresSettlementApproval ||= '0';
 
   data.common.okudKs3 = data.common.okudKs3 && data.common.okudKs3 !== 'Форма по ОКУД' ? data.common.okudKs3 : '0322001';
   data.common.showDocumentHeaders = data.common.showDocumentHeaders ?? false;
@@ -538,6 +567,7 @@ function prepareState(raw) {
         ...row,
         type: row.type || 'item',
         calcMode: normalizeCalcMode(row.calcMode, row),
+        expenseType: normalizeExpenseType(row.expenseType ?? row.typeZatr, row),
         code: row.code ?? '',
         lineNo: row.lineNo ?? '',
         estimateNo: row.estimateNo ?? '',
@@ -654,6 +684,7 @@ function hasTransientRowUi() {
     || app.state.ui.rowDeleteConfirm
     || app.state.ui.ks3RowActionMenu != null
     || app.state.ui.ks3RowDeleteConfirm != null
+    || app.state.ui.sheetAddMenu != null
   );
 }
 
@@ -662,6 +693,7 @@ function clearTransientRowUi() {
   app.state.ui.rowDeleteConfirm = null;
   app.state.ui.ks3RowActionMenu = null;
   app.state.ui.ks3RowDeleteConfirm = null;
+  app.state.ui.sheetAddMenu = null;
 }
 
 function applyColumnWidths() {
@@ -788,6 +820,7 @@ function buildDocumentModel() {
       calcMode: normalizeCalcMode(row.calcMode, row),
       correctionKind: getCorrectionKind(row),
       isCorrection: isCorrectionRow(row),
+      expenseType: normalizeExpenseType(row.expenseType, row),
       code: row.code || '',
       lineNo: row.lineNo || '',
       estimateNo: row.estimateNo || '',
@@ -1315,9 +1348,9 @@ function renderKs2RowActions(sheetIndex, rowIndex) {
       ${menuOpen ? `
         <div class="row-action-menu">
           <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="section" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Раздел</button>
-          <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="item" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Строка</button>
-          <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="errorCorrection" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Испр. ошибок</button>
-          <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="newCircumstances" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Новые обстоятельства</button>
+          ${renderExpenseTypeMenuItems(sheetIndex, rowIndex)}
+          <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="errorCorrection" data-expense-type="1" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Испр. ошибок</button>
+          <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="newCircumstances" data-expense-type="1" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Новые обстоятельства</button>
           <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="note" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Примечание</button>
         </div>
       ` : ''}
@@ -1372,6 +1405,13 @@ function renderKs2Pane(sheetIndex) {
             material: 'Материал',
           })}
         </select>
+      </td>
+      <td>
+        ${row.type === 'item' ? `
+          <select data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.expenseType">
+            ${renderOptions(Object.keys(EXPENSE_TYPE_OPTIONS), normalizeExpenseType(row.expenseType, row), EXPENSE_TYPE_OPTIONS)}
+          </select>
+        ` : '<div class="table-muted-cell">—</div>'}
       </td>
       <td>
         ${row.type === 'item' ? `
@@ -1456,13 +1496,14 @@ function renderKs2Pane(sheetIndex) {
               <col class="ks2-col-amount" />
               <col class="ks2-col-consumption" />
               <col class="ks2-col-category" />
+              <col class="ks2-col-expense" />
               <col class="ks2-col-mode" />
               <col class="ks2-col-note" />
               <col class="ks2-col-actions" />
             </colgroup>
             <thead>
               <tr>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-type" data-min-width="60">Код затрат<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-type" data-min-width="60">Тип строки<span class="resize-handle"></span></th>
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-code" data-min-width="64">Код<span class="resize-handle"></span></th>
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-line" data-min-width="42">№ п/п<span class="resize-handle"></span></th>
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-estimate" data-min-width="42">№ п/п по смете<span class="resize-handle"></span></th>
@@ -1473,21 +1514,22 @@ function renderKs2Pane(sheetIndex) {
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-amount" data-min-width="96">Общая стоимость, руб. с НДС<span class="resize-handle"></span></th>
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-consumption" data-min-width="42">Расход на единицу<span class="resize-handle"></span></th>
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-category" data-min-width="90">Категория<span class="resize-handle"></span></th>
+                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-expense" data-min-width="150">Тип затрат<span class="resize-handle"></span></th>
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-mode" data-min-width="96">Режим строки<span class="resize-handle"></span></th>
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-note" data-min-width="120">Примечание<span class="resize-handle"></span></th>
                 <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-actions" data-min-width="24"><span class="resize-handle"></span></th>
               </tr>
               <tr class="numbering-row">
-                <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>13</th><th></th>
+                <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>13</th><th>14</th><th></th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
         <div class="inline-actions">
-          <button class="mini" data-action="add-item-row" data-sheet-index="${sheetIndex}">+ Строка работы</button>
-          <button class="mini secondary" data-action="add-error-correction-row" data-sheet-index="${sheetIndex}">+ Испр. ошибок</button>
-          <button class="mini secondary" data-action="add-new-circumstance-row" data-sheet-index="${sheetIndex}">+ Новые обстоятельства</button>
+          ${renderKs2SheetAddMenu(sheetIndex)}
+          <button class="mini secondary" data-action="add-error-correction-row" data-sheet-index="${sheetIndex}" data-expense-type="1">+ Испр. ошибок</button>
+          <button class="mini secondary" data-action="add-new-circumstance-row" data-sheet-index="${sheetIndex}" data-expense-type="1">+ Новые обстоятельства</button>
           <button class="mini secondary" data-action="add-section-row" data-sheet-index="${sheetIndex}">+ Раздел</button>
           <button class="mini secondary" data-action="add-note-row" data-sheet-index="${sheetIndex}">+ Примечание</button>
         </div>
@@ -1791,7 +1833,7 @@ function renderXmlPane() {
         <h3>Постоянные настройки документа</h3>
         <div class="form-grid">
           ${renderSelect('Строительство для гос/мун нужд', 'xmlExtras.constants.isGovMunicipal', constants.isGovMunicipal, { '0': '0 — нет', '1': '1 — да' }, 'quarter')}
-          ${renderSelect('НДС только в итоговой строке', 'xmlExtras.constants.vatCalcInTotalOnly', constants.vatCalcInTotalOnly, { '0': '0 — нет', '1': '1 — да' }, 'quarter')}
+          ${renderSelect('Режим НДС', 'xmlExtras.constants.vatCalcInTotalOnly', constants.vatCalcInTotalOnly, { '0': '0 — НДС по строкам/разделам (основной)', '1': '1 — НДС только в итоге' }, 'half')}
           ${renderSelect('Признак накопительного итога', 'xmlExtras.constants.cumulativeMode', constants.cumulativeMode, { '0': '0 — без накопления', '1': '1 — в акте всё', '2': '2 — только строка «Всего»' }, 'half')}
           ${renderInput('Год индекса цен', 'xmlExtras.constants.priceIndexYear', constants.priceIndexYear, 'string', 'quarter')}
           ${renderSelect('Сведения о расчётах для согласования', 'xmlExtras.constants.requiresSettlementApproval', constants.requiresSettlementApproval, { '0': '0 — нет', '1': '1 — да' }, 'quarter')}
@@ -1995,7 +2037,7 @@ function buildXmlExportString(model) {
       const amount = numberOrZero(item.amount);
       const vat = Math.max(round2(amount * 0.2), 0);
       const traceXml = globalRowNo === 1 && traceableGoods.length ? `\n        <СвПрослежСтройка НомТовПрослеж="${xmlEscape(traceableGoods[0].registrationNumber || '123456789012345678901234567')}" ЕдИзмПрослеж="${xmlEscape(traceableGoods[0].unitCode || '796')}" НаимЕдИзмПрослеж="${xmlEscape(traceableGoods[0].unitName || 'шт')}" КолВЕдПрослеж="${xmlEscape(String(numberOrZero(traceableGoods[0].quantity) || 1))}"/>` : '';
-      const xml = `      <ВидРаб НаимТов="${xmlEscape(item.name || `Работа ${sheetIndex + 1}.${itemIndex + 1}`)}" ЦенаТов="${formatMoney(numberOrZero(item.price))}" СтТовБезНДС="${formatMoney(amount)}" НомСтр="${globalRowNo}" НомПоз="${xmlEscape(item.lineNo || String(globalRowNo))}" ТипЗатр="1" ОКЕИ_Стройка="796" НаимЕдИзм="${xmlEscape(item.unit || 'шт')}">\n        <УчОшИНовОбстСт>\n          <ОшибПрПер>\n            <УвелДен>1</УвелДен>\n            <УвелКол>1</УвелКол>\n          </ОшибПрПер>\n        </УчОшИНовОбстСт>\n        <СумНал>\n          <СумНал>${formatMoney(vat)}</СумНал>\n        </СумНал>${traceXml}\n      </ВидРаб>`;
+      const xml = `      <ВидРаб НаимТов="${xmlEscape(item.name || `Работа ${sheetIndex + 1}.${itemIndex + 1}`)}" ЦенаТов="${formatMoney(numberOrZero(item.price))}" СтТовБезНДС="${formatMoney(amount)}" НомСтр="${globalRowNo}" НомПоз="${xmlEscape(item.lineNo || String(globalRowNo))}" ТипЗатр="${xmlEscape(normalizeExpenseType(item.expenseType, item))}" ОКЕИ_Стройка="796" НаимЕдИзм="${xmlEscape(item.unit || 'шт')}">\n        <УчОшИНовОбстСт>\n          <ОшибПрПер>\n            <УвелДен>1</УвелДен>\n            <УвелКол>1</УвелКол>\n          </ОшибПрПер>\n        </УчОшИНовОбстСт>\n        <СумНал>\n          <СумНал>${formatMoney(vat)}</СумНал>\n        </СумНал>${traceXml}\n      </ВидРаб>`;
       globalRowNo += 1;
       return xml;
     })
@@ -2284,6 +2326,41 @@ function firstNumberOrNull(...values) {
   return null;
 }
 
+function normalizeExpenseType(value, row = {}) {
+  if (row?.type && row.type !== 'item') return '1';
+  const raw = String(value ?? row?.expenseType ?? row?.typeZatr ?? '').trim();
+  if (EXPENSE_TYPE_OPTIONS[raw]) return raw;
+  return '1';
+}
+
+function defaultCategoryForExpenseType(value) {
+  switch (normalizeExpenseType(value)) {
+    case '3':
+    case '4':
+    case '6':
+      return 'material';
+    case '5':
+      return 'misc';
+    case '2':
+    case '1':
+    default:
+      return 'work';
+  }
+}
+
+function expenseTypeLabel(value) {
+  return EXPENSE_TYPE_OPTIONS[normalizeExpenseType(value)] || EXPENSE_TYPE_OPTIONS['1'];
+}
+
+function renderExpenseTypeMenuItems(sheetIndex, rowIndex = null, correctionAction = null) {
+  return Object.entries(EXPENSE_TYPE_OPTIONS).map(([code, label]) => {
+    const rowAttr = rowIndex == null ? '' : ` data-row-index="${rowIndex}"`;
+    const action = correctionAction || 'insert-row-after';
+    const kindAttr = correctionAction ? '' : ' data-row-kind="item"';
+    return `<button class="row-action-menu-item" data-action="${action}" data-expense-type="${code}" data-sheet-index="${sheetIndex}"${rowAttr}${kindAttr}>+ ${escapeHtml(label)}</button>`;
+  }).join('');
+}
+
 function hasNegativeCorrectionSignals(row = {}) {
   return ['effectiveAmount', 'effectiveQuantity', 'effectiveFromStart', 'effectiveQuantityFromStart', 'amount', 'quantity', 'fromStart', 'amountFromStart', 'quantityFromStart']
     .some((key) => {
@@ -2348,10 +2425,20 @@ function createBlankSheet(number) {
   };
 }
 
+function createBlankItemRowByExpenseType(expenseType = '1', overrides = {}) {
+  const normalizedType = normalizeExpenseType(expenseType);
+  return createBlankRow('item', {
+    expenseType: normalizedType,
+    category: defaultCategoryForExpenseType(normalizedType),
+    ...overrides,
+  });
+}
+
 function createBlankRow(type = 'item', overrides = {}) {
   return {
     type,
     calcMode: 'normal',
+    expenseType: '1',
     code: '',
     lineNo: '',
     estimateNo: '',
@@ -2415,6 +2502,20 @@ function renderReadonly(label, value, size = '') {
     <div class="field ${size}">
       <label>${label}</label>
       <div class="readonly">${escapeHtml(String(value ?? ''))}</div>
+    </div>
+  `;
+}
+
+function renderKs2SheetAddMenu(sheetIndex) {
+  const menuOpen = app.state.ui.sheetAddMenu === sheetIndex;
+  return `
+    <div class="row-action-stack inline-add-stack">
+      <button class="mini" data-action="toggle-sheet-add-menu" data-sheet-index="${sheetIndex}">+ Добавить позицию</button>
+      ${menuOpen ? `
+        <div class="row-action-menu row-action-menu-wide">
+          ${renderExpenseTypeMenuItems(sheetIndex)}
+        </div>
+      ` : ''}
     </div>
   `;
 }
