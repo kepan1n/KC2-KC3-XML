@@ -430,7 +430,7 @@ def iter_ks2_sections(ks2_sheets: list[dict]):
     for sheet_index, sheet in enumerate(ks2_sheets):
         current_section = None
         for row in sheet.get('rows', []):
-            row_type = row.get('type')
+            row_type = str(row.get('type') or 'item').strip().lower()
             if row_type == 'section':
                 global_section_no += 1
                 global_row_no += 1
@@ -446,23 +446,24 @@ def iter_ks2_sections(ks2_sheets: list[dict]):
                 }
                 yield current_section
                 continue
-            if row_type == 'item':
-                if current_section is None:
-                    global_section_no += 1
-                    global_row_no += 1
-                    current_section = {
-                        'sheetIndex': sheet_index,
-                        'sheet': sheet,
-                        'sectionNo': global_section_no,
-                        'rowNo': global_row_no,
-                        'name': sheet.get('title') or f'Раздел {global_section_no}',
-                        'estimateNo': '',
-                        'sourceRow': {},
-                        'items': [],
-                    }
-                    yield current_section
+            if row_type == 'note':
+                continue
+            if current_section is None:
+                global_section_no += 1
                 global_row_no += 1
-                current_section['items'].append({**row, 'xmlRowNo': global_row_no})
+                current_section = {
+                    'sheetIndex': sheet_index,
+                    'sheet': sheet,
+                    'sectionNo': global_section_no,
+                    'rowNo': global_row_no,
+                    'name': sheet.get('title') or f'Раздел {global_section_no}',
+                    'estimateNo': '',
+                    'sourceRow': {},
+                    'items': [],
+                }
+                yield current_section
+            global_row_no += 1
+            current_section['items'].append({**row, 'xmlRowNo': global_row_no})
 
 
 def parse_input_date(value: str | None):
@@ -478,7 +479,7 @@ def parse_input_date(value: str | None):
     return None
 
 
-def collect_document_periods(ks2_sheets: list[dict], ks3_doc: dict):
+def collect_document_periods(ks2_sheets: list[dict]):
     starts = []
     ends = []
 
@@ -491,16 +492,38 @@ def collect_document_periods(ks2_sheets: list[dict], ks3_doc: dict):
         if end_dt:
             ends.append(end_dt)
 
-    ks3_start = parse_input_date(first_non_empty(ks3_doc.get('periodFrom')))
-    ks3_end = parse_input_date(first_non_empty(ks3_doc.get('periodTo'), ks3_doc.get('documentDate')))
-    if ks3_start:
-        starts.append(ks3_start)
-    if ks3_end:
-        ends.append(ks3_end)
-
     start_value = min(starts).strftime('%d.%m.%Y') if starts else None
     end_value = max(ends).strftime('%d.%m.%Y') if ends else None
     return start_value, end_value
+
+
+def build_ks2_xml_totals(ks2_sheets: list[dict]):
+    totals = {
+        'forPeriod': 0.0,
+        'vatForPeriod': 0.0,
+        'fromStart': 0.0,
+        'vatFromStart': 0.0,
+    }
+
+    for entry in iter_ks2_sections(ks2_sheets):
+        items = entry.get('items', [])
+        if not items:
+            continue
+        sheet = entry.get('sheet', {})
+        sheet_doc = sheet.get('document', {})
+        vat_rate = safe_float(first_non_empty(sheet_doc.get('vatRate'), sheet.get('vatRate')), 20.0)
+
+        section_amount_raw = sum(resolve_effective_row_amount(item) for item in items)
+        section_amount = max(round(section_amount_raw, 2), 0.0)
+        cumulative_raw = sum(resolve_effective_cumulative_amount(item, resolve_effective_row_amount(item)) for item in items)
+        cumulative_amount = max(round(cumulative_raw, 2), section_amount)
+
+        totals['forPeriod'] += section_amount
+        totals['vatForPeriod'] += calc_vat(section_amount, vat_rate)
+        totals['fromStart'] += cumulative_amount
+        totals['vatFromStart'] += calc_vat(cumulative_amount, vat_rate)
+
+    return {key: round(value, 2) for key, value in totals.items()}
 
 
 def normalize_search_text(value: str | None) -> str:
@@ -814,11 +837,8 @@ def project_payload_to_single_ks2_sheet(data: dict, sheet_index: int) -> dict:
     projected['ks2Sheets'] = [target_sheet]
 
     ks3 = projected.setdefault('ks3', {})
-    original_ks3 = data.get('ks3', {}) or {}
-    ks3_row_map = build_ks3_sheet_map(ks2_sheets, original_ks3.get('rows', []))
-    matched_ks3_row = copy.deepcopy(ks3_row_map.get(sheet_index) or {})
-    ks3['rows'] = [matched_ks3_row] if matched_ks3_row else []
-    ks3['totals'] = build_ks3_totals_from_row(matched_ks3_row)
+    ks3['rows'] = []
+    ks3['totals'] = {}
 
     holdbacks = projected.setdefault('holdbacks', {})
     original_sections = (data.get('holdbacks', {}) or {}).get('sections', []) or []
@@ -979,10 +999,8 @@ def build_xml(data: dict) -> ET._ElementTree:
         'basis': first_sheet.get('basis'),
         'vatRate': first_sheet.get('vatRate'),
     }
-    ks3 = data.get('ks3', {})
-    ks3_doc = ks3.get('document', {})
-    ks3_totals = ks3.get('totals', {})
-    ks3_sheet_map = build_ks3_sheet_map(ks2_sheets, ks3.get('rows', []))
+    ks2_totals = build_ks2_xml_totals(ks2_sheets)
+    total_period_with_vat = round(ks2_totals.get('forPeriod', 0.0) + ks2_totals.get('vatForPeriod', 0.0), 2)
     cumulative_mode = resolve_cumulative_mode(constants)
     vat_in_total_only = str(first_non_empty(constants.get('vatCalcInTotalOnly'), default='0')) == '1'
 
@@ -1008,7 +1026,7 @@ def build_xml(data: dict) -> ET._ElementTree:
     act = doc.find('СвАктСдПр')
     set_attr(act,
              НомерДок=first_doc.get('number') or 'без номера',
-             ДатаДок=fmt_date(first_doc.get('date') or ks3_doc.get('documentDate')),
+             ДатаДок=fmt_date(first_doc.get('date')),
              НаимОб=common.get('objectName') or common.get('constructionObject') or act.get('НаимОб'),
              КодОКВДог=currency_code)
 
@@ -1042,7 +1060,7 @@ def build_xml(data: dict) -> ET._ElementTree:
     if is_correction_act:
         set_attr(correction,
                  НомИспр=manual.get('correctionNumber') or correction.get('НомИспр') or '1',
-                 ДатаИспр=fmt_date(manual.get('correctionDate') or first_doc.get('date') or ks3_doc.get('documentDate')))
+                 ДатаИспр=fmt_date(manual.get('correctionDate') or first_doc.get('date')))
     elif correction is not None:
         act.remove(correction)
 
@@ -1152,12 +1170,6 @@ def build_xml(data: dict) -> ET._ElementTree:
         ('customer.signerPosition', common.get('customerSignerPosition')),
         ('techCustomer.signerName', common.get('techCustomerSignerName')),
         ('techCustomer.signerPosition', common.get('techCustomerSignerPosition')),
-        ('ks3.documentNumber', first_non_empty(ks3_doc.get('documentNumber'), ks3_doc.get('number'))),
-        ('ks3.documentDate', fmt_date(first_non_empty(ks3_doc.get('documentDate'), ks3_doc.get('date'))) if first_non_empty(ks3_doc.get('documentDate'), ks3_doc.get('date')) else None),
-        ('ks3.periodFrom', fmt_date(first_non_empty(ks3_doc.get('periodFrom'))) if first_non_empty(ks3_doc.get('periodFrom')) else None),
-        ('ks3.periodTo', fmt_date(first_non_empty(ks3_doc.get('periodTo'))) if first_non_empty(ks3_doc.get('periodTo')) else None),
-        ('ks3.totalFromStart', fmt_money(first_number(ks3_totals.get('fromStart'), default=0.0)) if ks3_totals else None),
-        ('ks3.totalForPeriod', fmt_money(first_number(ks3_totals.get('forPeriod'), default=0.0)) if ks3_totals else None),
     ])
 
     existing_works = doc.findall('НаимИСт')
@@ -1178,7 +1190,7 @@ def build_xml(data: dict) -> ET._ElementTree:
             for item in sheet.get('items', []):
                 all_items.append((sheet_index, sheet, item))
 
-        export_items = all_items[:1] if all_items else []
+        export_items = all_items if all_items else []
         row_no = 1
         for sheet_index, sheet, item in export_items:
             amount = float(item.get('amount') or 0)
@@ -1195,7 +1207,8 @@ def build_xml(data: dict) -> ET._ElementTree:
             work_el = ET.SubElement(works, 'ВидРаб', **attrs)
             sheet_doc = sheet.get('document', {})
             tax = ET.SubElement(work_el, 'СумНал')
-            vat_amount = max(float(ks3_totals.get('vat') or 0), 0) if ks3_totals.get('vat') is not None else 0
+            vat_rate = safe_float(first_non_empty(sheet_doc.get('vatRate'), sheet.get('vatRate'), first_doc.get('vatRate')), 20.0)
+            vat_amount = calc_vat(amount, vat_rate)
             ET.SubElement(tax, 'СумНал').text = fmt_money(vat_amount)
             tg = traceable_goods[0] if traceable_goods else {}
             ET.SubElement(
@@ -1217,9 +1230,9 @@ def build_xml(data: dict) -> ET._ElementTree:
             ])
             row_no += 1
 
-        export_sections = sections[:1] if sections else []
+        export_sections = sections if sections else []
         for idx, section in enumerate(export_sections, start=1):
-            section_amount = float(section.get('ks2Amount') or ks3_totals.get('forPeriod') or 0)
+            section_amount = float(section.get('ks2Amount') or 0)
             subitems = section.get('subitems', [])
             filtered_subitems = [sub for sub in subitems if float(sub.get('closingAmount') or 0) > 0 or float(sub.get('advanceReceived') or 0) > 0]
             if section_amount <= 0 and not filtered_subitems:
@@ -1257,9 +1270,6 @@ def build_xml(data: dict) -> ET._ElementTree:
 
             sheet_doc = sheet.get('document', {})
             vat_rate_default = safe_float(sheet_doc.get('vatRate') or first_doc.get('vatRate') or 20)
-            sheet_ks3_row = ks3_sheet_map.get(sheet_index, {})
-            sheet_cumulative_base = first_number(sheet_ks3_row.get('fromStart'), default=None)
-            sheet_for_period_base = first_number(sheet_ks3_row.get('forPeriod'), default=None)
             sheet_metadata_attached = False
             for entry in sheet_sections:
                 items = entry['items']
@@ -1270,8 +1280,6 @@ def build_xml(data: dict) -> ET._ElementTree:
                 section_estimate_no = entry.get('estimateNo') or next((str(it.get('estimateNo')) for it in items if it.get('estimateNo')), '')
                 section_cumulative_amount_raw = sum(resolve_effective_cumulative_amount(item, resolve_effective_row_amount(item)) for item in items)
                 section_cumulative_amount = max(round(section_cumulative_amount_raw, 2), 0)
-                if section_cumulative_amount == section_amount and len(sheet_sections) == 1 and sheet_cumulative_base is not None:
-                    section_cumulative_amount = max(round(sheet_cumulative_base, 2), 0)
                 section_vat = calc_vat(section_amount, vat_rate_default)
                 section_cumulative_vat = calc_vat(section_cumulative_amount, vat_rate_default)
                 sec_attrs = {
@@ -1370,8 +1378,6 @@ def build_xml(data: dict) -> ET._ElementTree:
                             ('ks2.periodTo', fmt_date(first_non_empty(sheet_doc.get('periodTo'), sheet.get('periodTo'))) if first_non_empty(sheet_doc.get('periodTo'), sheet.get('periodTo')) else None),
                             ('ks2.basis', first_non_empty(sheet_doc.get('basis'), sheet.get('basis'))),
                             ('ks2.vatRate', str(first_non_empty(sheet_doc.get('vatRate'), first_doc.get('vatRate')))),
-                            ('ks3.sheetFromStart', fmt_money(sheet_cumulative_base) if sheet_cumulative_base is not None else None),
-                            ('ks3.sheetForPeriod', fmt_money(sheet_for_period_base) if sheet_for_period_base is not None else None),
                         ])
                         sheet_metadata_attached = True
                 if not vat_in_total_only:
@@ -1382,7 +1388,7 @@ def build_xml(data: dict) -> ET._ElementTree:
 
     transfer = doc.find('СвПродПер')
     clear_children(transfer)
-    period_from, period_to = collect_document_periods(ks2_sheets, ks3_doc)
+    period_from, period_to = collect_document_periods(ks2_sheets)
     transfer_attrs = {
         'СодОпер': build_operation_text(common),
     }
@@ -1397,7 +1403,7 @@ def build_xml(data: dict) -> ET._ElementTree:
     set_attr(settlement_el,
              СумУдержВсегоОтч=fmt_money(settlement.get('totalRetention')),
              СумТребВсегоОтч=fmt_money(settlement.get('totalClaims')),
-             ВсегоКОплатОтч=fmt_money(holdbacks.get('totals', {}).get('payableAmount') or ks3_totals.get('forPeriod')))
+             ВсегоКОплатОтч=fmt_money(first_number(holdbacks.get('totals', {}).get('payableAmount'), total_period_with_vat, default=total_period_with_vat)))
     settlement_rows = [row for row in settlement.get('settlementRows', []) if safe_float(row.get('amount') or 0, 0.0) > 0] or [{'amount': 1, 'kind': 'withhold', 'kindCode': '31'}]
     representative_row = settlement.get('representativeRow') or None
     aggregated_amount = sum(max(float(row.get('amount') or 0), 0) for row in settlement_rows)
@@ -1442,8 +1448,8 @@ def build_xml(data: dict) -> ET._ElementTree:
 
     total_el = doc.find('ВсегоАктОтч')
     clear_children(total_el)
-    total_base = first_number(ks3_totals.get('forPeriod'), default=0.0)
-    vat_total = first_number(ks3_totals.get('vatForPeriod'), ks3_totals.get('vat'), default=0.0)
+    total_base = first_number(ks2_totals.get('forPeriod'), default=0.0)
+    vat_total = first_number(ks2_totals.get('vatForPeriod'), default=0.0)
     total_with_vat = total_base + vat_total
     total_attrs = {
         'СтТовБезНДСВсего': fmt_money(total_base),
@@ -1465,11 +1471,9 @@ def build_xml(data: dict) -> ET._ElementTree:
             settings_ref = doc.find('НастрФормДок')
             doc.insert(list(doc).index(settings_ref), total_start_el)
         clear_children(total_start_el)
-        total_base_start = first_number(ks3_totals.get('fromStart'), total_base, default=total_base)
+        total_base_start = first_number(ks2_totals.get('fromStart'), total_base, default=total_base)
         vat_total_start = first_number(
-            ks3_totals.get('vatFromStart'),
-            ks3_totals.get('fromStartVat'),
-            ks3_totals.get('vatCumulative'),
+            ks2_totals.get('vatFromStart'),
             vat_total,
             default=vat_total,
         )

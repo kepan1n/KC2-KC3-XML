@@ -13,6 +13,7 @@ const refs = {
   exportJson: document.getElementById('export-json'),
   exportXml: document.getElementById('export-xml'),
   addSheet: document.getElementById('add-ks2-sheet'),
+  ks2ViewSwitcherSlot: document.getElementById('ks2-view-switcher-slot'),
   toggleHeaders: document.getElementById('toggle-headers'),
   toggleSignatures: document.getElementById('toggle-signatures'),
   scaleDown: document.getElementById('scale-down'),
@@ -246,6 +247,7 @@ function bindGlobalEvents() {
     app.state.ui.activePane = button.dataset.pane;
     render();
   });
+  refs.ks2ViewSwitcherSlot?.addEventListener('click', handleContentClick);
 
   refs.content.addEventListener('click', handleContentClick);
   refs.content.addEventListener('change', handleContentChange);
@@ -675,6 +677,7 @@ function prepareState(raw) {
   data.xmlExtras.constants.cumulativeMode ||= '1';
   data.xmlExtras.constants.priceIndexYear ||= '0000';
   data.xmlExtras.constants.requiresSettlementApproval ||= '0';
+  data.xmlExtras.constants.diadocCompactMode ||= '0';
   data.xmlExtras.manual.isCorrectionAct ||= '0';
   data.xmlExtras.manual.hasEstimateChange ||= '1';
 
@@ -784,6 +787,7 @@ function prepareState(raw) {
 function render() {
   applyUiPreferences();
   renderNavStrip();
+  renderStatusbarControls();
   renderStats();
   renderContent();
   applyColumnWidths();
@@ -888,6 +892,12 @@ function handleResizeStart(event) {
 
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
+}
+
+function renderStatusbarControls() {
+  const active = app.state.ui.activePane || 'requisites';
+  const match = active.match(/^ks2:(\d+)$/);
+  refs.ks2ViewSwitcherSlot.innerHTML = match ? renderKs2ViewSwitcher(Number(match[1])) : '';
 }
 
 function renderNavStrip() {
@@ -1095,7 +1105,6 @@ function buildValidationReport(model) {
   requireValue(model.common.contractDate, 'common.contractDate', 'Дата договора');
   requireValue(model.common.operationType, 'common.operationType', 'Вид операции');
   requireValue(model.common.okudKs2, 'common.okudKs2', 'ОКУД КС-2');
-  requireValue(model.common.okudKs3, 'common.okudKs3', 'ОКУД КС-3');
   requireValue(model.common.objectOkpo, 'common.objectOkpo', 'ОКПО объекта', 'warning');
   requireValue(model.common.okdpCode, 'common.okdpCode', 'ОКДП', 'warning');
 
@@ -1115,11 +1124,6 @@ function buildValidationReport(model) {
       if (item.price == null) pushIssue('warning', `${prefix}.rows.${rowIndex}.price`, `КС-2 #${index + 1}: строка ${rowIndex + 1}`, 'Не заполнена цена');
     });
   });
-
-  requireValue(model.ks3.document.documentNumber, 'ks3.document.documentNumber', 'КС-3: номер документа');
-  requireValue(model.ks3.document.documentDate, 'ks3.document.documentDate', 'КС-3: дата документа');
-  requireValue(model.ks3.document.periodFrom, 'ks3.document.periodFrom', 'КС-3: период с');
-  requireValue(model.ks3.document.periodTo, 'ks3.document.periodTo', 'КС-3: период по');
 
   if (!model.holdbacks.rows.length) {
     pushIssue('warning', 'holdbacks.rows', 'Удержания', 'Нет ни одной строки удержаний');
@@ -1693,7 +1697,6 @@ function renderKs2Pane(sheetIndex) {
           <p class="panel-subtitle">Таблица построена по структуре Excel: шапка акта, основание, разделы, строки работ и итоговый блок.</p>
         </div>
         <div class="inline-actions ks2-header-actions">
-          ${renderKs2ViewSwitcher(sheetIndex)}
           <button class="secondary" data-action="duplicate-sheet" data-sheet-index="${sheetIndex}">Дублировать лист</button>
           <button class="icon-button danger" title="Удалить лист" aria-label="Удалить лист" data-action="delete-sheet" data-sheet-index="${sheetIndex}">×</button>
         </div>
@@ -2204,7 +2207,7 @@ function renderXmlPane() {
           ${renderSelect('Признак накопительного итога', 'xmlExtras.constants.cumulativeMode', constants.cumulativeMode, { '0': '0 — без накопления', '1': '1 — в акте всё', '2': '2 — только строка «Всего»' }, 'half')}
           ${renderInput('Год индекса цен', 'xmlExtras.constants.priceIndexYear', constants.priceIndexYear, 'string', 'quarter')}
           ${renderSelect('Сведения о расчётах для согласования', 'xmlExtras.constants.requiresSettlementApproval', constants.requiresSettlementApproval, { '0': '0 — нет', '1': '1 — да' }, 'quarter')}
-          ${renderSelect('Режим табличной части XML', 'xmlExtras.constants.diadocCompactMode', constants.diadocCompactMode || '1', { '1': 'compact / pass-friendly', '0': 'full / как в форме' }, 'half')}
+          ${renderSelect('Режим табличной части XML', 'xmlExtras.constants.diadocCompactMode', constants.diadocCompactMode || '0', { '1': 'compact / pass-friendly', '0': 'full / как в форме' }, 'half')}
         </div>
       </div>
 
@@ -3133,7 +3136,7 @@ function buildTraceableGoodsSnippet(index) {
 function staticXmlBinding(path) {
   const bindings = {
     'common.okudKs2': ['ИнфПолФХЖ1 → form.okudKs2'],
-    'common.okudKs3': ['ИнфПолФХЖ1 → form.okudKs3'],
+    'common.okudKs3': { included: false, note: 'Форма КС-3 теперь передается отдельным Excel-документом и в P XML не используется.' },
     'common.objectOkpo': ['ИнфПолФХЖ1 → form.objectOkpo'],
     'common.okdpCode': ['ИнфПолФХЖ1 → form.okdpCode'],
     'common.currencyCode': ['СвАктСдПр/@КодОКВДог', 'ДенИзм/@КодОКВ', 'ИнфПолФХЖ1 → form.currencyCode'],
@@ -3173,14 +3176,14 @@ function staticXmlBinding(path) {
     'common.ks3ContractorPosition': { included: false, note: 'Только печатный блок формы КС-3 / удержаний.' },
     'common.ks3ContractorName': { included: false, note: 'Только печатный блок формы КС-3 / удержаний.' },
 
-    'ks3.documentNumber': ['ИнфПолФХЖ1 → ks3.documentNumber'],
-    'ks3.documentDate': ['ИнфПолФХЖ1 → ks3.documentDate'],
-    'ks3.periodFrom': ['ИнфПолФХЖ1 → ks3.periodFrom', 'СвПродПер/СвПер/@НачПерВДок'],
-    'ks3.periodTo': ['ИнфПолФХЖ1 → ks3.periodTo', 'СвПродПер/СвПер/@ОконПерВДок'],
-    'ks3.totals.fromStart': ['ВсегоАктОтч/@СтоимРабСНач', 'ИнфПолФХЖ1 → ks3.totalFromStart'],
-    'ks3.totals.fromYearStart': { status: 'derived', targets: ['Используется для логики КС-3, прямого отдельного атрибута в P XML нет'] },
-    'ks3.totals.forPeriod': ['ВсегоАктОтч/@СтоимРабОтч', 'ИнфПолФХЖ1 → ks3.totalForPeriod'],
-    'ks3.totals.vat': ['ВсегоАктОтч/@СумНалОтч', 'ВсегоАктОтч/@СтТовУчНалОтч'],
+    'ks3.documentNumber': { included: false, note: 'Данные КС-3 больше не используются при формировании P XML по листу КС-2.' },
+    'ks3.documentDate': { included: false, note: 'Данные КС-3 больше не используются при формировании P XML по листу КС-2.' },
+    'ks3.periodFrom': { included: false, note: 'Данные КС-3 больше не используются при формировании P XML по листу КС-2.' },
+    'ks3.periodTo': { included: false, note: 'Данные КС-3 больше не используются при формировании P XML по листу КС-2.' },
+    'ks3.totals.fromStart': { included: false, note: 'Итоги КС-3 больше не участвуют в формировании P XML.' },
+    'ks3.totals.fromYearStart': { included: false, note: 'Итоги КС-3 больше не участвуют в формировании P XML.' },
+    'ks3.totals.forPeriod': { included: false, note: 'Итоги КС-3 больше не участвуют в формировании P XML.' },
+    'ks3.totals.vat': { included: false, note: 'Итоги КС-3 больше не участвуют в формировании P XML.' },
 
     'xml.generated.fileId': ['Файл/@ИдФайл'],
     'xml.generated.fileDate': ['Документ/@ДатаИнфПодр'],
