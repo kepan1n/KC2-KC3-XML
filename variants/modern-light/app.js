@@ -1664,56 +1664,44 @@ function renderKs2Pane(sheetIndex) {
 
   const rows = sheet.rows.map((row, rowIndex) => `
     <tr class="${row.type === 'section' ? 'section-row' : row.type === 'note' ? 'note-row' : isCorrectionRow(row) ? 'correction-row' : ''}">
-      <td>
-        <select data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.type">
-          ${renderOptions(['item', 'section', 'note'], row.type, { item: 'Строка', section: 'Раздел', note: 'Примечание' })}
-        </select>
-      </td>
-      <td><input data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.code" value="${escapeAttr(row.code)}" /></td>
-      <td><input data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.lineNo" value="${escapeAttr(row.lineNo)}" /></td>
-      <td><input data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.estimateNo" value="${escapeAttr(row.estimateNo)}" /></td>
-      <td><textarea data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.name">${escapeHtml(row.name)}</textarea></td>
-      <td><input data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.unit" value="${escapeAttr(row.unit)}" /></td>
-      <td class="number-cell"><input data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.quantity" data-value-type="number" value="${formatEditableNumber(row.quantity)}" /></td>
-      <td class="number-cell"><input data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.price" data-value-type="number" value="${formatEditableNumber(row.price)}" /></td>
-      <td class="amount-cell">
+      <td>${renderTableSelect(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.type`, row.type, { item: 'Строка', section: 'Раздел', note: 'Примечание' })}</td>
+      <td>${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.code`, row.code)}</td>
+      <td>${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.lineNo`, row.lineNo)}</td>
+      <td>${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.estimateNo`, row.estimateNo)}</td>
+      <td>${renderTableTextarea(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.name`, row.name)}</td>
+      <td>${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.unit`, row.unit)}</td>
+      <td class="number-cell">${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.quantity`, formatEditableNumber(row.quantity), 'number')}</td>
+      <td class="number-cell">${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.price`, formatEditableNumber(row.price), 'number')}</td>
+      <td class="amount-cell">${renderTableComputed(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.__displayAmount`, `
         <div class="amount-stack">
           <strong>${formatMoney(computeRowDisplayAmount(row))}</strong>
           ${isCorrectionRow(row) ? `<span class="calc-mode-chip subtract">${correctionModeLabel(row)}</span>` : ''}
         </div>
-      </td>
-      <td class="number-cell"><input data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.unitConsumption" data-value-type="number" value="${formatEditableNumber(row.unitConsumption)}" /></td>
-      <td>
-        <select data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.category">
-          ${renderOptions(['work', 'metal', 'frame', 'concrete', 'misc', 'material'], row.category, {
+      `)}</td>
+      <td class="number-cell">${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.unitConsumption`, formatEditableNumber(row.unitConsumption), 'number')}</td>
+      <td>${renderTableSelect(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.category`, row.category, {
             work: 'Работа',
             metal: 'Металлопрокат',
             frame: 'Каркас',
             concrete: 'Бетон',
             misc: 'Прочее',
             material: 'Материал',
-          })}
-        </select>
+          })}</td>
+      <td>
+        ${row.type === 'item'
+          ? renderTableSelect(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.expenseType`, normalizeExpenseType(row.expenseType, row), EXPENSE_TYPE_OPTIONS)
+          : renderTableComputed(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.expenseType`, '<div class="table-muted-cell">—</div>')}
       </td>
       <td>
-        ${row.type === 'item' ? `
-          <select data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.expenseType">
-            ${renderOptions(Object.keys(EXPENSE_TYPE_OPTIONS), normalizeExpenseType(row.expenseType, row), EXPENSE_TYPE_OPTIONS)}
-          </select>
-        ` : '<div class="table-muted-cell">—</div>'}
-      </td>
-      <td>
-        ${row.type === 'item' ? `
-          <select data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.calcMode">
-            ${renderOptions(['normal', 'errorCorrection', 'newCircumstances'], normalizeCalcMode(row.calcMode, row), {
+        ${row.type === 'item'
+          ? renderTableSelect(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.calcMode`, normalizeCalcMode(row.calcMode, row), {
               normal: 'Обычная',
               errorCorrection: 'Исправление ошибок',
               newCircumstances: 'Новые обстоятельства',
-            })}
-          </select>
-        ` : '<div class="table-muted-cell">—</div>'}
+            })
+          : renderTableComputed(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.calcMode`, '<div class="table-muted-cell">—</div>')}
       </td>
-      <td><textarea data-path="ks2Sheets.${sheetIndex}.rows.${rowIndex}.note">${escapeHtml(row.note)}</textarea></td>
+      <td>${renderTableTextarea(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.note`, row.note)}</td>
       <td class="actions-cell">${renderKs2RowActions(sheetIndex, rowIndex)}</td>
     </tr>
   `).join('');
@@ -2064,12 +2052,12 @@ function renderKs3Pane() {
                     : '';
                 return `
                   <tr class="${rowClass}">
-                    <td><input data-path="ks3.rows.${index}.order" value="${escapeAttr(row.order)}" /></td>
-                    <td class="ks3-name-cell"><textarea data-path="ks3.rows.${index}.name">${escapeHtml(row.name)}</textarea></td>
-                    <td><input data-path="ks3.rows.${index}.code" value="${escapeAttr(row.code)}" /></td>
-                    <td class="number-cell"><input data-path="ks3.rows.${index}.fromStart" data-value-type="number" value="${formatEditableNumber(row.fromStart)}" /></td>
-                    <td class="number-cell"><input data-path="ks3.rows.${index}.fromYearStart" data-value-type="number" value="${formatEditableNumber(row.fromYearStart)}" /></td>
-                    <td class="number-cell"><input data-path="ks3.rows.${index}.forPeriod" data-value-type="number" value="${formatEditableNumber(row.forPeriod)}" /></td>
+                    <td>${renderTableInput(`ks3.rows.${index}.order`, row.order)}</td>
+                    <td class="ks3-name-cell">${renderTableTextarea(`ks3.rows.${index}.name`, row.name)}</td>
+                    <td>${renderTableInput(`ks3.rows.${index}.code`, row.code)}</td>
+                    <td class="number-cell">${renderTableInput(`ks3.rows.${index}.fromStart`, formatEditableNumber(row.fromStart), 'number')}</td>
+                    <td class="number-cell">${renderTableInput(`ks3.rows.${index}.fromYearStart`, formatEditableNumber(row.fromYearStart), 'number')}</td>
+                    <td class="number-cell">${renderTableInput(`ks3.rows.${index}.forPeriod`, formatEditableNumber(row.forPeriod), 'number')}</td>
                     <td class="actions-cell">${renderKs3RowActions(index)}</td>
                   </tr>
                 `;
@@ -2220,12 +2208,12 @@ function renderXmlPane() {
       <div class="section-block">
         <h3>Автогенерируемые поля</h3>
         <div class="form-grid">
-          ${renderReadonly('Идентификатор файла', generated.fileId, 'half')}
-          ${renderReadonly('Дата формирования', generated.fileDate, 'quarter')}
-          ${renderReadonly('Время формирования', generated.fileTime, 'quarter')}
-          ${renderReadonly('КНД', generated.knd, 'quarter')}
-          ${renderReadonly('Версия формата', generated.formatVersion, 'quarter')}
-          ${renderReadonly('Версия программы', generated.programVersion, 'quarter')}
+          ${renderReadonly('Идентификатор файла', generated.fileId, 'half', 'xml.generated.fileId')}
+          ${renderReadonly('Дата формирования', generated.fileDate, 'quarter', 'xml.generated.fileDate')}
+          ${renderReadonly('Время формирования', generated.fileTime, 'quarter', 'xml.generated.fileTime')}
+          ${renderReadonly('КНД', generated.knd, 'quarter', 'xml.generated.knd')}
+          ${renderReadonly('Версия формата', generated.formatVersion, 'quarter', 'xml.generated.formatVersion')}
+          ${renderReadonly('Версия программы', generated.programVersion, 'quarter', 'xml.generated.programVersion')}
         </div>
       </div>
 
@@ -2301,10 +2289,10 @@ function renderXmlPane() {
             <tbody>
               ${app.state.xmlExtras.traceableGoods.map((row, index) => `
                 <tr>
-                  <td><input data-path="xmlExtras.traceableGoods.${index}.registrationNumber" value="${escapeAttr(row.registrationNumber)}" /></td>
-                  <td><input data-path="xmlExtras.traceableGoods.${index}.unitCode" value="${escapeAttr(row.unitCode)}" /></td>
-                  <td><input data-path="xmlExtras.traceableGoods.${index}.unitName" value="${escapeAttr(row.unitName)}" /></td>
-                  <td><input data-path="xmlExtras.traceableGoods.${index}.quantity" data-value-type="number" value="${formatEditableNumber(row.quantity)}" /></td>
+                  <td>${renderTableInput(`xmlExtras.traceableGoods.${index}.registrationNumber`, row.registrationNumber)}</td>
+                  <td>${renderTableInput(`xmlExtras.traceableGoods.${index}.unitCode`, row.unitCode)}</td>
+                  <td>${renderTableInput(`xmlExtras.traceableGoods.${index}.unitName`, row.unitName)}</td>
+                  <td>${renderTableInput(`xmlExtras.traceableGoods.${index}.quantity`, formatEditableNumber(row.quantity), 'number')}</td>
                   <td><button class="icon-button danger" title="Удалить строку" aria-label="Удалить строку" data-action="delete-trace-row" data-trace-index="${index}">×</button></td>
                 </tr>
               `).join('')}
@@ -2589,7 +2577,7 @@ function renderHoldbackGroup(group) {
   const sectionRow = `
     <tr class="holdback-section-row">
       ${renderHoldbackSectionCells(section.index, section.row, sectionComputed)}
-      ${renderHoldbackSectionMiddleCells(sectionComputed, subitems.length)}
+      ${renderHoldbackSectionMiddleCells(section.index, sectionComputed, subitems.length)}
       ${renderHoldbackSectionRightCells(section.index, section.row, sectionComputed)}
       <td class="actions-cell">${renderHoldbackRowActions(section.index, 'section')}</td>
     </tr>
@@ -2602,15 +2590,15 @@ function renderHoldbackGroup(group) {
         <td class="holdback-subitem-indent"></td>
         <td class="holdback-subitem-indent"></td>
         <td class="holdback-subitem-indent"></td>
-        <td class="subitem-money-cell"><input data-path="holdbacks.rows.${entry.index}.advanceReceived" data-value-type="number" value="${formatEditableNumber(entry.row.advanceReceived)}" /></td>
-        <td class="subitem-doc-cell"><input data-path="holdbacks.rows.${entry.index}.advanceDoc" value="${escapeAttr(entry.row.advanceDoc)}" placeholder="№, дата документа" /></td>
-        <td class="subitem-money-cell"><input data-path="holdbacks.rows.${entry.index}.previousBalance" data-value-type="number" value="${formatEditableNumber(entry.row.previousBalance)}" /></td>
-        <td class="subitem-money-cell"><input data-path="holdbacks.rows.${entry.index}.closingAmount" data-value-type="number" value="${formatEditableNumber(entry.row.closingAmount)}" /></td>
-        <td class="subitem-result-cell">${formatMoney(subComputed.nextBalance)}</td>
+        <td class="subitem-money-cell">${renderTableInput(`holdbacks.rows.${entry.index}.advanceReceived`, formatEditableNumber(entry.row.advanceReceived), 'number')}</td>
+        <td class="subitem-doc-cell">${renderTableInput(`holdbacks.rows.${entry.index}.advanceDoc`, entry.row.advanceDoc, 'string', '№, дата документа')}</td>
+        <td class="subitem-money-cell">${renderTableInput(`holdbacks.rows.${entry.index}.previousBalance`, formatEditableNumber(entry.row.previousBalance), 'number')}</td>
+        <td class="subitem-money-cell">${renderTableInput(`holdbacks.rows.${entry.index}.closingAmount`, formatEditableNumber(entry.row.closingAmount), 'number')}</td>
+        <td class="subitem-result-cell">${renderTableComputed(`holdbacks.rows.${entry.index}.__nextBalance`, `<span>${formatMoney(subComputed.nextBalance)}</span>`)}</td>
         <td class="holdback-subitem-right">${subIndex === 0 ? '<span class="holdback-subitem-caption">Подпункты / документы по разделу</span>' : ''}</td>
         <td class="holdback-subitem-right"></td>
         <td class="holdback-subitem-right"></td>
-        <td class="subitem-comment-cell"><textarea data-path="holdbacks.rows.${entry.index}.comment" placeholder="Комментарий подпункта">${escapeHtml(entry.row.comment)}</textarea></td>
+        <td class="subitem-comment-cell">${renderTableTextarea(`holdbacks.rows.${entry.index}.comment`, entry.row.comment, 'Комментарий подпункта')}</td>
         <td class="actions-cell">${renderHoldbackRowActions(entry.index, 'subitem')}</td>
       </tr>
     `;
@@ -2622,20 +2610,18 @@ function renderHoldbackGroup(group) {
 function renderHoldbackSectionCells(rowIndex, row, computed) {
   return `
     <td class="holdback-section-cell holdback-section-title">
-      <textarea data-path="holdbacks.rows.${rowIndex}.name" placeholder="Наименование раздела / акта">${escapeHtml(row.name)}</textarea>
+      ${renderTableTextarea(`holdbacks.rows.${rowIndex}.name`, row.name, 'Наименование раздела / акта')}
       <div class="holdback-sheet-link">
         <label>Лист КС-2</label>
-        <select data-path="holdbacks.rows.${rowIndex}.ks2SheetId">
-          ${renderOptions(Object.keys(buildHoldbackSheetOptions()), row.ks2SheetId || '', buildHoldbackSheetOptions())}
-        </select>
+        ${renderTableSelect(`holdbacks.rows.${rowIndex}.ks2SheetId`, row.ks2SheetId || '', buildHoldbackSheetOptions())}
       </div>
     </td>
-    <td class="holdback-section-cell"><input data-path="holdbacks.rows.${rowIndex}.ks2Amount" data-value-type="number" value="${formatEditableNumber(row.ks2Amount)}" /></td>
-    <td class="holdback-section-cell"><input data-path="holdbacks.rows.${rowIndex}.materialsUsed" data-value-type="number" value="${formatEditableNumber(row.materialsUsed)}" /></td>
+    <td class="holdback-section-cell">${renderTableInput(`holdbacks.rows.${rowIndex}.ks2Amount`, formatEditableNumber(row.ks2Amount), 'number')}</td>
+    <td class="holdback-section-cell">${renderTableInput(`holdbacks.rows.${rowIndex}.materialsUsed`, formatEditableNumber(row.materialsUsed), 'number')}</td>
   `;
 }
 
-function renderHoldbackSectionMiddleCells(computed, subitemCount) {
+function renderHoldbackSectionMiddleCells(rowIndex, computed, subitemCount) {
   // Логика Excel для раздела удержаний:
   // D = сумма подпунктов по полученному авансу
   // E = служебное поле по подпунктам / документам
@@ -2643,20 +2629,20 @@ function renderHoldbackSectionMiddleCells(computed, subitemCount) {
   // G = сумма подпунктов по сумме закрытия
   // H = сумма подпунктов по остатку к закрытию следующего периода
   return `
-    <td class="holdback-section-cell holdback-middle-result">${formatMoney(computed.advanceReceived)}</td>
-    <td class="holdback-section-cell holdback-middle-doc">${subitemCount ? `${subitemCount} подп.` : '—'}</td>
-    <td class="holdback-section-cell holdback-middle-result">${formatMoney(computed.previousBalance)}</td>
-    <td class="holdback-section-cell holdback-middle-result">${formatMoney(computed.closingAmount)}</td>
-    <td class="holdback-section-cell holdback-middle-result">${formatMoney(computed.nextBalance)}</td>
+    <td class="holdback-section-cell holdback-middle-result">${renderTableComputed(`holdbacks.rows.${rowIndex}.__advanceReceived`, `<span>${formatMoney(computed.advanceReceived)}</span>`)}</td>
+    <td class="holdback-section-cell holdback-middle-doc">${renderTableComputed(`holdbacks.rows.${rowIndex}.__docCount`, `<span>${subitemCount ? `${subitemCount} подп.` : '—'}</span>`)}</td>
+    <td class="holdback-section-cell holdback-middle-result">${renderTableComputed(`holdbacks.rows.${rowIndex}.__previousBalance`, `<span>${formatMoney(computed.previousBalance)}</span>`)}</td>
+    <td class="holdback-section-cell holdback-middle-result">${renderTableComputed(`holdbacks.rows.${rowIndex}.__closingAmount`, `<span>${formatMoney(computed.closingAmount)}</span>`)}</td>
+    <td class="holdback-section-cell holdback-middle-result">${renderTableComputed(`holdbacks.rows.${rowIndex}.__nextBalance`, `<span>${formatMoney(computed.nextBalance)}</span>`)}</td>
   `;
 }
 
 function renderHoldbackSectionRightCells(rowIndex, row, computed) {
   return `
-    <td class="holdback-section-cell holdback-percent-cell"><input data-path="holdbacks.rows.${rowIndex}.retentionRate" data-value-type="number" value="${formatEditableNumber(row.retentionRate)}" /></td>
-    <td class="holdback-section-cell holdback-result-cell">${formatMoney(computed.retentionAmount)}</td>
-    <td class="holdback-section-cell holdback-result-cell">${formatMoney(computed.payableAmount)}</td>
-    <td class="holdback-section-cell holdback-comment-cell"><textarea data-path="holdbacks.rows.${rowIndex}.comment" placeholder="Комментарий по разделу">${escapeHtml(row.comment)}</textarea></td>
+    <td class="holdback-section-cell holdback-percent-cell">${renderTableInput(`holdbacks.rows.${rowIndex}.retentionRate`, formatEditableNumber(row.retentionRate), 'number')}</td>
+    <td class="holdback-section-cell holdback-result-cell">${renderTableComputed(`holdbacks.rows.${rowIndex}.__retentionAmount`, `<span>${formatMoney(computed.retentionAmount)}</span>`)}</td>
+    <td class="holdback-section-cell holdback-result-cell">${renderTableComputed(`holdbacks.rows.${rowIndex}.__payableAmount`, `<span>${formatMoney(computed.payableAmount)}</span>`)}</td>
+    <td class="holdback-section-cell holdback-comment-cell">${renderTableTextarea(`holdbacks.rows.${rowIndex}.comment`, row.comment, 'Комментарий по разделу')}</td>
   `;
 }
 
@@ -3020,10 +3006,415 @@ function buildRepresentativeSettlementLabel(row) {
   return parts.join(' · ');
 }
 
+function buildXmlBindingTitle(binding) {
+  const lines = [binding.included ? 'Попадает в XML' : 'Не передается в XML'];
+  if (binding.targets?.length) {
+    lines.push(...binding.targets.map((item) => `• ${item}`));
+  }
+  if (binding.note) {
+    lines.push('', binding.note);
+  }
+  if (binding.snippet) {
+    lines.push('', binding.snippet);
+  }
+  return lines.join('\n').trim();
+}
+
+function xmlBinding(included, targets = [], note = '', snippet = '') {
+  const binding = { included, targets, note, snippet };
+  binding.title = buildXmlBindingTitle(binding);
+  return binding;
+}
+
+function getLogicBundleCached() {
+  return app.logicBundle || buildLogicBundle();
+}
+
+function formatXmlScalar(value) {
+  if (value == null || value === '') return '';
+  if (typeof value === 'number') return Number.isInteger(value) ? String(value) : String(round2(value));
+  return String(value);
+}
+
+function buildXmlTagSnippet(tag, attrs = {}, selfClosing = true) {
+  const pairs = Object.entries(attrs)
+    .filter(([, value]) => value != null && value !== '')
+    .map(([key, value]) => `${key}="${String(value).replaceAll('"', '&quot;')}"`);
+  return selfClosing ? `<${tag}${pairs.length ? ` ${pairs.join(' ')}` : ''} />` : `<${tag}${pairs.length ? ` ${pairs.join(' ')}` : ''}>…</${tag}>`;
+}
+
+function buildKs2RowXmlSnippet(sheetIndex, rowIndex) {
+  const row = app.state.ks2Sheets?.[sheetIndex]?.rows?.[rowIndex];
+  if (!row) return '';
+  if (row.type === 'note') return '';
+  if (row.type === 'section') {
+    return buildXmlTagSnippet('Раздел', {
+      НаимРаздел: row.name || '',
+      ПозРаздСмет: row.estimateNo || '',
+    }, false);
+  }
+  const amount = computeRowDisplayAmount(row);
+  const vatRate = numberOrZero(app.state.ks2Sheets?.[sheetIndex]?.vatRate) || 20;
+  const vatAmount = amount == null ? null : round2(numberOrZero(amount) * vatRate / 100);
+  const attrs = {
+    НомПоз: row.lineNo || '',
+    ПозСмет: row.estimateNo || '',
+    НаимТов: row.name || '',
+    НаимЕдИзм: row.unit || '',
+    КолТов: row.quantity != null ? formatXmlScalar(row.quantity) : '',
+    ЦенаТов: row.price != null ? formatXmlScalar(row.price) : '',
+    СтТовБезНДС: amount != null ? formatXmlScalar(amount) : '',
+    СтТовУчНал: amount != null ? formatXmlScalar(round2(numberOrZero(amount) + numberOrZero(vatAmount))) : '',
+    ТипЗатр: normalizeExpenseType(row.expenseType, row),
+  };
+  return buildXmlTagSnippet('СвВидРаб', attrs);
+}
+
+function findHoldbackGroupEntry(rowIndex) {
+  const groups = buildHoldbackGroups();
+  for (const group of groups) {
+    if (group.section.index === rowIndex) return { kind: 'section', group, row: group.section.row, subIndex: -1 };
+    const subIndex = group.subitems.findIndex((item) => item.index === rowIndex);
+    if (subIndex !== -1) return { kind: 'subitem', group, row: group.subitems[subIndex].row, subIndex };
+  }
+  return null;
+}
+
+function buildHoldbackXmlSnippet(rowIndex) {
+  const entry = findHoldbackGroupEntry(rowIndex);
+  if (!entry) return '';
+  if (entry.kind === 'section') {
+    const computed = computeHoldbackSectionComputed(entry.group);
+    return [
+      '<ИнфПолСвОРасч>',
+      '  <ТекстИнф Идентиф="RET_BLOCK" Значение="RET32_SEC" />',
+      '  <ТекстИнф Идентиф="RET_KIND" Значение="32" />',
+      `  <ТекстИнф Идентиф="RET_SEC_NAME" Значение="${(entry.row.name || '').replaceAll('"', '&quot;')}" />`,
+      `  <ТекстИнф Идентиф="RET32_RATE" Значение="${formatXmlScalar(entry.row.retentionRate)}" />`,
+      `  <ТекстИнф Идентиф="RET32_BASE" Значение="${formatXmlScalar(entry.row.ks2Amount)}" />`,
+      `  <ТекстИнф Идентиф="RET32_SUM" Значение="${formatXmlScalar(computed.retentionAmount)}" />`,
+      '</ИнфПолСвОРасч>',
+    ].join('\n');
+  }
+  const nextBalance = computeHoldbackRow(entry.row).nextBalance;
+  return [
+    '<ИнфПолСвОРасч>',
+    '  <ТекстИнф Идентиф="RET_BLOCK" Значение="ADV31_DOC" />',
+    '  <ТекстИнф Идентиф="RET_KIND" Значение="31" />',
+    `  <ТекстИнф Идентиф="RET_DOC_REF" Значение="${(entry.row.advanceDoc || '').replaceAll('"', '&quot;')}" />`,
+    `  <ТекстИнф Идентиф="ADV31_IN" Значение="${formatXmlScalar(entry.row.advanceReceived)}" />`,
+    `  <ТекстИнф Идентиф="ADV31_PREV" Значение="${formatXmlScalar(entry.row.previousBalance)}" />`,
+    `  <ТекстИнф Идентиф="ADV31_CLOSE" Значение="${formatXmlScalar(entry.row.closingAmount)}" />`,
+    `  <ТекстИнф Идентиф="ADV31_NEXT" Значение="${formatXmlScalar(nextBalance)}" />`,
+    '</ИнфПолСвОРасч>',
+  ].join('\n');
+}
+
+function buildSettlementRowXmlSnippet(index) {
+  const row = prepareSettlementRow(app.state.xmlExtras?.settlementRows?.[index] || {});
+  const tag = row.kind === 'claim' ? 'ВидТреб' : 'ВидУдерж';
+  const otherTag = row.kind === 'claim' ? 'ИнВидТреб' : 'ИнВидУдерж';
+  const otherSnippet = isSettlementOtherCode(row) && row.customKindText
+    ? `
+  <${otherTag}>${row.customKindText}</${otherTag}>`
+    : '';
+  const docSnippet = row.documentRef
+    ? `
+  <ДокПодтСумУд><ТипИдДок НаимДок="Документ-основание" НомерДок="${row.documentRef.replaceAll('"', '&quot;')}" /></ДокПодтСумУд>`
+    : '';
+  return `<УчетТребУдерж СумТребУдерж="${formatXmlScalar(row.amount)}">
+  <${tag}>${row.kindCode}</${tag}>${otherSnippet}${docSnippet}
+</УчетТребУдерж>`;
+}
+
+function buildTraceableGoodsSnippet(index) {
+  const row = app.state.xmlExtras?.traceableGoods?.[index] || {};
+  return buildXmlTagSnippet('СвПрослежСтройка', {
+    НомТовПрослеж: row.registrationNumber || '',
+    ЕдИзмПрослеж: row.unitCode || '',
+    НаимЕдИзмПрослеж: row.unitName || '',
+    КолВЕдПрослеж: row.quantity != null ? formatXmlScalar(row.quantity) : '',
+  });
+}
+
+function staticXmlBinding(path) {
+  const bindings = {
+    'common.okudKs2': ['ИнфПолФХЖ1 → form.okudKs2'],
+    'common.okudKs3': ['ИнфПолФХЖ1 → form.okudKs3'],
+    'common.objectOkpo': ['ИнфПолФХЖ1 → form.objectOkpo'],
+    'common.okdpCode': ['ИнфПолФХЖ1 → form.okdpCode'],
+    'common.currencyCode': ['СвАктСдПр/@КодОКВДог', 'ДенИзм/@КодОКВ', 'ИнфПолФХЖ1 → form.currencyCode'],
+    'common.currencyName': ['ДенИзм/@НаимОКВ', 'ИнфПолФХЖ1 → form.currencyName'],
+    'common.contractNumber': ['СвАктСдПр/ИдДог/ТипИдДок/@НомерДок', 'ОснСдачи/ТипИдДок/@НомерДок'],
+    'common.contractDate': ['СвАктСдПр/ИдДог/ТипИдДок/@ДатаДок', 'ОснСдачи/ТипИдДок/@ДатаДок'],
+    'common.operationType': ['СвПродПер/СвПер/@СодОпер'],
+    'common.developerName': ['ИнфПолФХЖ1 → developer.name'],
+    'common.developerOkpo': ['ИнфПолФХЖ1 → developer.okpo'],
+    'common.techCustomerName': ['СвЗак/СвСторДог/ИдСв/СвЮЛУч/@НаимОрг', 'ИнфПолФХЖ1 → techCustomer.name'],
+    'common.techCustomerOkpo': ['СвЗак/СвСторДог/@ОКПО', 'ИнфПолФХЖ1 → techCustomer.okpo'],
+    'common.contractorName': ['СвПодр/СвСторДог/ИдСв/СвЮЛУч/@НаимОрг', 'Документ/@НаимЭкСубСост (fallback)'],
+    'common.contractorOkpo': ['СвПодр/СвСторДог/@ОКПО'],
+    'common.constructionObject': ['СвАктСдПр/@НаимОб (fallback от Стройка)'],
+    'common.objectName': ['СвАктСдПр/@НаимОб'],
+    'common.contractorSignerPosition': ['ПодписантПодр/Подписант/@Должн', 'ИнфПолФХЖ1 → contractor.signerPosition'],
+    'common.contractorSignerName': ['ПодписантПодр/Подписант/ФИО', 'ИнфПолФХЖ1 → contractor.signerName'],
+    'common.customerSignerPosition': ['ИнфПолФХЖ1 → customer.signerPosition'],
+    'common.customerSignerName': ['ИнфПолФХЖ1 → customer.signerName'],
+    'common.techCustomerSignerPosition': ['ИнфПолФХЖ1 → techCustomer.signerPosition'],
+    'common.techCustomerSignerName': ['ИнфПолФХЖ1 → techCustomer.signerName'],
+    'common.ks2DocLabel': { included: false, note: 'Используется только в визуальной форме КС-2, в XML не уходит.' },
+    'common.ks2DocSubtitle': { included: false, note: 'Используется только в визуальной форме КС-2, в XML не уходит.' },
+    'common.ks3DocLabel': { included: false, note: 'Используется только в визуальной форме КС-3, в XML не уходит.' },
+    'common.ks3DocSubtitle': { included: false, note: 'Используется только в визуальной форме КС-3, в XML не уходит.' },
+    'common.contractorSignLabel': { included: false, note: 'Только печатная подпись в web-форме.' },
+    'common.customerSignLabel': { included: false, note: 'Только печатная подпись в web-форме.' },
+    'common.ks2CheckedLabel': { included: false, note: 'Только печатная подпись в web-форме.' },
+    'common.ks2AcceptedPosition': { included: false, note: 'Только печатный блок формы КС-2.' },
+    'common.ks2AcceptedName': { included: false, note: 'Только печатный блок формы КС-2.' },
+    'common.ks2CheckedPosition': { included: false, note: 'Только печатный блок формы КС-2.' },
+    'common.ks2CheckedName': { included: false, note: 'Только печатный блок формы КС-2.' },
+    'common.ks3DeveloperPosition': { included: false, note: 'Только печатный блок формы КС-3 / удержаний.' },
+    'common.ks3DeveloperName': { included: false, note: 'Только печатный блок формы КС-3 / удержаний.' },
+    'common.ks3TechCustomerPosition': { included: false, note: 'Только печатный блок формы КС-3 / удержаний.' },
+    'common.ks3TechCustomerName': { included: false, note: 'Только печатный блок формы КС-3 / удержаний.' },
+    'common.ks3ContractorPosition': { included: false, note: 'Только печатный блок формы КС-3 / удержаний.' },
+    'common.ks3ContractorName': { included: false, note: 'Только печатный блок формы КС-3 / удержаний.' },
+
+    'ks3.documentNumber': ['ИнфПолФХЖ1 → ks3.documentNumber'],
+    'ks3.documentDate': ['ИнфПолФХЖ1 → ks3.documentDate'],
+    'ks3.periodFrom': ['ИнфПолФХЖ1 → ks3.periodFrom', 'СвПродПер/СвПер/@НачПерВДок'],
+    'ks3.periodTo': ['ИнфПолФХЖ1 → ks3.periodTo', 'СвПродПер/СвПер/@ОконПерВДок'],
+    'ks3.totals.fromStart': ['ВсегоАктОтч/@СтоимРабСНач', 'ИнфПолФХЖ1 → ks3.totalFromStart'],
+    'ks3.totals.fromYearStart': ['Используется для логики КС-3, прямого отдельного атрибута в P XML нет'],
+    'ks3.totals.forPeriod': ['ВсегоАктОтч/@СтоимРабОтч', 'ИнфПолФХЖ1 → ks3.totalForPeriod'],
+    'ks3.totals.vat': ['ВсегоАктОтч/@СумНалОтч', 'ВсегоАктОтч/@СтТовУчНалОтч'],
+
+    'xml.generated.fileId': ['Файл/@ИдФайл'],
+    'xml.generated.fileDate': ['Документ/@ДатаИнфПодр'],
+    'xml.generated.fileTime': ['Документ/@ВремИнфПодр'],
+    'xml.generated.knd': ['Документ/@КНД'],
+    'xml.generated.formatVersion': ['Файл/@ВерсФорм'],
+    'xml.generated.programVersion': ['Файл/@ВерсПрог'],
+
+    'xmlExtras.constants.isGovMunicipal': ['СвАктСдПр/ОсновСтроит/@ПрГосМун'],
+    'xmlExtras.constants.vatCalcInTotalOnly': ['СвПродПер/СвПер/@ПрНДСВИтог'],
+    'xmlExtras.constants.cumulativeMode': ['Влияет на накопительные суммы строк и итогов XML'],
+    'xmlExtras.constants.priceIndexYear': ['СвПродПер/СвПер/@ПрИндЦен'],
+    'xmlExtras.constants.requiresSettlementApproval': ['СвПродПер/СвПер/@ПрСведРасчСогл'],
+    'xmlExtras.constants.diadocCompactMode': ['Влияет на структуру табличной части НаимИСт/Раздел/СвВидРаб'],
+
+    'xmlExtras.manual.economicSubjectName': ['Документ/@НаимЭкСубСост'],
+    'xmlExtras.manual.isCorrectionAct': ['СвАктСдПр/ИспрАктСдПр (наличие узла)'],
+    'xmlExtras.manual.correctionNumber': ['СвАктСдПр/ИспрАктСдПр/@НомИспр'],
+    'xmlExtras.manual.correctionDate': ['СвАктСдПр/ИспрАктСдПр/@ДатаИспр'],
+    'xmlExtras.manual.hasEstimateChange': ['СвАктСдПр/ИзмСмет (наличие узла)'],
+    'xmlExtras.manual.estimateVersionCode': ['СвАктСдПр/ИзмСмет/@КодСмет', 'СвАктСдПр/ИдСмет/ТипИдДок/@НомерДок'],
+    'xmlExtras.manual.supplementDocType': ['СвАктСдПр/ИзмСмет/ИдДопСогл/ТипИдДок/@НаимДок'],
+    'xmlExtras.manual.supplementDocNumber': ['СвАктСдПр/ИзмСмет/ИдДопСогл/ТипИдДок/@НомерДок'],
+    'xmlExtras.manual.supplementDocDate': ['СвАктСдПр/ИзмСмет/ИдДопСогл/ТипИдДок/@ДатаДок'],
+    'xmlExtras.manual.contractorInn': ['ОснДовОргСост/ИдРекСост/ИННЮЛ', 'СвПодр/СвСторДог/ИдСв/СвЮЛУч/@ИННЮЛ'],
+    'xmlExtras.manual.customerInn': ['СвЗак/СвСторДог/ИдСв/СвЮЛУч/@ИННЮЛ'],
+    'xmlExtras.manual.developerPostalIndex': ['СвАктСдПр/МестВыпРаб/АдрРФ/@Индекс'],
+    'xmlExtras.manual.developerRegionCode': ['СвАктСдПр/МестВыпРаб/АдрРФ/@КодРегион'],
+    'xmlExtras.manual.signerName': ['ПодписантПодр/Подписант/ФИО'],
+    'xmlExtras.manual.signerPosition': ['ПодписантПодр/Подписант/@Должн'],
+    'xmlExtras.manual.signerStatus': ['ПодписантПодр/Подписант/@СтатПодп'],
+    'xmlExtras.manual.signatureType': ['ПодписантПодр/Подписант/@ТипПодпис'],
+    'xmlExtras.manual.customInfoValue': ['ИнфПолФХЖ1 → customField'],
+    'xmlExtras.manual.contractorPostalIndex': ['СвПодр/СвСторДог/Адрес/АдрРФ/@Индекс'],
+    'xmlExtras.manual.contractorRegionCode': ['СвПодр/СвСторДог/Адрес/АдрРФ/@КодРегион'],
+
+    'xmlExtras.manual.customerEconomicSubjectName': ['Файл Z → Документ/@НаимЭкСубСост'],
+    'xmlExtras.manual.customerAuthorityDocName': ['Файл Z → ДокОснПолнПодпис/ТипИдДок/@НаимДок'],
+    'xmlExtras.manual.customerAuthorityDocNumber': ['Файл Z → ДокОснПолнПодпис/ТипИдДок/@НомерДок'],
+    'xmlExtras.manual.customerAuthorityDocDate': ['Файл Z → ДокОснПолнПодпис/ТипИдДок/@ДатаДок'],
+    'xmlExtras.manual.customerSignerStatus': ['Файл Z → Подписант/@СтатПодп'],
+    'xmlExtras.manual.customerSignatureType': ['Файл Z → Подписант/@ТипПодпис'],
+    'xmlExtras.manual.customerSignatureStorageId': ['Файл Z → идентификатор хранения подписи / доверенности'],
+    'xmlExtras.manual.customerAcceptanceCode': ['Файл Z → Приемка/КодПрин'],
+    'xmlExtras.manual.customerAcceptanceText': ['Файл Z → Приемка/ТекстПрин'],
+    'xmlExtras.manual.customerSettlementNotice': ['Файл Z → СвУведРасч/ТекстУвед'],
+    'xmlExtras.manual.customerSettlementDisagreementReason': ['Файл Z → СвУведРасч/ПричНесогл'],
+  };
+  const entry = bindings[path];
+  if (!entry) return null;
+  if (Array.isArray(entry)) return xmlBinding(true, entry);
+  return xmlBinding(Boolean(entry.included), entry.targets || [], entry.note || '', entry.snippet || '');
+}
+
+function resolveXmlBinding(path) {
+  if (!path) return xmlBinding(false, [], 'Не передается в XML 1110335.');
+  const staticBindingEntry = staticXmlBinding(path);
+  if (staticBindingEntry) return staticBindingEntry;
+
+  let match = path.match(/^ks2Sheets\.(\d+)\.(title|documentNumber|documentDate|periodFrom|periodTo|basis|vatRate)$/);
+  if (match) {
+    const [, sheetIndex, field] = match;
+    const mapping = {
+      title: ['ИнфПолФХЖ1 → ks2.sheetTitle'],
+      documentNumber: ['СвАктСдПр/@НомерДок', 'ИнфПолФХЖ1 → ks2.documentNumber'],
+      documentDate: ['СвАктСдПр/@ДатаДок', 'ИнфПолФХЖ1 → ks2.documentDate'],
+      periodFrom: ['СвПродПер/СвПер/@НачПерВДок', 'ИнфПолФХЖ1 → ks2.periodFrom'],
+      periodTo: ['СвПродПер/СвПер/@ОконПерВДок', 'ИнфПолФХЖ1 → ks2.periodTo'],
+      basis: ['СвАктСдПр/ОснСдачи/ТипИдДок/@НаимДок', 'ИнфПолФХЖ1 → ks2.basis'],
+      vatRate: ['ИнфПолФХЖ1 → ks2.vatRate', 'влияет на суммы НДС по строкам XML'],
+    };
+    return xmlBinding(true, mapping[field] || [], '', buildXmlTagSnippet('НаимИСт', { НомДок: app.state.ks2Sheets?.[Number(sheetIndex)]?.documentNumber || '' }, false));
+  }
+
+  match = path.match(/^ks2Sheets\.(\d+)\.rows\.(\d+)\.(.+)$/);
+  if (match) {
+    const sheetIndex = Number(match[1]);
+    const rowIndex = Number(match[2]);
+    const field = match[3];
+    const row = app.state.ks2Sheets?.[sheetIndex]?.rows?.[rowIndex];
+    if (!row || row.type === 'note') {
+      return xmlBinding(false, [], 'Строки типа «Примечание» в XML не попадают.');
+    }
+    const snippet = buildKs2RowXmlSnippet(sheetIndex, rowIndex);
+    if (field === 'category' || field === 'note') {
+      return xmlBinding(false, [], field === 'category' ? 'Категория нужна для UI/аналитики, в XML не уходит.' : 'Примечание строки не передается в XML 1110335.');
+    }
+    if (field === '__displayAmount') {
+      return xmlBinding(true, ['СвВидРаб/@СтТовБезНДС', 'СвВидРаб/@СтТовУчНал'], '', snippet);
+    }
+    if (row.type === 'section') {
+      const sectionTargets = {
+        type: ['Тег раздела: Раздел'],
+        estimateNo: ['Раздел/@ПозРаздСмет'],
+        name: ['Раздел/@НаимРаздел'],
+      };
+      return sectionTargets[field] ? xmlBinding(true, sectionTargets[field], '', snippet) : xmlBinding(false, [], 'Для раздела это поле не уходит в XML.');
+    }
+    const itemTargets = {
+      type: ['Тег строки: СвВидРаб'],
+      code: ['ИнфПолФХЖ1 → ks2.rowCode'],
+      lineNo: ['СвВидРаб/@НомПоз'],
+      estimateNo: ['СвВидРаб/@ПозСмет'],
+      name: ['СвВидРаб/@НаимТов'],
+      unit: ['СвВидРаб/@НаимЕдИзм'],
+      quantity: ['СвВидРаб/@КолТов'],
+      price: ['СвВидРаб/@ЦенаТов'],
+      unitConsumption: ['ИнфПолФХЖ1 → ks2.unitConsumption'],
+      expenseType: ['СвВидРаб/@ТипЗатр'],
+      calcMode: ['СвВидРаб/@ПрИспрОш / @ПрНовОбст', 'УчОшИНовОбстСт (при корректировках)'],
+    };
+    return itemTargets[field] ? xmlBinding(true, itemTargets[field], '', snippet) : xmlBinding(false, [], 'Поле не уходит в XML отдельным реквизитом.');
+  }
+
+  match = path.match(/^ks3\.rows\.(\d+)\.(.+)$/);
+  if (match) {
+    return xmlBinding(false, [], 'Ручные строки КС-3 напрямую не выгружаются в P XML; используются только для totals и сопоставления.');
+  }
+
+  match = path.match(/^holdbacks\.rows\.(\d+)\.(.+)$/);
+  if (match) {
+    const rowIndex = Number(match[1]);
+    const field = match[2];
+    const entry = findHoldbackGroupEntry(rowIndex);
+    if (!entry) return xmlBinding(false, [], 'Строка удержаний не распознана.');
+    const snippet = buildHoldbackXmlSnippet(rowIndex);
+    if (field === 'ks2SheetId') {
+      return xmlBinding(false, [], 'Служебная привязка к листу КС-2: управляет тем, в какой per-sheet XML попадет удержание.');
+    }
+    if (entry.kind === 'section') {
+      const sectionTargets = {
+        name: ['ИнфПолСвОРасч → RET_SEC_NAME'],
+        ks2Amount: ['ИнфПолСвОРасч → RET32_BASE'],
+        materialsUsed: ['ИнфПолСвОРасч → RET_MATL'],
+        retentionRate: ['ИнфПолСвОРасч → RET32_RATE'],
+        comment: ['ИнфПолСвОРасч → RET_NOTE'],
+        __advanceReceived: ['ИнфПолСвОРасч → ADV31_IN_TOT'],
+        __docCount: ['ИнфПолСвОРасч → ADV31_DOC_CNT'],
+        __previousBalance: ['ИнфПолСвОРасч → ADV31_PREV_TOT'],
+        __closingAmount: ['ИнфПолСвОРасч → ADV31_TOTAL'],
+        __nextBalance: ['ИнфПолСвОРасч → ADV31_NEXT_TOT'],
+        __retentionAmount: ['СвОРасч/@СумУдержВсегоОтч', 'ИнфПолСвОРасч → RET32_SUM'],
+        __payableAmount: ['СвОРасч/@ВсегоКОплатОтч'],
+      };
+      return sectionTargets[field] ? xmlBinding(true, sectionTargets[field], '', snippet) : xmlBinding(false, [], 'Поле раздела удержаний не попадает в XML отдельным реквизитом.');
+    }
+    const subTargets = {
+      advanceReceived: ['ИнфПолСвОРасч → ADV31_IN'],
+      advanceDoc: ['ИнфПолСвОРасч → RET_DOC_REF'],
+      previousBalance: ['ИнфПолСвОРасч → ADV31_PREV'],
+      closingAmount: ['ИнфПолСвОРасч → ADV31_CLOSE'],
+      comment: ['ИнфПолСвОРасч → RET_NOTE'],
+      __nextBalance: ['ИнфПолСвОРасч → ADV31_NEXT'],
+    };
+    return subTargets[field] ? xmlBinding(true, subTargets[field], '', snippet) : xmlBinding(false, [], 'Поле подпункта удержаний не попадает в XML отдельным реквизитом.');
+  }
+
+  match = path.match(/^xmlExtras\.settlementRows\.(\d+)\.(.+)$/);
+  if (match) {
+    const rowIndex = Number(match[1]);
+    const field = match[2];
+    const snippet = buildSettlementRowXmlSnippet(rowIndex);
+    const targets = {
+      kind: ['СвОРасч/УчетТребУдерж → ВидТреб / ВидУдерж'],
+      kindCode: ['СвОРасч/УчетТребУдерж → ВидТреб / ВидУдерж'],
+      amount: ['СвОРасч/УчетТребУдерж/@СумТребУдерж'],
+      documentRef: ['СвОРасч/УчетТребУдерж/ДокПодтСумУд'],
+      customKindText: ['СвОРасч/УчетТребУдерж → ИнВидТреб / ИнВидУдерж'],
+      comment: ['ИнфПолСвОРасч / служебная расшифровка'],
+    };
+    if (field === 'isPrimary') {
+      return xmlBinding(false, [], 'Служебный флаг: выбирает, какая строка станет основной для XSD-ready XML.');
+    }
+    return targets[field] ? xmlBinding(true, targets[field], '', snippet) : xmlBinding(false, [], 'Поле settlement-строки не распознано.');
+  }
+
+  match = path.match(/^xmlExtras\.traceableGoods\.(\d+)\.(.+)$/);
+  if (match) {
+    const rowIndex = Number(match[1]);
+    const field = match[2];
+    const snippet = buildTraceableGoodsSnippet(rowIndex);
+    const targets = {
+      registrationNumber: ['СвПрослежСтройка/@НомТовПрослеж'],
+      unitCode: ['СвПрослежСтройка/@ЕдИзмПрослеж'],
+      unitName: ['СвПрослежСтройка/@НаимЕдИзмПрослеж'],
+      quantity: ['СвПрослежСтройка/@КолВЕдПрослеж'],
+    };
+    return targets[field] ? xmlBinding(true, targets[field], '', snippet) : xmlBinding(false, [], 'Поле прослеживаемости не распознано.');
+  }
+
+  return xmlBinding(false, [], 'Не передается в XML 1110335.');
+}
+
+function renderXmlIndicator(path, compact = false) {
+  const binding = resolveXmlBinding(path);
+  return `<span class="xml-indicator ${binding.included ? 'is-used' : 'is-unused'} ${compact ? 'compact' : 'inline'}" title="${escapeAttr(binding.title)}" aria-label="${escapeAttr(binding.title)}"></span>`;
+}
+
+function renderFieldLabel(label, path) {
+  return `<label class="field-label"><span>${escapeHtml(label)}</span>${renderXmlIndicator(path)}</label>`;
+}
+
+function renderTableWrapper(path, innerHtml, extraClass = '') {
+  const binding = resolveXmlBinding(path);
+  return `<div class="xml-cell-wrap ${extraClass} ${binding.included ? 'is-used' : 'is-unused'}" title="${escapeAttr(binding.title)}">${innerHtml}${renderXmlIndicator(path, true)}</div>`;
+}
+
+function renderTableInput(path, value, valueType = 'string', placeholder = '') {
+  return renderTableWrapper(path, `<input data-path="${path}" ${valueType !== 'string' ? `data-value-type="${valueType}"` : ''} value="${escapeAttr(value ?? '')}" ${placeholder ? `placeholder="${escapeAttr(placeholder)}"` : ''} />`);
+}
+
+function renderTableTextarea(path, value, placeholder = '') {
+  return renderTableWrapper(path, `<textarea data-path="${path}" ${placeholder ? `placeholder="${escapeAttr(placeholder)}"` : ''}>${escapeHtml(value ?? '')}</textarea>`);
+}
+
+function renderTableSelect(path, selected, options) {
+  return renderTableWrapper(path, `<select data-path="${path}">${Object.entries(options).map(([value, text]) => `<option value="${escapeAttr(value)}" ${String(selected) === String(value) ? 'selected' : ''}>${escapeHtml(text)}</option>`).join('')}</select>`);
+}
+
+function renderTableComputed(path, html, extraClass = '') {
+  return renderTableWrapper(path, html, extraClass);
+}
+
 function renderInput(label, path, value, valueType = 'string', size = '') {
   return `
     <div class="field ${size}">
-      <label>${label}</label>
+      ${renderFieldLabel(label, path)}
       <input data-path="${path}" data-value-type="${valueType}" value="${escapeAttr(value ?? '')}" />
     </div>
   `;
@@ -3032,16 +3423,16 @@ function renderInput(label, path, value, valueType = 'string', size = '') {
 function renderTextarea(label, path, value, size = 'half') {
   return `
     <div class="field ${size}">
-      <label>${label}</label>
+      ${renderFieldLabel(label, path)}
       <textarea data-path="${path}">${escapeHtml(value ?? '')}</textarea>
     </div>
   `;
 }
 
-function renderReadonly(label, value, size = '') {
+function renderReadonly(label, value, size = '', path = '') {
   return `
     <div class="field ${size}">
-      <label>${label}</label>
+      ${renderFieldLabel(label, path)}
       <div class="readonly">${escapeHtml(String(value ?? ''))}</div>
     </div>
   `;
@@ -3064,7 +3455,7 @@ function renderKs2SheetAddMenu(sheetIndex) {
 function renderSelect(label, path, selected, options, size = '') {
   return `
     <div class="field ${size}">
-      <label>${label}</label>
+      ${renderFieldLabel(label, path)}
       <select data-path="${path}">
         ${Object.entries(options).map(([value, text]) => `<option value="${escapeAttr(value)}" ${String(selected) === String(value) ? 'selected' : ''}>${escapeHtml(text)}</option>`).join('')}
       </select>

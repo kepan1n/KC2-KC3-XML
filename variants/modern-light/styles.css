@@ -321,6 +321,59 @@ body[data-sidebar="closed"] .sidebar {
 .field.quarter { grid-column: span 3; }
 .field label,
 .field-wide label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 8px; font-weight: 600; }
+
+.field-label {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.xml-indicator {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+  cursor: help;
+}
+
+.xml-indicator.inline {
+  margin-left: auto;
+}
+
+.xml-indicator.compact {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 9px;
+  height: 9px;
+}
+
+.xml-indicator.is-used {
+  background: #22c55e;
+}
+
+.xml-indicator.is-unused {
+  background: #cbd5e1;
+}
+
+.xml-cell-wrap {
+  position: relative;
+}
+
+.xml-cell-wrap.is-used input,
+.xml-cell-wrap.is-used textarea,
+.xml-cell-wrap.is-used select,
+.xml-cell-wrap.is-used .table-muted-cell,
+.xml-cell-wrap.is-used .readonly,
+.xml-cell-wrap.is-used .amount-stack,
+.xml-cell-wrap.is-used span {
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
 .field input,
 .field-wide input,
 .field textarea,
