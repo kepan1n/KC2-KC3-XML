@@ -321,6 +321,20 @@ function handleContentClick(event) {
     return;
   }
 
+  if (action === 'copy-ks2-xml-preview') {
+    const idx = Number(sheetIndex);
+    const preview = app.state.ui.ks2XmlPreview?.[String(idx)];
+    const xmlText = prettyFormatXml(preview?.xmlText || '');
+    if (!xmlText) {
+      flash('Сначала собери XML по листу.');
+      return;
+    }
+    navigator.clipboard.writeText(xmlText)
+      .then(() => flash('XML скопирован в буфер обмена.'))
+      .catch((error) => flash(`Не удалось скопировать XML: ${error.message}`));
+    return;
+  }
+
   if (action === 'toggle-row-menu') {
     const current = app.state.ui.rowActionMenu;
     const sameRow = current && current.sheetIndex === rowCoords.sheetIndex && current.rowIndex === rowCoords.rowIndex;
@@ -1601,6 +1615,51 @@ function prettyFormatXml(xmlText) {
 ');
 }
 
+function detectXmlLineType(trimmedLine, stackTop = '') {
+  if (/^<\/?СвОРасч/.test(trimmedLine)) return 'settlement';
+  if (/^<\/?УчетТребУдерж/.test(trimmedLine) || /^<\/?ВидУдерж/.test(trimmedLine) || /^<\/?ДокПодтСумУд/.test(trimmedLine)) return 'retention';
+  if (/^<\/?ИнфПолСвОРасч/.test(trimmedLine) || /Идентиф="AVANS_/.test(trimmedLine)) return 'advance';
+  if (/^<\/?НаимИСт/.test(trimmedLine)) return 'sheet';
+  if (/^<\/?Раздел/.test(trimmedLine)) return 'section';
+  if (/^<\/?СвВидРаб/.test(trimmedLine)) return 'work';
+  return stackTop || '';
+}
+
+function renderFormattedXmlHtml(xmlText) {
+  const formattedXml = prettyFormatXml(xmlText);
+  if (!formattedXml) return '';
+  const lines = formattedXml.split('
+');
+  const stack = [];
+
+  return lines.map((line) => {
+    const trimmed = line.trim();
+    const type = detectXmlLineType(trimmed, stack.at(-1) || '');
+    const classes = ['xml-line'];
+    if (type) classes.push(`xml-line-${type}`);
+
+    const isOpenTag = /^<([^/!?][^\s/>]*)/.exec(trimmed);
+    const isCloseTag = /^<\/([^>]+)>/.exec(trimmed);
+    const isSelfClosing = /\/>$/.test(trimmed) || /^<[^>]+>.*<\/[^>]+>$/.test(trimmed);
+
+    if (isCloseTag) {
+      const closingType = detectXmlLineType(trimmed, stack.at(-1) || '');
+      if (closingType) classes.push(`xml-line-${closingType}`);
+    }
+
+    const html = `<div class="${classes.join(' ')}"><span class="xml-line-text">${escapeHtml(line) || '&nbsp;'}</span></div>`;
+
+    if (isCloseTag) {
+      stack.pop();
+    } else if (isOpenTag && !isSelfClosing) {
+      const openedType = detectXmlLineType(trimmed, '');
+      if (openedType) stack.push(openedType);
+    }
+
+    return html;
+  }).join('');
+}
+
 function buildHoldbackSheetSummary(groups) {
   return groups.reduce((acc, group) => {
     const computed = computeHoldbackSectionComputed(group);
@@ -1663,7 +1722,9 @@ function renderKs2XmlPreviewPane(sheetIndex, sheet) {
             <h3>XML по листу КС-2</h3>
             <p class="kbd-note">Показывает, как текущий лист будет передан в отдельный XML.</p>
           </div>
-          <button class="mini secondary" data-action="refresh-ks2-xml-preview" data-sheet-index="${sheetIndex}">Обновить XML</button>
+          <div class="xml-preview-actions">
+            <button class="mini secondary" data-action="refresh-ks2-xml-preview" data-sheet-index="${sheetIndex}">Обновить XML</button>
+          </div>
         </div>
         <div class="xml-preview-status">${preview?.status === 'loading' ? 'Собираю XML…' : 'Открой вкладку XML, чтобы собрать XML по этому листу.'}</div>
       </div>
@@ -1678,14 +1739,14 @@ function renderKs2XmlPreviewPane(sheetIndex, sheet) {
             <h3>XML по листу КС-2</h3>
             <p class="kbd-note">Показывает, как текущий лист будет передан в отдельный XML.</p>
           </div>
-          <button class="mini secondary" data-action="refresh-ks2-xml-preview" data-sheet-index="${sheetIndex}">Повторить</button>
+          <div class="xml-preview-actions">
+            <button class="mini secondary" data-action="refresh-ks2-xml-preview" data-sheet-index="${sheetIndex}">Повторить</button>
+          </div>
         </div>
         <div class="xml-preview-status error">Не удалось собрать XML: ${escapeHtml(preview.error || 'неизвестная ошибка')}</div>
       </div>
     `;
   }
-
-  const formattedXml = prettyFormatXml(preview.xmlText || '');
 
   return `
     <div class="section-block xml-preview-block">
@@ -1694,14 +1755,17 @@ function renderKs2XmlPreviewPane(sheetIndex, sheet) {
           <h3>XML по листу КС-2</h3>
           <p class="kbd-note">Это итоговый XML, который уйдет по листу <strong>${escapeHtml(sheet.title || `КС-2 #${sheetIndex + 1}`)}</strong>. Файл: <code>${escapeHtml(preview.filename || '')}</code>.</p>
         </div>
-        <button class="mini secondary" data-action="refresh-ks2-xml-preview" data-sheet-index="${sheetIndex}">Обновить XML</button>
+        <div class="xml-preview-actions">
+          <button class="mini secondary" data-action="copy-ks2-xml-preview" data-sheet-index="${sheetIndex}">Копировать XML</button>
+          <button class="mini secondary" data-action="refresh-ks2-xml-preview" data-sheet-index="${sheetIndex}">Обновить XML</button>
+        </div>
       </div>
       <div class="xml-preview-meta ${preview.valid ? 'valid' : 'invalid'}">
         <strong>${preview.valid ? 'XSD: OK' : 'XSD: есть ошибки'}</strong>
         <span>${preview.updatedAt ? `Обновлено: ${new Date(preview.updatedAt).toLocaleTimeString('ru-RU')}` : ''}</span>
       </div>
       ${preview.errors?.length ? `<div class="xml-preview-errors">${preview.errors.map((err) => `<div>строка ${err.line}: ${escapeHtml(err.message)}</div>`).join('')}</div>` : ''}
-      <pre class="xml-preview-code"><code>${escapeHtml(formattedXml)}</code></pre>
+      <div class="xml-preview-code">${renderFormattedXmlHtml(preview.xmlText || '')}</div>
     </div>
   `;
 }

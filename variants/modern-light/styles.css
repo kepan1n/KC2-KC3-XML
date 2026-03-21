@@ -1305,6 +1305,13 @@ body[data-scale="115"] {
   margin-bottom: 12px;
 }
 
+.xml-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .xml-preview-status {
   padding: 14px;
   border: 1px dashed var(--line);
@@ -1360,7 +1367,45 @@ body[data-scale="115"] {
   line-height: 1.5;
   overflow: auto;
   max-height: 70vh;
-  white-space: pre-wrap;
+}
+
+.xml-line {
+  display: block;
+  padding: 1px 8px;
+  border-radius: 8px;
+}
+
+.xml-line + .xml-line {
+  margin-top: 1px;
+}
+
+.xml-line-text {
+  white-space: pre;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.xml-line-sheet {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.xml-line-section {
+  background: rgba(148, 163, 184, 0.10);
+}
+
+.xml-line-work {
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.xml-line-settlement {
+  background: rgba(244, 114, 182, 0.10);
+}
+
+.xml-line-retention {
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.xml-line-advance {
+  background: rgba(168, 85, 247, 0.10);
 }
 
 .settlement-section-block {
