@@ -448,8 +448,21 @@ function handleContentClick(event) {
 
   if (action === 'add-holdback-row') {
     const targetSheetIndex = Number(actionButton.dataset.sheetIndex);
+    getOrCreateHoldbackSectionIndexForSheet(targetSheetIndex);
+    render();
+    return;
+  }
+
+  if (action === 'add-holdback-advance-doc') {
+    const targetSheetIndex = Number(actionButton.dataset.sheetIndex);
+    const sectionIndex = getOrCreateHoldbackSectionIndexForSheet(targetSheetIndex);
+    if (sectionIndex < 0) return;
+    let insertAt = sectionIndex + 1;
+    while (insertAt < app.state.holdbacks.rows.length && (app.state.holdbacks.rows[insertAt].kind || 'section') === 'subitem') {
+      insertAt += 1;
+    }
     const targetSheetId = app.state.ks2Sheets[targetSheetIndex]?.id || '';
-    app.state.holdbacks.rows.push(createBlankHoldbackRow('section', targetSheetId));
+    app.state.holdbacks.rows.splice(insertAt, 0, createBlankHoldbackRow('subitem', targetSheetId));
     render();
     return;
   }
@@ -463,10 +476,8 @@ function handleContentClick(event) {
   }
 
   if (action === 'insert-holdback-section') {
-    const idx = Number(holdIndex);
-    const targetSheetId = app.state.holdbacks.rows[idx]?.ks2SheetId || '';
-    app.state.holdbacks.rows.splice(idx + 1, 0, createBlankHoldbackRow('section', targetSheetId));
     app.state.ui.holdbackActionMenu = null;
+    flash('Основная строка 3% теперь одна на лист КС-2. Добавляй только документы авансов ниже.');
     render();
     return;
   }
@@ -784,6 +795,7 @@ function prepareState(raw) {
       retentionDocExtra: row.retentionDocExtra ?? 'Гарантийное удержание 3% от стоимости работ',
     };
   });
+  data.holdbacks.rows = normalizeHoldbackRowsPerSheet(data.holdbacks.rows, data.ks2Sheets);
 
   data.xmlExtras.generated.programVersion ||= 'prototype-0.1.0';
 
@@ -2145,7 +2157,7 @@ function renderHoldbacksPane(sheetIndex = null) {
           <p class="panel-subtitle">Гарантийное удержание по этому листу КС-2 идет первой строкой, ниже — все записи по авансам и их закрытию из Excel.</p>
         </div>
         <div class="panel-header-actions">
-          <button class="mini" data-action="add-holdback-row" ${sheetIndex == null ? '' : `data-sheet-index="${sheetIndex}"`}>+ Раздел удержаний</button>
+          <button class="mini" data-action="add-holdback-advance-doc" ${sheetIndex == null ? '' : `data-sheet-index="${sheetIndex}"`}>+ Документ аванса</button>
         </div>
       </div>
 
@@ -2568,11 +2580,11 @@ function findHoldbackSectionIndex(index) {
   return current;
 }
 
-function buildHoldbackGroups(sheetId = null) {
+function buildHoldbackGroupsFromRows(rows, sheetId = null) {
   const groups = [];
   let currentGroup = null;
 
-  app.state.holdbacks.rows.forEach((row, index) => {
+  (rows || []).forEach((row, index) => {
     const kind = row.kind || 'section';
     if (kind !== 'subitem' || !currentGroup) {
       currentGroup = { section: { row, index }, subitems: [] };
@@ -2584,6 +2596,87 @@ function buildHoldbackGroups(sheetId = null) {
 
   if (!sheetId) return groups;
   return groups.filter((group) => String(group.section.row.ks2SheetId || '') === String(sheetId));
+}
+
+function normalizeHoldbackRowsPerSheet(rows, ks2Sheets) {
+  const groups = buildHoldbackGroupsFromRows(rows);
+  const normalizedRows = [];
+
+  (ks2Sheets || []).forEach((sheet) => {
+    const sheetId = sheet.id;
+    const sheetTotals = computeSheetTotals(sheet);
+    const sheetGroups = groups.filter((group) => String(group.section.row.ks2SheetId || '') === String(sheetId));
+    const sourceSections = sheetGroups.map((group) => group.section.row);
+    const allSubitems = sheetGroups.flatMap((group) => group.subitems.map((item) => item.row));
+
+    const baseSection = sourceSections[0] || {};
+    const mergedSection = {
+      kind: 'section',
+      name: 'Гарантийное удержание 3%',
+      ks2SheetId: sheetId,
+      ks2Amount: numberOrNull(sheetTotals.gross),
+      materialsUsed: numberOrNull(sourceSections.reduce((sum, row) => sum + numberOrZero(row.materialsUsed), 0)),
+      advanceReceived: null,
+      advanceDoc: '',
+      previousBalance: null,
+      closingAmount: null,
+      nextBalance: null,
+      retentionAmount: null,
+      payableAmount: null,
+      retentionRate: numberOrNull(baseSection.retentionRate ?? 3),
+      retentionDocName: sourceSections.map((row) => row.retentionDocName).find(Boolean) || 'Дополнительное соглашение о гарантийном удержании',
+      retentionDocNumber: sourceSections.map((row) => row.retentionDocNumber).find(Boolean) || '',
+      retentionDocDate: sourceSections.map((row) => row.retentionDocDate).find(Boolean) || '',
+      retentionDocExtra: sourceSections.map((row) => row.retentionDocExtra).find(Boolean) || 'Гарантийное удержание 3% от стоимости работ',
+      comment: sourceSections.map((row) => row.comment).find(Boolean) || '',
+    };
+
+    normalizedRows.push(mergedSection);
+    allSubitems.forEach((subitem) => {
+      normalizedRows.push({
+        ...subitem,
+        kind: 'subitem',
+        ks2SheetId: sheetId,
+      });
+    });
+  });
+
+  return normalizedRows;
+}
+
+function buildHoldbackGroups(sheetId = null) {
+  return buildHoldbackGroupsFromRows(app.state.holdbacks.rows, sheetId);
+}
+
+function getOrCreateHoldbackSectionIndexForSheet(sheetIndex) {
+  const sheet = app.state.ks2Sheets[sheetIndex];
+  if (!sheet) return -1;
+  const existingGroup = buildHoldbackGroups(sheet.id)[0];
+  if (existingGroup) return existingGroup.section.index;
+
+  const totals = computeSheetTotals(sheet);
+  app.state.holdbacks.rows.push({
+    kind: 'section',
+    name: 'Гарантийное удержание 3%',
+    ks2SheetId: sheet.id,
+    ks2Amount: numberOrNull(totals.gross),
+    materialsUsed: null,
+    advanceReceived: null,
+    advanceDoc: '',
+    previousBalance: null,
+    closingAmount: null,
+    nextBalance: null,
+    retentionAmount: null,
+    payableAmount: null,
+    retentionRate: 3,
+    retentionDocName: 'Дополнительное соглашение о гарантийном удержании',
+    retentionDocNumber: '',
+    retentionDocDate: '',
+    retentionDocExtra: 'Гарантийное удержание 3% от стоимости работ',
+    comment: '',
+  });
+  app.state = prepareState(app.state);
+  return buildHoldbackGroups(sheet.id)[0]?.section.index ?? (app.state.holdbacks.rows.length - 1);
 }
 
 function renderHoldbackGroup(group) {
