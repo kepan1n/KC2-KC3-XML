@@ -38,6 +38,37 @@ const EXPENSE_TYPE_OPTIONS = {
   '6': '6 — давальческие материалы',
 };
 
+const CLAIM_TYPE_OPTIONS = {
+  '01': '01 — штрафы / пени заказчика',
+  '02': '02 — обязательства заказчика по гарантийному удержанию / отложенному платежу',
+  '03': '03 — исправление ошибок прошлых периодов',
+  '04': '04 — требования по иным объектам строительства',
+  '05': '05 — иные засчитываемые встречные требования заказчика',
+};
+
+const WITHHOLD_TYPE_OPTIONS = {
+  '31': '31 — зачет аванса',
+  '32': '32 — гарантийное удержание / отложенный платеж',
+  '33': '33 — удержание штрафов / пеней подрядчика',
+  '34': '34 — исправление ошибок прошлых периодов',
+  '35': '35 — удержания по иным объектам строительства',
+  '36': '36 — иные засчитываемые встречные удержания',
+};
+
+const SETTLEMENT_ROW_PRESETS = {
+  claimPenalty: { kind: 'claim', kindCode: '01', label: 'Требование: штрафы / пени' },
+  claimGuarantee: { kind: 'claim', kindCode: '02', label: 'Требование: гарантийное удержание / отложенный платеж' },
+  claimErrorCorrection: { kind: 'claim', kindCode: '03', label: 'Требование: исправление ошибок' },
+  claimOtherObjects: { kind: 'claim', kindCode: '04', label: 'Требование: иной объект' },
+  claimOther: { kind: 'claim', kindCode: '05', label: 'Требование: иное' },
+  withholdAdvance: { kind: 'withhold', kindCode: '31', label: 'Удержание: зачет аванса' },
+  withholdGuarantee: { kind: 'withhold', kindCode: '32', label: 'Удержание: гарантийное удержание' },
+  withholdPenalty: { kind: 'withhold', kindCode: '33', label: 'Удержание: штрафы / пени' },
+  withholdErrorCorrection: { kind: 'withhold', kindCode: '34', label: 'Удержание: исправление ошибок' },
+  withholdOtherObjects: { kind: 'withhold', kindCode: '35', label: 'Удержание: иной объект' },
+  withholdOther: { kind: 'withhold', kindCode: '36', label: 'Удержание: иное' },
+};
+
 boot();
 
 async function boot() {
@@ -474,6 +505,42 @@ function handleContentClick(event) {
     return;
   }
 
+  if (action === 'toggle-settlement-add-menu') {
+    app.state.ui.settlementDeleteConfirm = null;
+    app.state.ui.settlementAddMenu = !app.state.ui.settlementAddMenu;
+    render();
+    return;
+  }
+
+  if (action === 'add-settlement-row') {
+    clearTransientRowUi();
+    const presetKey = actionButton.dataset.preset || 'withholdAdvance';
+    app.state.xmlExtras.settlementRows.push(createBlankSettlementRow(presetKey));
+    render();
+    flash(`Добавлена строка XML: ${SETTLEMENT_ROW_PRESETS[presetKey]?.label || 'расчеты / удержания'}.`);
+    return;
+  }
+
+  if (action === 'request-settlement-delete') {
+    app.state.ui.settlementDeleteConfirm = Number(actionButton.dataset.settlementIndex);
+    render();
+    return;
+  }
+
+  if (action === 'cancel-settlement-delete') {
+    app.state.ui.settlementDeleteConfirm = null;
+    render();
+    return;
+  }
+
+  if (action === 'confirm-settlement-delete') {
+    app.state.xmlExtras.settlementRows.splice(Number(actionButton.dataset.settlementIndex), 1);
+    app.state.ui.settlementDeleteConfirm = null;
+    render();
+    flash('Строка XML-расчетов удалена.');
+    return;
+  }
+
   if (action === 'add-trace-row') {
     clearTransientRowUi();
     app.state.xmlExtras.traceableGoods.push({ registrationNumber: '', unitCode: '', unitName: '', quantity: null });
@@ -521,6 +588,8 @@ function prepareState(raw) {
   data.ui.sheetAddMenu ??= null;
   data.ui.holdbackActionMenu ??= null;
   data.ui.holdbackDeleteConfirm ??= null;
+  data.ui.settlementAddMenu ??= false;
+  data.ui.settlementDeleteConfirm ??= null;
   data.ui.columnWidths ??= {};
   data.common ??= {};
   data.ks3 ??= {};
@@ -531,6 +600,8 @@ function prepareState(raw) {
   data.xmlExtras.constants ??= {};
   data.xmlExtras.manual ??= {};
   data.xmlExtras.traceableGoods ??= [];
+  data.xmlExtras.settlementRows ??= [];
+  data.xmlExtras.settlementRows = (data.xmlExtras.settlementRows || []).map((row) => prepareSettlementRow(row));
   data.xmlExtras.constants.isGovMunicipal ||= '0';
   data.xmlExtras.constants.vatCalcInTotalOnly ||= '0';
   data.xmlExtras.constants.cumulativeMode ||= '1';
@@ -687,6 +758,10 @@ function hasTransientRowUi() {
     || app.state.ui.ks3RowActionMenu != null
     || app.state.ui.ks3RowDeleteConfirm != null
     || app.state.ui.sheetAddMenu != null
+    || app.state.ui.holdbackActionMenu != null
+    || app.state.ui.holdbackDeleteConfirm != null
+    || app.state.ui.settlementAddMenu
+    || app.state.ui.settlementDeleteConfirm != null
   );
 }
 
@@ -696,6 +771,10 @@ function clearTransientRowUi() {
   app.state.ui.ks3RowActionMenu = null;
   app.state.ui.ks3RowDeleteConfirm = null;
   app.state.ui.sheetAddMenu = null;
+  app.state.ui.holdbackActionMenu = null;
+  app.state.ui.holdbackDeleteConfirm = null;
+  app.state.ui.settlementAddMenu = false;
+  app.state.ui.settlementDeleteConfirm = null;
 }
 
 function applyColumnWidths() {
@@ -1008,6 +1087,24 @@ function buildValidationReport(model) {
   requireValue(model.xml.manual.developerPostalIndex, 'xml.manual.developerPostalIndex', 'Индекс адреса', 'warning');
   requireValue(model.xml.manual.developerRegionCode, 'xml.manual.developerRegionCode', 'Код региона', 'warning');
   requireValue(model.xml.manual.signerName || model.common.contractorSignerName, 'xml.manual.signerName', 'Подписант XML: ФИО', 'warning');
+
+  const manualSettlementRows = model.xml.settlement?.manualRows || [];
+  manualSettlementRows.forEach((row, index) => {
+    const hasContent = numberOrZero(row.amount) > 0 || row.documentRef || row.comment || row.customKindText;
+    if (!hasContent) return;
+    if (row.amount == null || numberOrZero(row.amount) <= 0) {
+      pushIssue('warning', `xml.settlement.manualRows.${index}.amount`, `СвОРасч: строка ${index + 1}`, 'Для typed-строки ВидТреб / ВидУдерж нужна сумма больше 0');
+    }
+    if (isSettlementOtherCode(row) && !String(row.customKindText || '').trim()) {
+      pushIssue('warning', `xml.settlement.manualRows.${index}.customKindText`, `СвОРасч: строка ${index + 1}`, `Для кода ${row.kind === 'claim' ? '05' : '36'} нужно заполнить поле «Иной вид»`);
+    }
+  });
+
+  const xmlSettlementRows = model.xml.settlement?.settlementRows || [];
+  const distinctSettlementKinds = new Set(xmlSettlementRows.map((row) => `${normalizeSettlementKind(row.kind)}:${normalizeSettlementCode(row.kind, row.kindCode)}`));
+  if (distinctSettlementKinds.size > 1) {
+    pushIssue('warning', 'xml.settlement.settlementRows', 'СвОРасч', 'В текущем XSD-ready профиле несколько видов требований / удержаний будут сжаты в один УчетТребУдерж. Атрибуты итогов сохранятся, но детализация уйдет в агрегированный pass-profile.');
+  }
 
   return {
     errors,
@@ -1578,6 +1675,131 @@ function renderHoldbackRowActions(rowIndex, rowKind) {
 }
 
 
+function renderSettlementPresetButtons(presets) {
+  return presets.map((presetKey) => {
+    const preset = SETTLEMENT_ROW_PRESETS[presetKey];
+    return `<button class="row-action-menu-item" data-action="add-settlement-row" data-preset="${presetKey}">+ ${escapeHtml(preset.label)}</button>`;
+  }).join('');
+}
+
+function renderSettlementAddMenu() {
+  const menuOpen = Boolean(app.state.ui.settlementAddMenu);
+  return `
+    <div class="row-action-stack inline-add-stack">
+      <button class="mini" data-action="toggle-settlement-add-menu">+ Строка XML</button>
+      ${menuOpen ? `
+        <div class="row-action-menu row-action-menu-wide settlement-add-menu">
+          <div class="settlement-menu-group">
+            <div class="settlement-menu-title">ВидУдерж</div>
+            ${renderSettlementPresetButtons(['withholdAdvance', 'withholdGuarantee', 'withholdPenalty', 'withholdErrorCorrection', 'withholdOtherObjects', 'withholdOther'])}
+          </div>
+          <div class="settlement-menu-group">
+            <div class="settlement-menu-title">ВидТреб</div>
+            ${renderSettlementPresetButtons(['claimPenalty', 'claimGuarantee', 'claimErrorCorrection', 'claimOtherObjects', 'claimOther'])}
+          </div>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function renderSettlementRowActions(rowIndex) {
+  const confirmOpen = app.state.ui.settlementDeleteConfirm === rowIndex;
+  return `
+    <div class="row-action-stack">
+      <button class="stack-button remove" title="Удалить строку XML" aria-label="Удалить строку XML" data-action="request-settlement-delete" data-settlement-index="${rowIndex}">×</button>
+      ${confirmOpen ? `
+        <div class="row-action-confirm">
+          <div class="row-action-confirm-title">Удалить?</div>
+          <div class="row-action-confirm-buttons">
+            <button class="confirm-icon confirm-yes" title="Подтвердить" aria-label="Подтвердить" data-action="confirm-settlement-delete" data-settlement-index="${rowIndex}">✓</button>
+            <button class="confirm-icon confirm-no" title="Отмена" aria-label="Отмена" data-action="cancel-settlement-delete" data-settlement-index="${rowIndex}">×</button>
+          </div>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function renderSettlementRowsSection(settlement) {
+  const manualRows = settlement.manualRows || [];
+  const autoRows = settlement.autoRows || [];
+  const autoRowsSummary = autoRows.length
+    ? autoRows.map((row) => `<span class="settlement-chip">${escapeHtml(settlementCodeLabel(row.kind, row.kindCode))}: <strong>${formatMoney(numberOrZero(row.amount))}</strong></span>`).join('')
+    : '<span class="settlement-chip settlement-chip-muted">Автострок из таблицы удержаний пока нет.</span>';
+
+  const manualRowsHtml = manualRows.length ? manualRows.map((row, index) => {
+    const otherCode = isSettlementOtherCode(row);
+    return `
+      <tr>
+        <td>
+          <select data-path="xmlExtras.settlementRows.${index}.kind">
+            ${renderOptions(['withhold', 'claim'], row.kind, { withhold: 'ВидУдерж', claim: 'ВидТреб' })}
+          </select>
+        </td>
+        <td>
+          <select data-path="xmlExtras.settlementRows.${index}.kindCode">
+            ${renderOptions(Object.keys(settlementCodeOptions(row.kind)), row.kindCode, settlementCodeOptions(row.kind))}
+          </select>
+        </td>
+        <td><input data-path="xmlExtras.settlementRows.${index}.amount" data-value-type="number" value="${formatEditableNumber(row.amount)}" placeholder="0.00" /></td>
+        <td><input data-path="xmlExtras.settlementRows.${index}.documentRef" value="${escapeAttr(row.documentRef)}" placeholder="№ и дата документа" /></td>
+        <td>
+          ${otherCode
+            ? `<input data-path="xmlExtras.settlementRows.${index}.customKindText" value="${escapeAttr(row.customKindText)}" placeholder="Обязателен для кода ${row.kind === 'claim' ? '05' : '36'}" />`
+            : '<div class="readonly settlement-readonly">—</div>'}
+        </td>
+        <td><textarea data-path="xmlExtras.settlementRows.${index}.comment" placeholder="Комментарий / служебная пометка">${escapeHtml(row.comment)}</textarea></td>
+        <td class="actions-cell">${renderSettlementRowActions(index)}</td>
+      </tr>
+    `;
+  }).join('') : `
+    <tr>
+      <td colspan="7">
+        <div class="settlement-empty">Пока нет ручных XML-строк. Автоматические 31/32 продолжают считаться из таблицы удержаний выше.</div>
+      </td>
+    </tr>
+  `;
+
+  return `
+    <div class="section-block settlement-section-block">
+      <div class="panel-header settlement-block-header">
+        <div>
+          <h3>СвОРасч: ВидТреб / ВидУдерж</h3>
+          <p class="kbd-note">Автоматически из Excel-таблицы выше продолжают собираться зачет аванса (31) и гарантийное удержание (32). Здесь можно добавить явные typed-строки для XML и выбрать ветку <code>ВидТреб</code> или <code>ВидУдерж</code>.</p>
+        </div>
+        ${renderSettlementAddMenu()}
+      </div>
+
+      <div class="summary-grid settlement-summary-grid">
+        <div class="summary-card"><span>Удержания в XML</span><strong>${formatMoney(numberOrZero(settlement.totalRetention))}</strong></div>
+        <div class="summary-card"><span>Требования в XML</span><strong>${formatMoney(numberOrZero(settlement.totalClaims))}</strong></div>
+        <div class="summary-card"><span>Автострок из удержаний</span><strong>${autoRows.length}</strong></div>
+        <div class="summary-card"><span>Ручных typed-строк</span><strong>${manualRows.length}</strong></div>
+      </div>
+
+      <div class="settlement-chip-list">${autoRowsSummary}</div>
+
+      <div class="table-wrapper">
+        <table class="table table-settlement">
+          <thead>
+            <tr>
+              <th>Ветка XML</th>
+              <th>Код вида</th>
+              <th>Сумма, руб.</th>
+              <th>Документ-основание</th>
+              <th>Иной вид</th>
+              <th>Комментарий</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>${manualRowsHtml}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
 function renderKs3RowActions(rowIndex) {
   const menuOpen = app.state.ui.ks3RowActionMenu === rowIndex;
   const confirmOpen = app.state.ui.ks3RowDeleteConfirm === rowIndex;
@@ -1806,6 +2028,7 @@ function renderHoldbacksPane() {
         <div class="summary-card"><span>Итого к оплате</span><strong>${formatMoney(totals.payableAmount)}</strong></div>
       </div>
 
+      ${renderSettlementRowsSection(buildHoldbacksXmlSettlementModel())}
       ${renderHoldbacksTotalsBlock(totals)}
       ${app.state.common.showDocumentSignatures ? renderKs3SignatureTable(app.state.common) : ''}
     </div>
@@ -2277,50 +2500,79 @@ function computeHoldbackSectionComputed(group) {
   };
 }
 
-function buildHoldbacksXmlSettlementModel() {
+function buildAutoSettlementRowsFromHoldbacks() {
   const groups = buildHoldbackGroups();
-  const settlementRows = [];
-  let totalRetention = 0;
-  let totalClaims = 0;
+  const rows = [];
 
   groups.forEach((group) => {
     const section = group.section.row;
     const computed = computeHoldbackSectionComputed(group);
 
     if (computed.retentionAmount > 0) {
-      settlementRows.push({
+      rows.push({
         source: 'section-retention',
+        kind: 'withhold',
+        kindCode: '32',
         sectionName: section.name || '',
         amount: computed.retentionAmount,
-        kindCode: '32', // гарантийное удержание / отложенный платеж
-        kindLabel: 'ВидУдерж',
+        documentRef: '',
+        customKindText: '',
         comment: section.comment || '',
       });
-      totalRetention += computed.retentionAmount;
     }
 
     group.subitems.forEach((item) => {
       const row = item.row;
       const closingAmount = numberOrZero(row.closingAmount);
       if (closingAmount > 0) {
-        settlementRows.push({
+        rows.push({
           source: 'subitem-advance-closing',
+          kind: 'withhold',
+          kindCode: '31',
           sectionName: section.name || '',
-          documentRef: row.advanceDoc || '',
           amount: closingAmount,
-          kindCode: '31', // зачет аванса
-          kindLabel: 'ВидУдерж',
+          documentRef: row.advanceDoc || '',
+          customKindText: '',
           comment: row.comment || '',
         });
-        totalRetention += closingAmount;
       }
     });
   });
+
+  return rows;
+}
+
+function buildHoldbacksXmlSettlementModel() {
+  const autoRows = buildAutoSettlementRowsFromHoldbacks();
+  const manualRows = (app.state.xmlExtras.settlementRows || []).map((row, rowIndex) => ({
+    rowIndex,
+    ...prepareSettlementRow(row),
+    source: 'manual',
+  }));
+
+  const activeManualRows = manualRows.filter((row) => {
+    const amount = numberOrZero(row.amount);
+    return amount > 0 || row.documentRef || row.comment || row.customKindText;
+  });
+
+  const settlementRows = [
+    ...activeManualRows.filter((row) => numberOrZero(row.amount) > 0),
+    ...autoRows,
+  ];
+
+  const totalRetention = settlementRows.reduce((sum, row) => (
+    normalizeSettlementKind(row.kind) === 'withhold' ? sum + numberOrZero(row.amount) : sum
+  ), 0);
+  const totalClaims = settlementRows.reduce((sum, row) => (
+    normalizeSettlementKind(row.kind) === 'claim' ? sum + numberOrZero(row.amount) : sum
+  ), 0);
 
   return {
     totalRetention,
     totalClaims,
     settlementRows,
+    autoRows,
+    manualRows,
   };
 }
 
@@ -2488,6 +2740,67 @@ function createBlankHoldbackRow(kind = 'section') {
     retentionRate: 3,
     comment: '',
   };
+}
+
+function normalizeSettlementKind(value) {
+  const raw = String(value ?? '').trim().toLowerCase();
+  if (raw === 'claim' || raw === 'видтреб' || raw === 'treb' || raw === 'requirement') return 'claim';
+  return 'withhold';
+}
+
+function settlementCodeOptions(kind) {
+  return normalizeSettlementKind(kind) === 'claim' ? CLAIM_TYPE_OPTIONS : WITHHOLD_TYPE_OPTIONS;
+}
+
+function normalizeSettlementCode(kind, value) {
+  const options = settlementCodeOptions(kind);
+  const raw = String(value ?? '').trim().padStart(2, '0');
+  if (options[raw]) return raw;
+  return normalizeSettlementKind(kind) === 'claim' ? '01' : '31';
+}
+
+function settlementKindLabel(kind) {
+  return normalizeSettlementKind(kind) === 'claim' ? 'ВидТреб' : 'ВидУдерж';
+}
+
+function settlementCodeLabel(kind, code) {
+  const normalizedKind = normalizeSettlementKind(kind);
+  const normalizedCode = normalizeSettlementCode(normalizedKind, code);
+  return settlementCodeOptions(normalizedKind)[normalizedCode] || `${settlementKindLabel(normalizedKind)} ${normalizedCode}`;
+}
+
+function isSettlementOtherCode(row) {
+  const kind = normalizeSettlementKind(row?.kind);
+  const code = normalizeSettlementCode(kind, row?.kindCode);
+  return (kind === 'claim' && code === '05') || (kind === 'withhold' && code === '36');
+}
+
+function prepareSettlementRow(row = {}) {
+  const kind = normalizeSettlementKind(row.kind ?? row.kindLabel ?? row.type ?? row.branch);
+  const kindCode = normalizeSettlementCode(kind, row.kindCode ?? row.code);
+  return {
+    source: row.source || 'manual',
+    kind,
+    kindCode,
+    amount: numberOrNull(row.amount),
+    documentRef: row.documentRef ?? row.advanceDoc ?? '',
+    customKindText: row.customKindText ?? row.otherKindText ?? row.customLabel ?? '',
+    comment: row.comment ?? '',
+  };
+}
+
+function createBlankSettlementRow(presetKey = 'withholdAdvance', overrides = {}) {
+  const preset = SETTLEMENT_ROW_PRESETS[presetKey] || SETTLEMENT_ROW_PRESETS.withholdAdvance;
+  return prepareSettlementRow({
+    source: 'manual',
+    kind: preset.kind,
+    kindCode: preset.kindCode,
+    amount: null,
+    documentRef: '',
+    customKindText: '',
+    comment: preset.label || '',
+    ...overrides,
+  });
 }
 
 function renderInput(label, path, value, valueType = 'string', size = '') {

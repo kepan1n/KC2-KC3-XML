@@ -69,6 +69,34 @@ def first_number(*values, default=None):
     return default
 
 
+def normalize_settlement_kind(value, code=None) -> str:
+    raw = str(value or '').strip().lower()
+    if raw in ('claim', 'видтреб', 'requirement'):
+        return 'claim'
+    if raw in ('withhold', 'видудерж', 'retention', 'withholding'):
+        return 'withhold'
+    code_text = str(code or '').strip()
+    if code_text.startswith('0'):
+        return 'claim'
+    return 'withhold'
+
+
+def choose_preferred_settlement_row(rows: list[dict], total_claims=0.0, total_retention=0.0) -> dict | None:
+    if not rows:
+        return None
+
+    total_claims = safe_float(total_claims, 0.0)
+    total_retention = safe_float(total_retention, 0.0)
+    claim_rows = [row for row in rows if normalize_settlement_kind(row.get('kind'), row.get('kindCode')) == 'claim']
+    withhold_rows = [row for row in rows if normalize_settlement_kind(row.get('kind'), row.get('kindCode')) == 'withhold']
+
+    if total_claims > 0 and total_retention <= 0 and claim_rows:
+        return claim_rows[0]
+    if total_retention > 0 and total_claims <= 0 and withhold_rows:
+        return next((row for row in withhold_rows if str(row.get('kindCode') or '').strip() == '31'), withhold_rows[0])
+    return rows[0]
+
+
 def calc_vat(base_amount, vat_rate):
     base = safe_float(base_amount, 0.0)
     rate = safe_float(vat_rate, 0.0)
@@ -1000,26 +1028,35 @@ def build_xml(data: dict) -> ET._ElementTree:
              СумУдержВсегоОтч=fmt_money(settlement.get('totalRetention')),
              СумТребВсегоОтч=fmt_money(settlement.get('totalClaims')),
              ВсегоКОплатОтч=fmt_money(holdbacks.get('totals', {}).get('payableAmount') or ks3_totals.get('forPeriod')))
-    settlement_rows = settlement.get('settlementRows', []) or [{'amount': 1, 'kindCode': '31'}]
+    settlement_rows = [row for row in settlement.get('settlementRows', []) if safe_float(row.get('amount') or 0, 0.0) > 0] or [{'amount': 1, 'kind': 'withhold', 'kindCode': '31'}]
     aggregated_amount = sum(max(float(row.get('amount') or 0), 0) for row in settlement_rows)
-    preferred_kind = '31' if any(str(row.get('kindCode')) == '31' for row in settlement_rows) else str(settlement_rows[0].get('kindCode') or '31')
+    preferred_row = choose_preferred_settlement_row(settlement_rows, settlement.get('totalClaims'), settlement.get('totalRetention')) or {'kind': 'withhold', 'kindCode': '31'}
+    preferred_kind = str(preferred_row.get('kindCode') or '31')
+    preferred_branch = normalize_settlement_kind(preferred_row.get('kind'), preferred_kind)
     item = ET.SubElement(settlement_el, 'УчетТребУдерж', СумТребУдерж=fmt_money(aggregated_amount if aggregated_amount > 0 else 1))
-    if preferred_kind.startswith('3'):
+    if preferred_branch == 'withhold':
         child = ET.SubElement(item, 'ВидУдерж')
         child.text = preferred_kind
+        if preferred_kind == '36':
+            other_text = first_non_empty(preferred_row.get('customKindText'), preferred_row.get('otherKindText'))
+            if other_text:
+                ET.SubElement(item, 'ИнВидУдерж').text = str(other_text)
     else:
         child = ET.SubElement(item, 'ВидТреб')
         child.text = preferred_kind
+        if preferred_kind == '05':
+            other_text = first_non_empty(preferred_row.get('customKindText'), preferred_row.get('otherKindText'))
+            if other_text:
+                ET.SubElement(item, 'ИнВидТреб').text = str(other_text)
 
     # Для текущего XSD-профиля УчетТребУдерж оставляем агрегированным,
     # но передаем подтверждающий документ из первой релевантной строки удержания/требования.
     supporting_row = next((row for row in settlement_rows if row.get('documentRef')), None)
     if supporting_row:
         document_ref = str(supporting_row.get('documentRef') or '').strip()
-        doc_name = 'Документ-основание удержания'
+        doc_name = 'Документ-основание удержания' if normalize_settlement_kind(supporting_row.get('kind'), supporting_row.get('kindCode')) == 'withhold' else 'Документ-основание требования'
         doc_number = document_ref or 'Без номера'
         doc_date = fmt_date(common.get('contractDate'))
-        import re
         m = re.search(r'^(.*?)\s+от\s+(\d{2}\.\d{2}\.\d{4})', document_ref)
         if m:
             doc_number = m.group(1).strip() or doc_number
