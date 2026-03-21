@@ -3007,7 +3007,12 @@ function buildRepresentativeSettlementLabel(row) {
 }
 
 function buildXmlBindingTitle(binding) {
-  const lines = [binding.included ? 'Попадает в XML' : 'Не передается в XML'];
+  const statusTitle = binding.status === 'direct'
+    ? 'Напрямую попадает в XML'
+    : binding.status === 'derived'
+      ? 'Косвенно влияет на XML / вычисляется'
+      : 'Не передается в XML';
+  const lines = [statusTitle];
   if (binding.targets?.length) {
     lines.push(...binding.targets.map((item) => `• ${item}`));
   }
@@ -3020,8 +3025,17 @@ function buildXmlBindingTitle(binding) {
   return lines.join('\n').trim();
 }
 
-function xmlBinding(included, targets = [], note = '', snippet = '') {
-  const binding = { included, targets, note, snippet };
+function xmlBinding(statusOrIncluded, targets = [], note = '', snippet = '') {
+  const status = typeof statusOrIncluded === 'string'
+    ? statusOrIncluded
+    : (statusOrIncluded ? 'direct' : 'unused');
+  const binding = {
+    status,
+    included: status !== 'unused',
+    targets,
+    note,
+    snippet,
+  };
   binding.title = buildXmlBindingTitle(binding);
   return binding;
 }
@@ -3185,7 +3199,7 @@ function staticXmlBinding(path) {
     'ks3.periodFrom': ['ИнфПолФХЖ1 → ks3.periodFrom', 'СвПродПер/СвПер/@НачПерВДок'],
     'ks3.periodTo': ['ИнфПолФХЖ1 → ks3.periodTo', 'СвПродПер/СвПер/@ОконПерВДок'],
     'ks3.totals.fromStart': ['ВсегоАктОтч/@СтоимРабСНач', 'ИнфПолФХЖ1 → ks3.totalFromStart'],
-    'ks3.totals.fromYearStart': ['Используется для логики КС-3, прямого отдельного атрибута в P XML нет'],
+    'ks3.totals.fromYearStart': { status: 'derived', targets: ['Используется для логики КС-3, прямого отдельного атрибута в P XML нет'] },
     'ks3.totals.forPeriod': ['ВсегоАктОтч/@СтоимРабОтч', 'ИнфПолФХЖ1 → ks3.totalForPeriod'],
     'ks3.totals.vat': ['ВсегоАктОтч/@СумНалОтч', 'ВсегоАктОтч/@СтТовУчНалОтч'],
 
@@ -3198,10 +3212,10 @@ function staticXmlBinding(path) {
 
     'xmlExtras.constants.isGovMunicipal': ['СвАктСдПр/ОсновСтроит/@ПрГосМун'],
     'xmlExtras.constants.vatCalcInTotalOnly': ['СвПродПер/СвПер/@ПрНДСВИтог'],
-    'xmlExtras.constants.cumulativeMode': ['Влияет на накопительные суммы строк и итогов XML'],
+    'xmlExtras.constants.cumulativeMode': { status: 'derived', targets: ['Влияет на накопительные суммы строк и итогов XML'] },
     'xmlExtras.constants.priceIndexYear': ['СвПродПер/СвПер/@ПрИндЦен'],
     'xmlExtras.constants.requiresSettlementApproval': ['СвПродПер/СвПер/@ПрСведРасчСогл'],
-    'xmlExtras.constants.diadocCompactMode': ['Влияет на структуру табличной части НаимИСт/Раздел/СвВидРаб'],
+    'xmlExtras.constants.diadocCompactMode': { status: 'derived', targets: ['Влияет на структуру табличной части НаимИСт/Раздел/СвВидРаб'] },
 
     'xmlExtras.manual.economicSubjectName': ['Документ/@НаимЭкСубСост'],
     'xmlExtras.manual.isCorrectionAct': ['СвАктСдПр/ИспрАктСдПр (наличие узла)'],
@@ -3238,8 +3252,8 @@ function staticXmlBinding(path) {
   };
   const entry = bindings[path];
   if (!entry) return null;
-  if (Array.isArray(entry)) return xmlBinding(true, entry);
-  return xmlBinding(Boolean(entry.included), entry.targets || [], entry.note || '', entry.snippet || '');
+  if (Array.isArray(entry)) return xmlBinding('direct', entry);
+  return xmlBinding(entry.status || (entry.included ? 'direct' : 'unused'), entry.targets || [], entry.note || '', entry.snippet || '');
 }
 
 function resolveXmlBinding(path) {
@@ -3259,7 +3273,8 @@ function resolveXmlBinding(path) {
       basis: ['СвАктСдПр/ОснСдачи/ТипИдДок/@НаимДок', 'ИнфПолФХЖ1 → ks2.basis'],
       vatRate: ['ИнфПолФХЖ1 → ks2.vatRate', 'влияет на суммы НДС по строкам XML'],
     };
-    return xmlBinding(true, mapping[field] || [], '', buildXmlTagSnippet('НаимИСт', { НомДок: app.state.ks2Sheets?.[Number(sheetIndex)]?.documentNumber || '' }, false));
+    const status = field === 'vatRate' ? 'derived' : 'direct';
+    return xmlBinding(status, mapping[field] || [], '', buildXmlTagSnippet('НаимИСт', { НомДок: app.state.ks2Sheets?.[Number(sheetIndex)]?.documentNumber || '' }, false));
   }
 
   match = path.match(/^ks2Sheets\.(\d+)\.rows\.(\d+)\.(.+)$/);
@@ -3276,7 +3291,7 @@ function resolveXmlBinding(path) {
       return xmlBinding(false, [], field === 'category' ? 'Категория нужна для UI/аналитики, в XML не уходит.' : 'Примечание строки не передается в XML 1110335.');
     }
     if (field === '__displayAmount') {
-      return xmlBinding(true, ['СвВидРаб/@СтТовБезНДС', 'СвВидРаб/@СтТовУчНал'], '', snippet);
+      return xmlBinding('derived', ['СвВидРаб/@СтТовБезНДС', 'СвВидРаб/@СтТовУчНал'], 'Сумма вычисляется из количества, цены, режима строки и НДС.', snippet);
     }
     if (row.type === 'section') {
       const sectionTargets = {
@@ -3284,7 +3299,9 @@ function resolveXmlBinding(path) {
         estimateNo: ['Раздел/@ПозРаздСмет'],
         name: ['Раздел/@НаимРаздел'],
       };
-      return sectionTargets[field] ? xmlBinding(true, sectionTargets[field], '', snippet) : xmlBinding(false, [], 'Для раздела это поле не уходит в XML.');
+      return sectionTargets[field]
+        ? xmlBinding(field === 'type' ? 'derived' : 'direct', sectionTargets[field], field === 'type' ? 'Тип строки влияет на выбор XML-тега раздела.' : '', snippet)
+        : xmlBinding(false, [], 'Для раздела это поле не уходит в XML.');
     }
     const itemTargets = {
       type: ['Тег строки: СвВидРаб'],
@@ -3299,12 +3316,14 @@ function resolveXmlBinding(path) {
       expenseType: ['СвВидРаб/@ТипЗатр'],
       calcMode: ['СвВидРаб/@ПрИспрОш / @ПрНовОбст', 'УчОшИНовОбстСт (при корректировках)'],
     };
-    return itemTargets[field] ? xmlBinding(true, itemTargets[field], '', snippet) : xmlBinding(false, [], 'Поле не уходит в XML отдельным реквизитом.');
+    return itemTargets[field]
+      ? xmlBinding(field === 'type' ? 'derived' : 'direct', itemTargets[field], field === 'type' ? 'Тип строки влияет на то, будет ли создан XML-элемент СвВидРаб.' : '', snippet)
+      : xmlBinding(false, [], 'Поле не уходит в XML отдельным реквизитом.');
   }
 
   match = path.match(/^ks3\.rows\.(\d+)\.(.+)$/);
   if (match) {
-    return xmlBinding(false, [], 'Ручные строки КС-3 напрямую не выгружаются в P XML; используются только для totals и сопоставления.');
+    return xmlBinding('derived', [], 'Ручные строки КС-3 напрямую не выгружаются в P XML; используются для totals и сопоставления.');
   }
 
   match = path.match(/^holdbacks\.rows\.(\d+)\.(.+)$/);
@@ -3315,7 +3334,7 @@ function resolveXmlBinding(path) {
     if (!entry) return xmlBinding(false, [], 'Строка удержаний не распознана.');
     const snippet = buildHoldbackXmlSnippet(rowIndex);
     if (field === 'ks2SheetId') {
-      return xmlBinding(false, [], 'Служебная привязка к листу КС-2: управляет тем, в какой per-sheet XML попадет удержание.');
+      return xmlBinding('derived', [], 'Служебная привязка к листу КС-2: управляет тем, в какой per-sheet XML попадет удержание.');
     }
     if (entry.kind === 'section') {
       const sectionTargets = {
@@ -3332,7 +3351,9 @@ function resolveXmlBinding(path) {
         __retentionAmount: ['СвОРасч/@СумУдержВсегоОтч', 'ИнфПолСвОРасч → RET32_SUM'],
         __payableAmount: ['СвОРасч/@ВсегоКОплатОтч'],
       };
-      return sectionTargets[field] ? xmlBinding(true, sectionTargets[field], '', snippet) : xmlBinding(false, [], 'Поле раздела удержаний не попадает в XML отдельным реквизитом.');
+      return sectionTargets[field]
+        ? xmlBinding(field.startsWith('__') ? 'derived' : 'direct', sectionTargets[field], field.startsWith('__') ? 'Значение вычисляется из раздела и подпунктов, затем попадает в XML.' : '', snippet)
+        : xmlBinding(false, [], 'Поле раздела удержаний не попадает в XML отдельным реквизитом.');
     }
     const subTargets = {
       advanceReceived: ['ИнфПолСвОРасч → ADV31_IN'],
@@ -3342,7 +3363,9 @@ function resolveXmlBinding(path) {
       comment: ['ИнфПолСвОРасч → RET_NOTE'],
       __nextBalance: ['ИнфПолСвОРасч → ADV31_NEXT'],
     };
-    return subTargets[field] ? xmlBinding(true, subTargets[field], '', snippet) : xmlBinding(false, [], 'Поле подпункта удержаний не попадает в XML отдельным реквизитом.');
+    return subTargets[field]
+      ? xmlBinding(field.startsWith('__') ? 'derived' : 'direct', subTargets[field], field.startsWith('__') ? 'Значение вычисляется из подпункта и затем попадает в XML.' : '', snippet)
+      : xmlBinding(false, [], 'Поле подпункта удержаний не попадает в XML отдельным реквизитом.');
   }
 
   match = path.match(/^xmlExtras\.settlementRows\.(\d+)\.(.+)$/);
@@ -3359,9 +3382,12 @@ function resolveXmlBinding(path) {
       comment: ['ИнфПолСвОРасч / служебная расшифровка'],
     };
     if (field === 'isPrimary') {
-      return xmlBinding(false, [], 'Служебный флаг: выбирает, какая строка станет основной для XSD-ready XML.');
+      return xmlBinding('derived', [], 'Служебный флаг: выбирает, какая строка станет основной для XSD-ready XML.');
     }
-    return targets[field] ? xmlBinding(true, targets[field], '', snippet) : xmlBinding(false, [], 'Поле settlement-строки не распознано.');
+    if (field === 'comment') {
+      return xmlBinding(false, [], 'Комментарий settlement-строки сейчас в XML не уходит.');
+    }
+    return targets[field] ? xmlBinding('direct', targets[field], '', snippet) : xmlBinding(false, [], 'Поле settlement-строки не распознано.');
   }
 
   match = path.match(/^xmlExtras\.traceableGoods\.(\d+)\.(.+)$/);
@@ -3375,7 +3401,7 @@ function resolveXmlBinding(path) {
       unitName: ['СвПрослежСтройка/@НаимЕдИзмПрослеж'],
       quantity: ['СвПрослежСтройка/@КолВЕдПрослеж'],
     };
-    return targets[field] ? xmlBinding(true, targets[field], '', snippet) : xmlBinding(false, [], 'Поле прослеживаемости не распознано.');
+    return targets[field] ? xmlBinding('direct', targets[field], '', snippet) : xmlBinding(false, [], 'Поле прослеживаемости не распознано.');
   }
 
   return xmlBinding(false, [], 'Не передается в XML 1110335.');
@@ -3383,7 +3409,7 @@ function resolveXmlBinding(path) {
 
 function renderXmlIndicator(path, compact = false) {
   const binding = resolveXmlBinding(path);
-  return `<span class="xml-indicator ${binding.included ? 'is-used' : 'is-unused'} ${compact ? 'compact' : 'inline'}" title="${escapeAttr(binding.title)}" aria-label="${escapeAttr(binding.title)}"></span>`;
+  return `<span class="xml-indicator is-${binding.status} ${compact ? 'compact' : 'inline'}" title="${escapeAttr(binding.title)}" aria-label="${escapeAttr(binding.title)}"></span>`;
 }
 
 function renderFieldLabel(label, path) {
@@ -3392,7 +3418,7 @@ function renderFieldLabel(label, path) {
 
 function renderTableWrapper(path, innerHtml, extraClass = '') {
   const binding = resolveXmlBinding(path);
-  return `<div class="xml-cell-wrap ${extraClass} ${binding.included ? 'is-used' : 'is-unused'}" title="${escapeAttr(binding.title)}">${innerHtml}${renderXmlIndicator(path, true)}</div>`;
+  return `<div class="xml-cell-wrap ${extraClass} is-${binding.status}" title="${escapeAttr(binding.title)}">${innerHtml}${renderXmlIndicator(path, true)}</div>`;
 }
 
 function renderTableInput(path, value, valueType = 'string', placeholder = '') {

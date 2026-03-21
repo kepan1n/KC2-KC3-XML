@@ -352,8 +352,12 @@ body[data-sidebar="closed"] .sidebar {
   height: 9px;
 }
 
-.xml-indicator.is-used {
+.xml-indicator.is-direct {
   background: #22c55e;
+}
+
+.xml-indicator.is-derived {
+  background: #f59e0b;
 }
 
 .xml-indicator.is-unused {
@@ -364,14 +368,24 @@ body[data-sidebar="closed"] .sidebar {
   position: relative;
 }
 
-.xml-cell-wrap.is-used input,
-.xml-cell-wrap.is-used textarea,
-.xml-cell-wrap.is-used select,
-.xml-cell-wrap.is-used .table-muted-cell,
-.xml-cell-wrap.is-used .readonly,
-.xml-cell-wrap.is-used .amount-stack,
-.xml-cell-wrap.is-used span {
+.xml-cell-wrap.is-direct input,
+.xml-cell-wrap.is-direct textarea,
+.xml-cell-wrap.is-direct select,
+.xml-cell-wrap.is-direct .table-muted-cell,
+.xml-cell-wrap.is-direct .readonly,
+.xml-cell-wrap.is-direct .amount-stack,
+.xml-cell-wrap.is-direct span {
   border-color: rgba(34, 197, 94, 0.35);
+}
+
+.xml-cell-wrap.is-derived input,
+.xml-cell-wrap.is-derived textarea,
+.xml-cell-wrap.is-derived select,
+.xml-cell-wrap.is-derived .table-muted-cell,
+.xml-cell-wrap.is-derived .readonly,
+.xml-cell-wrap.is-derived .amount-stack,
+.xml-cell-wrap.is-derived span {
+  border-color: rgba(245, 158, 11, 0.4);
 }
 
 .field input,
