@@ -1849,13 +1849,6 @@ function renderKs2Pane(sheetIndex) {
               <tbody>${rows}</tbody>
             </table>
           </div>
-          <div class="inline-actions">
-            ${renderKs2SheetAddMenu(sheetIndex)}
-            <button class="mini secondary" data-action="add-error-correction-row" data-sheet-index="${sheetIndex}" data-expense-type="1">+ Испр. ошибок</button>
-            <button class="mini secondary" data-action="add-new-circumstance-row" data-sheet-index="${sheetIndex}" data-expense-type="1">+ Новые обстоятельства</button>
-            <button class="mini secondary" data-action="add-section-row" data-sheet-index="${sheetIndex}">+ Раздел</button>
-            <button class="mini secondary" data-action="add-note-row" data-sheet-index="${sheetIndex}">+ Примечание</button>
-          </div>
         </div>
 
         ${renderHoldbacksPane(sheetIndex)}
@@ -2606,15 +2599,6 @@ function buildHoldbackGroups(sheetId = null) {
   return groups.filter((group) => String(group.section.row.ks2SheetId || '') === String(sheetId));
 }
 
-function buildHoldbackSheetOptions() {
-  const options = { '': '— авто / не выбрано —' };
-  app.state.ks2Sheets.forEach((sheet, index) => {
-    const docNumber = sheet.documentNumber || sheet.document?.number || index + 1;
-    options[sheet.id] = `КС-2 №${docNumber} — ${sheet.title || `лист ${index + 1}`}`;
-  });
-  return options;
-}
-
 function renderHoldbackGroup(group) {
   const { section, subitems } = group;
   const sectionComputed = computeHoldbackSectionComputed(group);
@@ -2656,10 +2640,6 @@ function renderHoldbackSectionCells(rowIndex, row, computed) {
   return `
     <td class="holdback-section-cell holdback-section-title">
       ${renderTableTextarea(`holdbacks.rows.${rowIndex}.name`, row.name, 'Наименование раздела / акта')}
-      <div class="holdback-sheet-link">
-        <label>Лист КС-2</label>
-        ${renderTableSelect(`holdbacks.rows.${rowIndex}.ks2SheetId`, row.ks2SheetId || '', buildHoldbackSheetOptions())}
-      </div>
       <div class="holdback-doc-grid">
         ${renderInput('Документ гарантийного удержания', `holdbacks.rows.${rowIndex}.retentionDocName`, row.retentionDocName, 'string', 'half')}
         ${renderInput('Номер документа', `holdbacks.rows.${rowIndex}.retentionDocNumber`, row.retentionDocNumber, 'string', 'quarter')}
