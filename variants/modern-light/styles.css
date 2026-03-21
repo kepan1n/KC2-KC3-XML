@@ -1360,6 +1360,7 @@ body[data-scale="115"] {
   line-height: 1.5;
   overflow: auto;
   max-height: 70vh;
+  white-space: pre-wrap;
 }
 
 .settlement-section-block {

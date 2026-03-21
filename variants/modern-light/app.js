@@ -1580,13 +1580,25 @@ function renderKs2ViewSwitcher(sheetIndex) {
 }
 
 
-function extractXmlBlock(xmlText, tagName) {
-  if (!xmlText) return '';
-  const start = xmlText.indexOf(`<${tagName}`);
-  const endTag = `</${tagName}>`;
-  const end = xmlText.indexOf(endTag);
-  if (start === -1 || end === -1) return '';
-  return xmlText.slice(start, end + endTag.length).trim();
+function prettyFormatXml(xmlText) {
+  const source = String(xmlText || '').trim();
+  if (!source) return '';
+  const tokens = source.replace(/>\s*</g, '>
+<').split('
+').map((line) => line.trim()).filter(Boolean);
+  let indent = 0;
+  return tokens.map((line) => {
+    const isClosing = /^<\//.test(line);
+    const isDeclaration = /^<\?/.test(line) || /^<!/.test(line);
+    const isSelfClosing = /\/>$/.test(line) || /^<[^>]+>.*<\/[^>]+>$/.test(line);
+    if (isClosing) indent = Math.max(indent - 1, 0);
+    const prefix = '  '.repeat(indent);
+    if (!isClosing && !isDeclaration && !isSelfClosing && /^<[^/][^>]*>$/.test(line)) {
+      indent += 1;
+    }
+    return `${prefix}${line}`;
+  }).join('
+');
 }
 
 function buildHoldbackSheetSummary(groups) {
@@ -1673,7 +1685,7 @@ function renderKs2XmlPreviewPane(sheetIndex, sheet) {
     `;
   }
 
-  const settlementBlock = extractXmlBlock(preview.xmlText || '', 'СвОРасч');
+  const formattedXml = prettyFormatXml(preview.xmlText || '');
 
   return `
     <div class="section-block xml-preview-block">
@@ -1689,13 +1701,7 @@ function renderKs2XmlPreviewPane(sheetIndex, sheet) {
         <span>${preview.updatedAt ? `Обновлено: ${new Date(preview.updatedAt).toLocaleTimeString('ru-RU')}` : ''}</span>
       </div>
       ${preview.errors?.length ? `<div class="xml-preview-errors">${preview.errors.map((err) => `<div>строка ${err.line}: ${escapeHtml(err.message)}</div>`).join('')}</div>` : ''}
-      ${settlementBlock ? `
-        <div class="xml-preview-focus-block">
-          <div class="xml-preview-focus-title">Финальный блок СвОРасч</div>
-          <pre class="xml-preview-code xml-preview-code-compact"><code>${escapeHtml(settlementBlock)}</code></pre>
-        </div>
-      ` : ''}
-      <pre class="xml-preview-code"><code>${escapeHtml(preview.xmlText || '')}</code></pre>
+      <pre class="xml-preview-code"><code>${escapeHtml(formattedXml)}</code></pre>
     </div>
   `;
 }
