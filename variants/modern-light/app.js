@@ -1597,9 +1597,7 @@ function renderKs2ViewSwitcher(sheetIndex) {
 function prettyFormatXml(xmlText) {
   const source = String(xmlText || '').trim();
   if (!source) return '';
-  const tokens = source.replace(/>\s*</g, '>
-<').split('
-').map((line) => line.trim()).filter(Boolean);
+  const tokens = source.replace(/>\s*</g, '>\n<').split('\n').map((line) => line.trim()).filter(Boolean);
   let indent = 0;
   return tokens.map((line) => {
     const isClosing = /^<\//.test(line);
@@ -1611,25 +1609,23 @@ function prettyFormatXml(xmlText) {
       indent += 1;
     }
     return `${prefix}${line}`;
-  }).join('
-');
+  }).join('\n');
 }
 
 function detectXmlLineType(trimmedLine, stackTop = '') {
-  if (/^<\/?СвОРасч/.test(trimmedLine)) return 'settlement';
-  if (/^<\/?УчетТребУдерж/.test(trimmedLine) || /^<\/?ВидУдерж/.test(trimmedLine) || /^<\/?ДокПодтСумУд/.test(trimmedLine)) return 'retention';
-  if (/^<\/?ИнфПолСвОРасч/.test(trimmedLine) || /Идентиф="AVANS_/.test(trimmedLine)) return 'advance';
-  if (/^<\/?НаимИСт/.test(trimmedLine)) return 'sheet';
-  if (/^<\/?Раздел/.test(trimmedLine)) return 'section';
-  if (/^<\/?СвВидРаб/.test(trimmedLine)) return 'work';
+  if (/^<\/?СвОРасч\b/.test(trimmedLine)) return 'settlement';
+  if (/^<\/?УчетТребУдерж\b/.test(trimmedLine) || /^<\/?ВидУдерж\b/.test(trimmedLine) || /^<\/?ДокПодтСумУд\b/.test(trimmedLine)) return 'retention';
+  if (/^<\/?ИнфПолСвОРасч\b/.test(trimmedLine) || /Идентиф="AVANS_/.test(trimmedLine)) return 'advance';
+  if (/^<\/?НаимИСт\b/.test(trimmedLine)) return 'sheet';
+  if (/^<\/?Раздел\b/.test(trimmedLine)) return 'section';
+  if (/^<\/?СвВидРаб\b/.test(trimmedLine)) return 'work';
   return stackTop || '';
 }
 
 function renderFormattedXmlHtml(xmlText) {
   const formattedXml = prettyFormatXml(xmlText);
   if (!formattedXml) return '';
-  const lines = formattedXml.split('
-');
+  const lines = formattedXml.split('\n');
   const stack = [];
 
   return lines.map((line) => {
@@ -1638,7 +1634,7 @@ function renderFormattedXmlHtml(xmlText) {
     const classes = ['xml-line'];
     if (type) classes.push(`xml-line-${type}`);
 
-    const isOpenTag = /^<([^/!?][^\s/>]*)/.exec(trimmed);
+    const isOpenTag = /^<([^/!?][^\s/>]*)\b/.exec(trimmed);
     const isCloseTag = /^<\/([^>]+)>/.exec(trimmed);
     const isSelfClosing = /\/>$/.test(trimmed) || /^<[^>]+>.*<\/[^>]+>$/.test(trimmed);
 
