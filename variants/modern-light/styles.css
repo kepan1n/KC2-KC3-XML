@@ -1287,6 +1287,82 @@ body[data-scale="115"] {
   font-size: 13px;
 }
 
+.panel-header-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settlement-add-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.settlement-add-anchor .row-action-menu {
+  top: calc(100% + 8px);
+  right: 0;
+}
+
+.holdback-xml-preview-row td,
+.holdback-xml-empty-row td,
+.holdback-xml-row td {
+  background: #f8fafc;
+}
+
+.holdback-xml-row.is-primary td {
+  background: #f3fbf6;
+}
+
+.holdback-xml-card {
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
+  padding: 14px;
+  background: white;
+}
+
+.holdback-xml-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.holdback-xml-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.holdback-xml-subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.holdback-xml-grid {
+  margin-top: 0;
+}
+
+.settlement-inline-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settlement-inline-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .footer-note {
   margin-top: 16px;
   padding: 16px 18px;

@@ -1707,8 +1707,8 @@ function renderSettlementPresetButtons(presets) {
 function renderSettlementAddMenu() {
   const menuOpen = Boolean(app.state.ui.settlementAddMenu);
   return `
-    <div class="row-action-stack inline-add-stack">
-      <button class="mini" data-action="toggle-settlement-add-menu">+ Строка XML</button>
+    <div class="settlement-add-anchor">
+      <button class="mini" data-action="toggle-settlement-add-menu">+ ВидТреб / ВидУдерж</button>
       ${menuOpen ? `
         <div class="row-action-menu row-action-menu-wide settlement-add-menu">
           <div class="settlement-menu-group">
@@ -1725,25 +1725,23 @@ function renderSettlementAddMenu() {
   `;
 }
 
-function renderSettlementRowActions(rowIndex) {
+function renderSettlementRowActions(rowIndex, row) {
   const confirmOpen = app.state.ui.settlementDeleteConfirm === rowIndex;
   return `
-    <div class="row-action-stack">
-      <button class="stack-button remove" title="Удалить строку XML" aria-label="Удалить строку XML" data-action="request-settlement-delete" data-settlement-index="${rowIndex}">×</button>
+    <div class="settlement-inline-actions">
+      <button class="mini ${row.isPrimary ? '' : 'secondary'} settlement-primary-btn" data-action="set-primary-settlement-row" data-settlement-index="${rowIndex}">${row.isPrimary ? 'Основная XSD-ready' : 'Сделать основной'}</button>
       ${confirmOpen ? `
-        <div class="row-action-confirm">
-          <div class="row-action-confirm-title">Удалить?</div>
-          <div class="row-action-confirm-buttons">
-            <button class="confirm-icon confirm-yes" title="Подтвердить" aria-label="Подтвердить" data-action="confirm-settlement-delete" data-settlement-index="${rowIndex}">✓</button>
-            <button class="confirm-icon confirm-no" title="Отмена" aria-label="Отмена" data-action="cancel-settlement-delete" data-settlement-index="${rowIndex}">×</button>
-          </div>
+        <div class="settlement-inline-confirm">
+          <span>Удалить строку?</span>
+          <button class="mini danger" data-action="confirm-settlement-delete" data-settlement-index="${rowIndex}">Да</button>
+          <button class="mini secondary" data-action="cancel-settlement-delete" data-settlement-index="${rowIndex}">Нет</button>
         </div>
-      ` : ''}
+      ` : `<button class="mini danger" data-action="request-settlement-delete" data-settlement-index="${rowIndex}">Удалить</button>`}
     </div>
   `;
 }
 
-function renderSettlementRowsSection(settlement) {
+function renderInlineSettlementRows(settlement) {
   const manualRows = settlement.manualRows || [];
   const autoRows = settlement.autoRows || [];
   const representativeRow = settlement.representativeRow || null;
@@ -1751,85 +1749,56 @@ function renderSettlementRowsSection(settlement) {
     ? autoRows.map((row) => `<span class="settlement-chip">${escapeHtml(settlementCodeLabel(row.kind, row.kindCode))}: <strong>${formatMoney(numberOrZero(row.amount))}</strong></span>`).join('')
     : '<span class="settlement-chip settlement-chip-muted">Автострок из таблицы удержаний пока нет.</span>';
 
-  const manualRowsHtml = manualRows.length ? manualRows.map((row, index) => {
-    const otherCode = isSettlementOtherCode(row);
-    return `
-      <tr class="${row.isPrimary ? 'settlement-primary-row' : ''}">
-        <td class="settlement-primary-cell">
-          <button class="mini ${row.isPrimary ? '' : 'secondary'} settlement-primary-btn" data-action="set-primary-settlement-row" data-settlement-index="${index}">${row.isPrimary ? 'Основная' : 'Сделать основной'}</button>
-        </td>
-        <td>
-          <select data-path="xmlExtras.settlementRows.${index}.kind">
-            ${renderOptions(['withhold', 'claim'], row.kind, { withhold: 'ВидУдерж', claim: 'ВидТреб' })}
-          </select>
-        </td>
-        <td>
-          <select data-path="xmlExtras.settlementRows.${index}.kindCode">
-            ${renderOptions(Object.keys(settlementCodeOptions(row.kind)), row.kindCode, settlementCodeOptions(row.kind))}
-          </select>
-        </td>
-        <td><input data-path="xmlExtras.settlementRows.${index}.amount" data-value-type="number" value="${formatEditableNumber(row.amount)}" placeholder="0.00" /></td>
-        <td><input data-path="xmlExtras.settlementRows.${index}.documentRef" value="${escapeAttr(row.documentRef)}" placeholder="№ и дата документа" /></td>
-        <td>
-          ${otherCode
-            ? `<input data-path="xmlExtras.settlementRows.${index}.customKindText" value="${escapeAttr(row.customKindText)}" placeholder="Обязателен для кода ${row.kind === 'claim' ? '05' : '36'}" />`
-            : '<div class="readonly settlement-readonly">—</div>'}
-        </td>
-        <td><textarea data-path="xmlExtras.settlementRows.${index}.comment" placeholder="Комментарий / служебная пометка">${escapeHtml(row.comment)}</textarea></td>
-        <td class="actions-cell">${renderSettlementRowActions(index)}</td>
-      </tr>
-    `;
-  }).join('') : `
-    <tr>
-      <td colspan="8">
-        <div class="settlement-empty">Пока нет ручных XML-строк. Автоматические 31/32 продолжают считаться из таблицы удержаний выше.</div>
+  const previewRow = `
+    <tr class="holdback-xml-preview-row">
+      <td colspan="13">
+        <div class="settlement-preview ${representativeRow ? '' : 'muted'}">
+          <strong>XSD-ready сейчас возьмет:</strong>
+          <span>${escapeHtml(buildRepresentativeSettlementLabel(representativeRow))}</span>
+        </div>
+        <div class="settlement-chip-list">${autoRowsSummary}</div>
       </td>
     </tr>
   `;
 
-  return `
-    <div class="section-block settlement-section-block">
-      <div class="panel-header settlement-block-header">
-        <div>
-          <h3>СвОРасч: ВидТреб / ВидУдерж</h3>
-          <p class="kbd-note">Автоматически из Excel-таблицы выше продолжают собираться зачет аванса (31) и гарантийное удержание (32). Здесь можно добавить явные typed-строки для XML, выбрать ветку <code>ВидТреб</code> / <code>ВидУдерж</code> и пометить одну строку как основную для XSD-ready.</p>
-        </div>
-        ${renderSettlementAddMenu()}
-      </div>
+  const manualRowsHtml = manualRows.map((row, index) => {
+    const otherCode = isSettlementOtherCode(row);
+    return `
+      <tr class="holdback-xml-row ${row.isPrimary ? 'is-primary' : ''}">
+        <td colspan="13">
+          <div class="holdback-xml-card">
+            <div class="holdback-xml-card-head">
+              <div>
+                <div class="holdback-xml-title">${escapeHtml(row.comment || `Ручная строка СвОРасч #${index + 1}`)}</div>
+                <div class="holdback-xml-subtitle">Встроенная XML-строка внутри общей таблицы удержаний</div>
+              </div>
+              ${renderSettlementRowActions(index, row)}
+            </div>
+            <div class="form-grid holdback-xml-grid">
+              ${renderSelect('Ветка XML', `xmlExtras.settlementRows.${index}.kind`, row.kind, { withhold: 'ВидУдерж', claim: 'ВидТреб' }, 'quarter')}
+              ${renderSelect('Код вида', `xmlExtras.settlementRows.${index}.kindCode`, row.kindCode, settlementCodeOptions(row.kind), 'half')}
+              ${renderInput('Сумма, руб.', `xmlExtras.settlementRows.${index}.amount`, row.amount, 'number', 'quarter')}
+              ${renderInput('Документ-основание', `xmlExtras.settlementRows.${index}.documentRef`, row.documentRef, 'string', 'half')}
+              ${otherCode
+                ? renderInput('Иной вид', `xmlExtras.settlementRows.${index}.customKindText`, row.customKindText, 'string', 'half')
+                : renderReadonly('Иной вид', '—', 'half')}
+              ${renderTextarea('Комментарий / пометка', `xmlExtras.settlementRows.${index}.comment`, row.comment, 'half')}
+            </div>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
 
-      <div class="summary-grid settlement-summary-grid">
-        <div class="summary-card"><span>Удержания в XML</span><strong>${formatMoney(numberOrZero(settlement.totalRetention))}</strong></div>
-        <div class="summary-card"><span>Требования в XML</span><strong>${formatMoney(numberOrZero(settlement.totalClaims))}</strong></div>
-        <div class="summary-card"><span>Автострок из удержаний</span><strong>${autoRows.length}</strong></div>
-        <div class="summary-card"><span>Ручных typed-строк</span><strong>${manualRows.length}</strong></div>
-      </div>
-
-      <div class="settlement-preview ${representativeRow ? '' : 'muted'}">
-        <strong>XSD-ready сейчас возьмет:</strong>
-        <span>${escapeHtml(buildRepresentativeSettlementLabel(representativeRow))}</span>
-      </div>
-
-      <div class="settlement-chip-list">${autoRowsSummary}</div>
-
-      <div class="table-wrapper">
-        <table class="table table-settlement">
-          <thead>
-            <tr>
-              <th>Основная</th>
-              <th>Ветка XML</th>
-              <th>Код вида</th>
-              <th>Сумма, руб.</th>
-              <th>Документ-основание</th>
-              <th>Иной вид</th>
-              <th>Комментарий</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>${manualRowsHtml}</tbody>
-        </table>
-      </div>
-    </div>
+  const emptyRow = manualRows.length ? '' : `
+    <tr class="holdback-xml-empty-row">
+      <td colspan="13">
+        <div class="settlement-empty">Если нужен ручной <strong>ВидТреб</strong> или <strong>ВидУдерж</strong>, добавь его прямо сюда через кнопку <strong>+ ВидТреб / ВидУдерж</strong>.</div>
+      </td>
+    </tr>
   `;
+
+  return previewRow + emptyRow + manualRowsHtml;
 }
 
 function renderKs3RowActions(rowIndex) {
@@ -1974,7 +1943,8 @@ function renderKs3Pane() {
 
 function renderHoldbacksPane() {
   const groups = buildHoldbackGroups();
-  const rows = groups.map((group) => renderHoldbackGroup(group)).join('');
+  const settlement = buildHoldbacksXmlSettlementModel();
+  const rows = groups.map((group) => renderHoldbackGroup(group)).join('') + renderInlineSettlementRows(settlement);
 
   const totals = groups.reduce((acc, group) => {
     const sectionRow = group.section.row;
@@ -1995,9 +1965,12 @@ function renderHoldbacksPane() {
       <div class="panel-header">
         <div>
           <h2 class="panel-title">Удержания и авансы</h2>
-          <p class="panel-subtitle">Сложная таблица удержаний приближена к Excel: разделы, подпункты внутри раздела, отдельные итоги и действия по строкам.</p>
+          <p class="panel-subtitle">Сложная таблица удержаний приближена к Excel: разделы, подпункты внутри раздела, отдельные итоги и действия по строкам. Ручные <code>ВидТреб</code> / <code>ВидУдерж</code> теперь встраиваются в эту же таблицу ниже.</p>
         </div>
-        <button class="mini" data-action="add-holdback-row">+ Раздел</button>
+        <div class="panel-header-actions">
+          <button class="mini" data-action="add-holdback-row">+ Раздел</button>
+          ${renderSettlementAddMenu()}
+        </div>
       </div>
 
       ${app.state.common.showDocumentHeaders ? `
@@ -2060,7 +2033,6 @@ function renderHoldbacksPane() {
         <div class="summary-card"><span>Итого к оплате</span><strong>${formatMoney(totals.payableAmount)}</strong></div>
       </div>
 
-      ${renderSettlementRowsSection(buildHoldbacksXmlSettlementModel())}
       ${renderHoldbacksTotalsBlock(totals)}
       ${app.state.common.showDocumentSignatures ? renderKs3SignatureTable(app.state.common) : ''}
     </div>
