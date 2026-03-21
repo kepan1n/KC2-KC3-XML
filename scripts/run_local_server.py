@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import io
 import json
 import sys
+import zipfile
 from functools import partial
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -16,7 +18,7 @@ XSD_PATH = ROOT / 'nalog docs' / 'ON_AKTREZRABP_1_971_01_01_00_03.xsd'
 FORMS_DIR = ROOT / 'saved-forms'
 
 sys.path.insert(0, str(ROOT / 'scripts'))
-from generate_xml_from_export import build_xml  # noqa: E402
+from generate_xml_from_export import build_xml, build_xml_exports_by_ks2_sheet  # noqa: E402
 
 
 class AppHandler(SimpleHTTPRequestHandler):
@@ -57,23 +59,57 @@ class AppHandler(SimpleHTTPRequestHandler):
             return
 
         try:
-            tree = build_xml(payload)
-            xml_bytes = ET.tostring(tree, encoding='windows-1251', xml_declaration=True, pretty_print=True)
             schema = ET.XMLSchema(ET.parse(str(XSD_PATH)))
-            xml_doc = ET.fromstring(xml_bytes)
-            valid = schema.validate(xml_doc)
-            if not valid:
-                errors = [{'line': err.line, 'message': err.message} for err in schema.error_log]
-                self._send_json({'ok': False, 'valid': False, 'errors': errors}, status=HTTPStatus.UNPROCESSABLE_ENTITY)
+            exports = build_xml_exports_by_ks2_sheet(payload)
+
+            if len(exports) == 1:
+                item = exports[0]
+                xml_bytes = ET.tostring(item['tree'], encoding='windows-1251', xml_declaration=True, pretty_print=True)
+                xml_doc = ET.fromstring(xml_bytes)
+                valid = schema.validate(xml_doc)
+                if not valid:
+                    errors = [{'line': err.line, 'message': err.message} for err in schema.error_log]
+                    self._send_json({'ok': False, 'valid': False, 'errors': errors}, status=HTTPStatus.UNPROCESSABLE_ENTITY)
+                    return
+
+                self.send_response(HTTPStatus.OK)
+                self.send_header('Content-Type', 'application/xml; charset=windows-1251')
+                self.send_header('Content-Disposition', f'attachment; filename="{item["filename"]}"')
+                self.send_header('Content-Length', str(len(xml_bytes)))
+                self.end_headers()
+                self.wfile.write(xml_bytes)
                 return
 
-            filename = f"{payload.get('xml', {}).get('generated', {}).get('fileId', 'generated_1110335')}.xml"
+            archive_buffer = io.BytesIO()
+            archive_name = f"{payload.get('xml', {}).get('generated', {}).get('fileId', 'generated_1110335')}-per-ks2.zip"
+            collected_errors = []
+            with zipfile.ZipFile(archive_buffer, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+                for item in exports:
+                    xml_bytes = ET.tostring(item['tree'], encoding='windows-1251', xml_declaration=True, pretty_print=True)
+                    xml_doc = ET.fromstring(xml_bytes)
+                    valid = schema.validate(xml_doc)
+                    if not valid:
+                        collected_errors.append({
+                            'sheetIndex': item['sheetIndex'],
+                            'sheetTitle': item['sheetTitle'],
+                            'errors': [{'line': err.line, 'message': err.message} for err in schema.error_log],
+                        })
+                        schema = ET.XMLSchema(ET.parse(str(XSD_PATH)))
+                        continue
+                    archive.writestr(item['filename'], xml_bytes)
+                    schema = ET.XMLSchema(ET.parse(str(XSD_PATH)))
+
+            if collected_errors:
+                self._send_json({'ok': False, 'valid': False, 'sheetErrors': collected_errors}, status=HTTPStatus.UNPROCESSABLE_ENTITY)
+                return
+
+            archive_bytes = archive_buffer.getvalue()
             self.send_response(HTTPStatus.OK)
-            self.send_header('Content-Type', 'application/xml; charset=windows-1251')
-            self.send_header('Content-Disposition', f'attachment; filename="{filename}"')
-            self.send_header('Content-Length', str(len(xml_bytes)))
+            self.send_header('Content-Type', 'application/zip')
+            self.send_header('Content-Disposition', f'attachment; filename="{archive_name}"')
+            self.send_header('Content-Length', str(len(archive_bytes)))
             self.end_headers()
-            self.wfile.write(xml_bytes)
+            self.wfile.write(archive_bytes)
         except Exception as exc:
             text = str(exc)
             try:

@@ -184,13 +184,15 @@ function bindGlobalEvents() {
           const data = await response.json();
           if (Array.isArray(data.validationErrors) && data.validationErrors.length) {
             errorMessage = data.validationErrors.slice(0, 5).map((err) => err.message).join(' | ');
+          } else if (Array.isArray(data.sheetErrors) && data.sheetErrors.length) {
+            errorMessage = data.sheetErrors.slice(0, 2).map((sheet) => `${sheet.sheetTitle || `Лист ${sheet.sheetIndex + 1}`}: ${(sheet.errors || []).slice(0, 2).map((err) => err.message).join(' | ')}`).join(' || ');
           } else if (Array.isArray(data.errors) && data.errors.length) {
             errorMessage = data.errors.slice(0, 3).map((err) => `строка ${err.line}: ${err.message}`).join(' | ');
           } else if (data.error) {
             errorMessage = data.error;
           }
         } catch (_) {}
-        flash(`XML не выгружен: ${errorMessage}`);
+        flash(`Экспорт не выгружен: ${errorMessage}`);
         return;
       }
 
@@ -204,12 +206,12 @@ function bindGlobalEvents() {
       link.download = filename;
       link.click();
       URL.revokeObjectURL(url);
-      flash('XML прошёл XSD-проверку и выгружен.');
+      flash(filename.endsWith('.zip') ? 'Архив XML по листам КС-2 прошёл XSD-проверку и выгружен.' : 'XML прошёл XSD-проверку и выгружен.');
     } catch (error) {
       flash(`Не удалось выполнить XSD-проверку: ${error.message}`);
     } finally {
       refs.exportXml.disabled = false;
-      refs.exportXml.textContent = 'Экспорт XML (XSD-ready)';
+      refs.exportXml.textContent = 'Экспорт XML / ZIP (XSD-ready)';
     }
   });
 
@@ -2820,7 +2822,9 @@ function chooseRepresentativeSettlementRow(rows, totalClaims = 0, totalRetention
   const withholdRows = rows.filter((row) => normalizeSettlementKind(row.kind, row.kindCode) === 'withhold');
   if (numberOrZero(totalClaims) > 0 && numberOrZero(totalRetention) <= 0 && claimRows.length) return claimRows[0];
   if (numberOrZero(totalRetention) > 0 && numberOrZero(totalClaims) <= 0 && withholdRows.length) {
-    return withholdRows.find((row) => String(row.kindCode || '') === '31') || withholdRows[0];
+    return withholdRows.find((row) => String(row.kindCode || '') === '32')
+      || withholdRows.find((row) => String(row.kindCode || '') === '31')
+      || withholdRows[0];
   }
   return rows[0];
 }

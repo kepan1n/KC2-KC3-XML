@@ -18,6 +18,9 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Generate XML 1110335 from exported KC2-KC3 JSON model')
     parser.add_argument('input_json', help='Path to exported JSON from web form')
     parser.add_argument('-o', '--output', default=str(DEFAULT_OUTPUT), help='Output XML path')
+    parser.add_argument('--sheet-index', type=int, help='Export only one KS2 sheet (1-based index)')
+    parser.add_argument('--split-by-ks2', action='store_true', help='Generate a separate XML for every KS2 sheet')
+    parser.add_argument('--output-dir', help='Output directory for --split-by-ks2 mode')
     return parser.parse_args()
 
 
@@ -95,7 +98,11 @@ def choose_preferred_settlement_row(rows: list[dict], total_claims=0.0, total_re
     if total_claims > 0 and total_retention <= 0 and claim_rows:
         return claim_rows[0]
     if total_retention > 0 and total_claims <= 0 and withhold_rows:
-        return next((row for row in withhold_rows if str(row.get('kindCode') or '').strip() == '31'), withhold_rows[0])
+        return (
+            next((row for row in withhold_rows if str(row.get('kindCode') or '').strip() == '32'), None)
+            or next((row for row in withhold_rows if str(row.get('kindCode') or '').strip() == '31'), None)
+            or withhold_rows[0]
+        )
     return rows[0]
 
 
@@ -494,6 +501,219 @@ def collect_document_periods(ks2_sheets: list[dict], ks3_doc: dict):
     start_value = min(starts).strftime('%d.%m.%Y') if starts else None
     end_value = max(ends).strftime('%d.%m.%Y') if ends else None
     return start_value, end_value
+
+
+def normalize_search_text(value: str | None) -> str:
+    return ' '.join(str(value or '').lower().replace('ё', 'е').split())
+
+
+def tokenize_search_text(value: str | None) -> list[str]:
+    return [token for token in re.findall(r'[a-zа-я0-9]+', normalize_search_text(value)) if len(token) >= 6]
+
+
+def build_holdback_sheet_match_score(section: dict, sheet: dict) -> int:
+    section_text = normalize_search_text(' '.join([
+        str(section.get('name') or ''),
+        str(section.get('comment') or ''),
+    ]))
+    if not section_text:
+        return 0
+
+    sheet_doc = sheet.get('document', {})
+    doc_number = str(first_non_empty(sheet_doc.get('number'), sheet.get('documentNumber'), default='')).strip()
+    sheet_id = first_non_empty(sheet.get('id'))
+    explicit_sheet_id = first_non_empty(section.get('ks2SheetId'), section.get('linkedKs2SheetId'), section.get('sheetId'))
+    explicit_sheet_index = first_non_empty(section.get('ks2SheetIndex'), section.get('linkedSheetIndex'))
+    sheet_index = sheet.get('sheetIndex')
+
+    if sheet_id and explicit_sheet_id and str(explicit_sheet_id) == str(sheet_id):
+        return 1000
+    if explicit_sheet_index not in (None, '') and sheet_index is not None:
+        try:
+            if int(explicit_sheet_index) == int(sheet_index):
+                return 1000
+        except Exception:
+            pass
+
+    score = 0
+    if doc_number:
+        doc_patterns = [
+            f'кс-2 №{doc_number}',
+            f'кс2 №{doc_number}',
+            f'акт №{doc_number}',
+            f'акт n{doc_number}',
+        ]
+        if any(pattern in section_text for pattern in doc_patterns):
+            score += 200
+
+    sheet_title = first_non_empty(sheet.get('title'))
+    sheet_basis = first_non_empty(sheet_doc.get('basis'), sheet.get('basis'))
+    for source in (sheet_title, sheet_basis):
+        for token in tokenize_search_text(source):
+            if token in section_text:
+                score += 10
+
+    if sheet_title and normalize_search_text(sheet_title) in section_text:
+        score += 50
+    if sheet_basis and normalize_search_text(sheet_basis) in section_text:
+        score += 50
+
+    return score
+
+
+def select_holdback_sections_for_sheet(sections: list[dict], sheet: dict) -> list[dict]:
+    matched = []
+    for section in sections or []:
+        if build_holdback_sheet_match_score(section, sheet) > 0:
+            matched.append(copy.deepcopy(section))
+    return matched
+
+
+def summarize_holdback_sections(sections: list[dict]) -> dict:
+    totals = {
+        'ks2Amount': 0.0,
+        'materialsUsed': 0.0,
+        'advanceReceived': 0.0,
+        'previousBalance': 0.0,
+        'closingAmount': 0.0,
+        'nextBalance': 0.0,
+        'retentionAmount': 0.0,
+        'payableAmount': 0.0,
+    }
+    for section in sections or []:
+        for key in totals:
+            totals[key] += safe_float(section.get(key), 0.0)
+    return totals
+
+
+def build_sheet_settlement_from_holdback_sections(sections: list[dict]) -> dict:
+    rows = []
+    total_retention = 0.0
+    total_claims = 0.0
+
+    for section in sections or []:
+        retention_amount = safe_float(section.get('retentionAmount'), 0.0)
+        section_name = first_non_empty(section.get('name'), default='')
+        section_comment = first_non_empty(section.get('comment'), default='')
+        if retention_amount > 0:
+            rows.append({
+                'source': 'section-retention',
+                'kind': 'withhold',
+                'kindCode': '32',
+                'sectionName': section_name,
+                'amount': retention_amount,
+                'documentRef': '',
+                'customKindText': '',
+                'comment': section_comment,
+            })
+            total_retention += retention_amount
+
+        for subitem in section.get('subitems', []) or []:
+            closing_amount = safe_float(subitem.get('closingAmount'), 0.0)
+            if closing_amount <= 0:
+                continue
+            rows.append({
+                'source': 'subitem-advance-closing',
+                'kind': 'withhold',
+                'kindCode': '31',
+                'sectionName': section_name,
+                'amount': closing_amount,
+                'documentRef': first_non_empty(subitem.get('advanceDoc'), default=''),
+                'customKindText': '',
+                'comment': first_non_empty(subitem.get('comment'), section_comment, default=''),
+            })
+            total_retention += closing_amount
+
+    structured_rows = [row for row in rows if str(row.get('kindCode') or '') == '32'] or rows
+    representative_row = choose_preferred_settlement_row(structured_rows, total_claims, total_retention)
+    return {
+        'totalRetention': round(total_retention, 2),
+        'totalClaims': round(total_claims, 2),
+        'settlementRows': structured_rows,
+        'autoRows': rows,
+        'manualRows': [],
+        'representativeRow': representative_row,
+    }
+
+
+def build_ks3_totals_from_row(row: dict | None) -> dict:
+    row = row or {}
+    return {
+        'fromStart': safe_float(row.get('fromStart'), 0.0),
+        'fromYearStart': safe_float(row.get('fromYearStart'), 0.0),
+        'forPeriod': safe_float(row.get('forPeriod'), 0.0),
+        'vat': safe_float(row.get('vat'), 0.0),
+    }
+
+
+def build_generated_file_id_for_sheet(generated: dict, manual: dict, sheet: dict) -> str:
+    file_date = str(first_non_empty(generated.get('fileDate'), datetime.now().strftime('%Y-%m-%d')))
+    contractor_inn = str(first_non_empty(manual.get('contractorInn'), default='0000000000000'))
+    sheet_doc = sheet.get('document', {})
+    raw_doc_number = str(first_non_empty(sheet_doc.get('number'), sheet.get('documentNumber'), default='1'))
+    doc_number = re.sub(r'\D+', '', raw_doc_number) or re.sub(r'[^0-9A-Za-z]+', '', raw_doc_number) or '1'
+    return f'ON_AKTREZRABP_0000000000000_{contractor_inn}_{file_date.replace('-', '')}_{doc_number.zfill(3)}'
+
+
+def project_payload_to_single_ks2_sheet(data: dict, sheet_index: int) -> dict:
+    ks2_sheets = data.get('ks2Sheets', []) or []
+    if not (0 <= sheet_index < len(ks2_sheets)):
+        raise IndexError(f'KS2 sheet index out of range: {sheet_index}')
+
+    projected = copy.deepcopy(data)
+    target_sheet = copy.deepcopy(ks2_sheets[sheet_index])
+    target_sheet['sheetIndex'] = 0
+    projected['ks2Sheets'] = [target_sheet]
+
+    ks3 = projected.setdefault('ks3', {})
+    original_ks3 = data.get('ks3', {}) or {}
+    ks3_row_map = build_ks3_sheet_map(ks2_sheets, original_ks3.get('rows', []))
+    matched_ks3_row = copy.deepcopy(ks3_row_map.get(sheet_index) or {})
+    ks3['rows'] = [matched_ks3_row] if matched_ks3_row else []
+    ks3['totals'] = build_ks3_totals_from_row(matched_ks3_row)
+
+    holdbacks = projected.setdefault('holdbacks', {})
+    original_sections = (data.get('holdbacks', {}) or {}).get('sections', []) or []
+    filtered_sections = select_holdback_sections_for_sheet(original_sections, ks2_sheets[sheet_index])
+    holdbacks['sections'] = filtered_sections
+    holdbacks['totals'] = summarize_holdback_sections(filtered_sections)
+
+    xml = resolve_xml_payload(projected)
+    generated = xml.setdefault('generated', {})
+    manual = xml.setdefault('manual', {})
+    xml['settlement'] = build_sheet_settlement_from_holdback_sections(filtered_sections)
+    generated['fileId'] = build_generated_file_id_for_sheet(generated, manual, ks2_sheets[sheet_index])
+
+    return projected
+
+
+def build_xml_exports_by_ks2_sheet(data: dict):
+    ks2_sheets = data.get('ks2Sheets', []) or []
+    if len(ks2_sheets) <= 1:
+        tree = build_xml(copy.deepcopy(data))
+        xml = resolve_xml_payload(data)
+        generated = xml.get('generated', {}) if isinstance(xml, dict) else {}
+        filename = f"{generated.get('fileId') or 'generated_1110335'}.xml"
+        return [{
+            'sheetIndex': 0,
+            'sheetTitle': first_non_empty((ks2_sheets[0] if ks2_sheets else {}).get('title'), default='КС-2'),
+            'filename': filename,
+            'tree': tree,
+        }]
+
+    exports = []
+    for sheet_index, sheet in enumerate(ks2_sheets):
+        projected = project_payload_to_single_ks2_sheet(data, sheet_index)
+        tree = build_xml(projected)
+        xml = resolve_xml_payload(projected)
+        generated = xml.get('generated', {}) if isinstance(xml, dict) else {}
+        exports.append({
+            'sheetIndex': sheet_index,
+            'sheetTitle': first_non_empty(sheet.get('title'), default=f'КС-2 #{sheet_index + 1}'),
+            'filename': f"{generated.get('fileId') or f'generated_1110335_{sheet_index + 1:02d}'}.xml",
+            'tree': tree,
+        })
+    return exports
 
 
 def build_operation_text(common: dict):
@@ -1150,6 +1370,22 @@ def main():
     input_path = Path(args.input_json)
     output_path = Path(args.output)
     data = load_json(input_path)
+
+    if args.split_by_ks2:
+        output_dir = Path(args.output_dir) if args.output_dir else output_path.parent / f'{input_path.stem}-per-ks2'
+        output_dir.mkdir(parents=True, exist_ok=True)
+        written = []
+        for item in build_xml_exports_by_ks2_sheet(data):
+            target = output_dir / item['filename']
+            item['tree'].write(str(target), encoding='windows-1251', xml_declaration=True, pretty_print=True)
+            written.append(target)
+        print('\n'.join(str(path) for path in written))
+        return
+
+    if args.sheet_index is not None:
+        zero_based_index = args.sheet_index - 1
+        data = project_payload_to_single_ks2_sheet(data, zero_based_index)
+
     tree = build_xml(data)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     tree.write(str(output_path), encoding='windows-1251', xml_declaration=True, pretty_print=True)
