@@ -15,7 +15,6 @@ const refs = {
   addSheet: document.getElementById('add-ks2-sheet'),
   ks2ViewSwitcherSlot: document.getElementById('ks2-view-switcher-slot'),
   toggleHeaders: document.getElementById('toggle-headers'),
-  toggleSignatures: document.getElementById('toggle-signatures'),
   scaleDown: document.getElementById('scale-down'),
   scaleReset: document.getElementById('scale-reset'),
   scaleUp: document.getElementById('scale-up'),
@@ -224,10 +223,6 @@ function bindGlobalEvents() {
 
   refs.toggleHeaders?.addEventListener('click', () => {
     app.state.common.showDocumentHeaders = !app.state.common.showDocumentHeaders;
-    render();
-  });
-  refs.toggleSignatures?.addEventListener('click', () => {
-    app.state.common.showDocumentSignatures = !app.state.common.showDocumentSignatures;
     render();
   });
   refs.scaleDown?.addEventListener('click', () => shiftScale(-1));
@@ -813,10 +808,6 @@ function applyUiPreferences() {
   if (refs.toggleHeaders) {
     refs.toggleHeaders.textContent = app.state.common.showDocumentHeaders ? 'Шапки: вкл' : 'Шапки: выкл';
     refs.toggleHeaders.classList.toggle('is-active', Boolean(app.state.common.showDocumentHeaders));
-  }
-  if (refs.toggleSignatures) {
-    refs.toggleSignatures.textContent = app.state.common.showDocumentSignatures ? 'Подписи: вкл' : 'Подписи: выкл';
-    refs.toggleSignatures.classList.toggle('is-active', Boolean(app.state.common.showDocumentSignatures));
   }
 }
 
