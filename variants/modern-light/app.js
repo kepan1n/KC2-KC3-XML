@@ -1482,24 +1482,12 @@ function renderHoldbacksTotalsBlock(totals) {
   `;
 }
 
-function renderKs2SignatureTable(common) {
-  return `
-    <div class="signature-table">
-      ${renderSignatureRow(common.contractorSignLabel || 'Сдал', common.contractorSignerPosition, common.contractorSignerName)}
-      ${renderSignatureRow(common.customerSignLabel || 'Принял', common.ks2AcceptedPosition, common.ks2AcceptedName)}
-      ${renderSignatureRow(common.ks2CheckedLabel || 'Проверил', common.ks2CheckedPosition, common.ks2CheckedName)}
-    </div>
-  `;
+function renderKs2SignatureTable() {
+  return '';
 }
 
-function renderKs3SignatureTable(common) {
-  return `
-    <div class="signature-table">
-      ${renderSignatureRow('Застройщик', common.ks3DeveloperPosition, common.ks3DeveloperName)}
-      ${renderSignatureRow('Технический Заказчик', common.ks3TechCustomerPosition, common.ks3TechCustomerName)}
-      ${renderSignatureRow('Генподрядчик', common.ks3ContractorPosition, common.ks3ContractorName)}
-    </div>
-  `;
+function renderKs3SignatureTable() {
+  return '';
 }
 
 function renderKs2RowActions(sheetIndex, rowIndex) {
@@ -2125,7 +2113,7 @@ function renderKs3Pane() {
       </div>
 
       ${renderKs3TotalsBlock(totals, vat)}
-      ${app.state.common.showDocumentSignatures ? renderKs3SignatureTable(app.state.common) : ''}
+      
     </div>
   `;
 }
@@ -2222,7 +2210,7 @@ function renderHoldbacksPane(sheetIndex = null) {
       </div>
 
       ${renderHoldbacksTotalsBlock(totals)}
-      ${app.state.common.showDocumentSignatures ? renderKs3SignatureTable(app.state.common) : ''}
+      
     </div>
   `;
 }
