@@ -81,7 +81,9 @@ def normalize_settlement_kind(value, code=None) -> str:
     return 'withhold'
 
 
-def choose_preferred_settlement_row(rows: list[dict], total_claims=0.0, total_retention=0.0) -> dict | None:
+def choose_preferred_settlement_row(rows: list[dict], total_claims=0.0, total_retention=0.0, representative_row: dict | None = None) -> dict | None:
+    if representative_row and safe_float(representative_row.get('amount') or 0, 0.0) > 0:
+        return representative_row
     if not rows:
         return None
 
@@ -1029,8 +1031,9 @@ def build_xml(data: dict) -> ET._ElementTree:
              СумТребВсегоОтч=fmt_money(settlement.get('totalClaims')),
              ВсегоКОплатОтч=fmt_money(holdbacks.get('totals', {}).get('payableAmount') or ks3_totals.get('forPeriod')))
     settlement_rows = [row for row in settlement.get('settlementRows', []) if safe_float(row.get('amount') or 0, 0.0) > 0] or [{'amount': 1, 'kind': 'withhold', 'kindCode': '31'}]
+    representative_row = settlement.get('representativeRow') or None
     aggregated_amount = sum(max(float(row.get('amount') or 0), 0) for row in settlement_rows)
-    preferred_row = choose_preferred_settlement_row(settlement_rows, settlement.get('totalClaims'), settlement.get('totalRetention')) or {'kind': 'withhold', 'kindCode': '31'}
+    preferred_row = choose_preferred_settlement_row(settlement_rows, settlement.get('totalClaims'), settlement.get('totalRetention'), representative_row=representative_row) or {'kind': 'withhold', 'kindCode': '31'}
     preferred_kind = str(preferred_row.get('kindCode') or '31')
     preferred_branch = normalize_settlement_kind(preferred_row.get('kind'), preferred_kind)
     item = ET.SubElement(settlement_el, 'УчетТребУдерж', СумТребУдерж=fmt_money(aggregated_amount if aggregated_amount > 0 else 1))
@@ -1051,7 +1054,7 @@ def build_xml(data: dict) -> ET._ElementTree:
 
     # Для текущего XSD-профиля УчетТребУдерж оставляем агрегированным,
     # но передаем подтверждающий документ из первой релевантной строки удержания/требования.
-    supporting_row = next((row for row in settlement_rows if row.get('documentRef')), None)
+    supporting_row = next((row for row in [preferred_row, *settlement_rows] if row and row.get('documentRef')), None)
     if supporting_row:
         document_ref = str(supporting_row.get('documentRef') or '').strip()
         doc_name = 'Документ-основание удержания' if normalize_settlement_kind(supporting_row.get('kind'), supporting_row.get('kindCode')) == 'withhold' else 'Документ-основание требования'

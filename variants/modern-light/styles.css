@@ -1237,13 +1237,40 @@ body[data-scale="115"] {
   color: var(--muted);
 }
 
+.settlement-preview {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fafc;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.settlement-preview.muted {
+  color: var(--muted);
+}
+
 .table-settlement {
-  min-width: 1040px;
+  min-width: 1120px;
 }
 
 .table-settlement th:last-child,
 .table-settlement td:last-child {
   width: 32px;
+}
+
+.settlement-primary-cell {
+  min-width: 118px;
+}
+
+.settlement-primary-btn {
+  width: 100%;
+}
+
+.settlement-primary-row td {
+  background: #f3fbf6;
 }
 
 .settlement-readonly {
