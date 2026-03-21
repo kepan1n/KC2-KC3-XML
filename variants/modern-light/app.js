@@ -714,6 +714,7 @@ function prepareState(raw) {
       name: row.name ?? '',
       advanceDoc: row.advanceDoc ?? '',
       comment: row.comment ?? '',
+      ks2SheetId: row.ks2SheetId ?? row.linkedKs2SheetId ?? row.sheetId ?? '',
       ks2Amount: numberOrNull(row.ks2Amount),
       materialsUsed: numberOrNull(row.materialsUsed),
       advanceReceived: numberOrNull(row.advanceReceived),
@@ -1088,6 +1089,14 @@ function buildValidationReport(model) {
 
   if (!model.holdbacks.rows.length) {
     pushIssue('warning', 'holdbacks.rows', 'Удержания', 'Нет ни одной строки удержаний');
+  }
+
+  if (model.ks2Sheets.length > 1) {
+    model.holdbacks.sections.forEach((section, index) => {
+      if (!String(section.ks2SheetId || '').trim()) {
+        pushIssue('warning', `holdbacks.sections.${index}.ks2SheetId`, `Удержания: раздел ${index + 1}`, 'Для multi-KS2 лучше явно выбрать лист КС-2 у каждой строки удержаний, чтобы уйти от эвристики при per-sheet XML.');
+      }
+    });
   }
 
   requireValue(model.xml.manual.contractorInn, 'xml.manual.contractorInn', 'ИНН подрядчика', 'warning');
@@ -2411,6 +2420,15 @@ function buildHoldbackGroups() {
   return groups;
 }
 
+function buildHoldbackSheetOptions() {
+  const options = { '': '— авто / не выбрано —' };
+  app.state.ks2Sheets.forEach((sheet, index) => {
+    const docNumber = sheet.documentNumber || sheet.document?.number || index + 1;
+    options[sheet.id] = `КС-2 №${docNumber} — ${sheet.title || `лист ${index + 1}`}`;
+  });
+  return options;
+}
+
 function renderHoldbackGroup(group) {
   const { section, subitems } = group;
   const sectionComputed = computeHoldbackSectionComputed(group);
@@ -2450,7 +2468,15 @@ function renderHoldbackGroup(group) {
 
 function renderHoldbackSectionCells(rowIndex, row, computed) {
   return `
-    <td class="holdback-section-cell holdback-section-title"><textarea data-path="holdbacks.rows.${rowIndex}.name" placeholder="Наименование раздела / акта">${escapeHtml(row.name)}</textarea></td>
+    <td class="holdback-section-cell holdback-section-title">
+      <textarea data-path="holdbacks.rows.${rowIndex}.name" placeholder="Наименование раздела / акта">${escapeHtml(row.name)}</textarea>
+      <div class="holdback-sheet-link">
+        <label>Лист КС-2</label>
+        <select data-path="holdbacks.rows.${rowIndex}.ks2SheetId">
+          ${renderOptions(Object.keys(buildHoldbackSheetOptions()), row.ks2SheetId || '', buildHoldbackSheetOptions())}
+        </select>
+      </div>
+    </td>
     <td class="holdback-section-cell"><input data-path="holdbacks.rows.${rowIndex}.ks2Amount" data-value-type="number" value="${formatEditableNumber(row.ks2Amount)}" /></td>
     <td class="holdback-section-cell"><input data-path="holdbacks.rows.${rowIndex}.materialsUsed" data-value-type="number" value="${formatEditableNumber(row.materialsUsed)}" /></td>
   `;
@@ -2740,6 +2766,7 @@ function createBlankHoldbackRow(kind = 'section') {
   return {
     kind,
     name: '',
+    ks2SheetId: kind === 'section' && app.state?.ks2Sheets?.length === 1 ? app.state.ks2Sheets[0].id : '',
     ks2Amount: null,
     materialsUsed: null,
     advanceReceived: null,
