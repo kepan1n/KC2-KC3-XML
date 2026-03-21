@@ -1853,7 +1853,6 @@ function renderKs2Pane(sheetIndex) {
 
         ${renderHoldbacksPane(sheetIndex)}
         ${renderKs2TotalsBlock(sheet, totals)}
-        ${app.state.common.showDocumentSignatures ? renderKs2SignatureTable(app.state.common) : ''}
       `}
     </div>
   `;
