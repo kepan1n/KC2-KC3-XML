@@ -2,7 +2,7 @@ const STORAGE_KEY = 'kc2kc3-web-form-v1';
 
 const refs = {
   appShell: document.getElementById('app-shell'),
-  sidebar: document.getElementById('sidebar'),
+  navStrip: document.getElementById('nav-strip'),
   content: document.getElementById('content'),
   stats: document.getElementById('stats'),
   flash: document.getElementById('flash'),
@@ -13,7 +13,6 @@ const refs = {
   exportJson: document.getElementById('export-json'),
   exportXml: document.getElementById('export-xml'),
   addSheet: document.getElementById('add-ks2-sheet'),
-  toggleSidebar: document.getElementById('toggle-sidebar'),
   toggleHeaders: document.getElementById('toggle-headers'),
   toggleSignatures: document.getElementById('toggle-signatures'),
   scaleDown: document.getElementById('scale-down'),
@@ -222,10 +221,6 @@ function bindGlobalEvents() {
     flash('Добавлен новый лист КС-2.');
   });
 
-  refs.toggleSidebar?.addEventListener('click', () => {
-    app.state.ui.sidebarOpen = !(app.state.ui.sidebarOpen ?? true);
-    render();
-  });
   refs.toggleHeaders?.addEventListener('click', () => {
     app.state.common.showDocumentHeaders = !app.state.common.showDocumentHeaders;
     render();
@@ -245,7 +240,7 @@ function bindGlobalEvents() {
     render();
   });
 
-  refs.sidebar.addEventListener('click', (event) => {
+  refs.navStrip?.addEventListener('click', (event) => {
     const button = event.target.closest('[data-pane]');
     if (!button) return;
     app.state.ui.activePane = button.dataset.pane;
@@ -649,7 +644,6 @@ function prepareState(raw) {
   data.ui.activePane ??= 'requisites';
   data.ui.scale = normalizeScale(data.ui.scale ?? 100);
   data.ui.compactRows = data.ui.compactRows ?? true;
-  data.ui.sidebarOpen = data.ui.sidebarOpen ?? true;
   data.ui.rowActionMenu ??= null;
   data.ui.rowDeleteConfirm ??= null;
   data.ui.ks3RowActionMenu ??= null;
@@ -789,7 +783,7 @@ function prepareState(raw) {
 
 function render() {
   applyUiPreferences();
-  renderSidebar();
+  renderNavStrip();
   renderStats();
   renderContent();
   applyColumnWidths();
@@ -798,11 +792,9 @@ function render() {
 function applyUiPreferences() {
   document.body.dataset.scale = String(normalizeScale(app.state.ui.scale));
   document.body.dataset.density = app.state.ui.compactRows ? 'compact' : 'comfortable';
-  document.body.dataset.sidebar = app.state.ui.sidebarOpen ? 'open' : 'closed';
 
   if (refs.scaleReset) refs.scaleReset.textContent = `${normalizeScale(app.state.ui.scale)}%`;
   if (refs.densityCompact) refs.densityCompact.checked = Boolean(app.state.ui.compactRows);
-  if (refs.toggleSidebar) refs.toggleSidebar.textContent = app.state.ui.sidebarOpen ? 'Скрыть меню' : 'Показать меню';
   if (refs.toggleHeaders) {
     refs.toggleHeaders.textContent = app.state.common.showDocumentHeaders ? 'Шапки: вкл' : 'Шапки: выкл';
     refs.toggleHeaders.classList.toggle('is-active', Boolean(app.state.common.showDocumentHeaders));
@@ -898,45 +890,32 @@ function handleResizeStart(event) {
   document.addEventListener('mouseup', onUp);
 }
 
-function renderSidebar() {
+function renderNavStrip() {
   const active = app.state.ui.activePane;
+  const primaryButtons = [
+    { pane: 'requisites', label: 'Реквизиты' },
+    { pane: 'ks3', label: 'КС-3' },
+    { pane: 'holdbacks', label: 'Удержания' },
+    { pane: 'xml', label: 'XML' },
+  ].map((item) => `
+    <button class="nav-chip ${active === item.pane ? 'active' : ''}" data-pane="${item.pane}" title="${escapeAttr(item.label)}">${escapeHtml(item.label)}</button>
+  `).join('');
+
   const ks2Buttons = app.state.ks2Sheets.map((sheet, index) => {
-    const totals = computeSheetTotals(sheet);
+    const docNo = sheet.documentNumber || index + 1;
+    const title = sheet.title || `Лист КС-2 #${index + 1}`;
     return `
-      <button class="nav-button ${active === `ks2:${index}` ? 'active' : ''}" data-pane="ks2:${index}">
-        ${escapeHtml(sheet.title || `Лист КС-2 #${index + 1}`)}
-        <span class="nav-meta">${formatMoney(totals.gross)} · строк: ${sheet.rows.length}</span>
-      </button>
+      <button class="nav-chip ${active === `ks2:${index}` ? 'active' : ''}" data-pane="ks2:${index}" title="${escapeAttr(`${title} · №${docNo}`)}">КС-2 №${escapeHtml(String(docNo))}</button>
     `;
   }).join('');
 
-  refs.sidebar.innerHTML = `
-    <div class="nav-section">
-      <p class="nav-title">Основное</p>
-      <div class="nav-list">
-        <button class="nav-button ${active === 'requisites' ? 'active' : ''}" data-pane="requisites">
-          Реквизиты и шапка
-          <span class="nav-meta">Общие данные проекта и сторон</span>
-        </button>
-        <button class="nav-button ${active === 'ks3' ? 'active' : ''}" data-pane="ks3">
-          КС-3 сводка
-          <span class="nav-meta">Автосвод по листам КС-2</span>
-        </button>
-        <button class="nav-button ${active === 'holdbacks' ? 'active' : ''}" data-pane="holdbacks">
-          Удержания
-          <span class="nav-meta">Авансы, 3%, к оплате</span>
-        </button>
-        <button class="nav-button ${active === 'xml' ? 'active' : ''}" data-pane="xml">
-          Доп. поля для XML
-          <span class="nav-meta">Поля вне Excel, нужные для 1110335</span>
-        </button>
-      </div>
+  refs.navStrip.innerHTML = `
+    <div class="nav-strip-group">
+      ${primaryButtons}
     </div>
-    <div class="nav-section">
-      <p class="nav-title">Листы КС-2</p>
-      <div class="nav-list">
-        ${ks2Buttons}
-      </div>
+    <div class="nav-strip-divider"></div>
+    <div class="nav-strip-group nav-strip-group-scroll">
+      ${ks2Buttons}
     </div>
   `;
 }
