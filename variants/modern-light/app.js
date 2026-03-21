@@ -452,7 +452,9 @@ function handleContentClick(event) {
   }
 
   if (action === 'add-holdback-row') {
-    app.state.holdbacks.rows.push(createBlankHoldbackRow('section'));
+    const targetSheetIndex = Number(actionButton.dataset.sheetIndex);
+    const targetSheetId = app.state.ks2Sheets[targetSheetIndex]?.id || '';
+    app.state.holdbacks.rows.push(createBlankHoldbackRow('section', targetSheetId));
     render();
     return;
   }
@@ -467,7 +469,8 @@ function handleContentClick(event) {
 
   if (action === 'insert-holdback-section') {
     const idx = Number(holdIndex);
-    app.state.holdbacks.rows.splice(idx + 1, 0, createBlankHoldbackRow('section'));
+    const targetSheetId = app.state.holdbacks.rows[idx]?.ks2SheetId || '';
+    app.state.holdbacks.rows.splice(idx + 1, 0, createBlankHoldbackRow('section', targetSheetId));
     app.state.ui.holdbackActionMenu = null;
     render();
     return;
@@ -481,7 +484,8 @@ function handleContentClick(event) {
     while (insertAt < app.state.holdbacks.rows.length && (app.state.holdbacks.rows[insertAt].kind || 'section') === 'subitem') {
       insertAt += 1;
     }
-    app.state.holdbacks.rows.splice(insertAt, 0, createBlankHoldbackRow('subitem'));
+    const targetSheetId = app.state.holdbacks.rows[sectionIndex]?.ks2SheetId || '';
+    app.state.holdbacks.rows.splice(insertAt, 0, createBlankHoldbackRow('subitem', targetSheetId));
     app.state.ui.holdbackActionMenu = null;
     render();
     return;
@@ -644,6 +648,9 @@ function prepareState(raw) {
   const data = clone(raw);
   data.ui ??= {};
   data.ui.activePane ??= 'requisites';
+  if (data.ui.activePane === 'ks3' || data.ui.activePane === 'holdbacks') {
+    data.ui.activePane = 'requisites';
+  }
   data.ui.scale = normalizeScale(data.ui.scale ?? 100);
   data.ui.compactRows = data.ui.compactRows ?? true;
   data.ui.rowActionMenu ??= null;
@@ -904,8 +911,6 @@ function renderNavStrip() {
   const active = app.state.ui.activePane;
   const primaryButtons = [
     { pane: 'requisites', label: 'Реквизиты' },
-    { pane: 'ks3', label: 'КС-3' },
-    { pane: 'holdbacks', label: 'Удержания' },
     { pane: 'xml', label: 'XML' },
   ].map((item) => `
     <button class="nav-chip ${active === item.pane ? 'active' : ''}" data-pane="${item.pane}" title="${escapeAttr(item.label)}">${escapeHtml(item.label)}</button>
@@ -942,8 +947,6 @@ function renderContent() {
   let html = '';
 
   if (pane === 'requisites') html = renderRequisitesPane();
-  else if (pane === 'ks3') html = renderKs3Pane();
-  else if (pane === 'holdbacks') html = renderHoldbacksPane();
   else if (pane === 'xml') html = renderXmlPane();
   else if (pane.startsWith('ks2:')) html = renderKs2Pane(Number(pane.split(':')[1]));
   else html = '<div class="panel"><div class="empty-state">Не удалось открыть выбранную вкладку.</div></div>';
@@ -1055,15 +1058,9 @@ function buildDocumentModel() {
     common: clone(app.state.common),
     ks2Sheets,
     ks3: {
-      document: {
-        title: app.state.ks3.title,
-        documentNumber: app.state.ks3.documentNumber,
-        documentDate: app.state.ks3.documentDate,
-        periodFrom: app.state.ks3.periodFrom,
-        periodTo: app.state.ks3.periodTo,
-      },
-      rows: ks3Rows,
-      totals: ks3Totals,
+      document: {},
+      rows: [],
+      totals: {},
     },
     holdbacks: {
       rows: holdbacksRows,
@@ -1796,6 +1793,7 @@ function renderKs2Pane(sheetIndex) {
           </div>
         </div>
 
+        ${renderHoldbacksPane(sheetIndex)}
         ${renderKs2TotalsBlock(sheet, totals)}
         ${app.state.common.showDocumentSignatures ? renderKs2SignatureTable(app.state.common) : ''}
       `}
@@ -2075,10 +2073,10 @@ function renderKs3Pane() {
   `;
 }
 
-function renderHoldbacksPane() {
-  const groups = buildHoldbackGroups();
-  const settlement = buildHoldbacksXmlSettlementModel();
-  const rows = groups.map((group) => renderHoldbackGroup(group)).join('') + renderInlineSettlementRows(settlement);
+function renderHoldbacksPane(sheetIndex = null) {
+  const targetSheetId = sheetIndex == null ? null : app.state.ks2Sheets[sheetIndex]?.id;
+  const groups = buildHoldbackGroups(targetSheetId);
+  const rows = groups.map((group) => renderHoldbackGroup(group)).join('');
 
   const totals = groups.reduce((acc, group) => {
     const sectionRow = group.section.row;
@@ -2099,18 +2097,17 @@ function renderHoldbacksPane() {
       <div class="panel-header">
         <div>
           <h2 class="panel-title">Удержания и авансы</h2>
-          <p class="panel-subtitle">Сложная таблица удержаний приближена к Excel: разделы, подпункты внутри раздела, отдельные итоги и действия по строкам. Ручные <code>ВидТреб</code> / <code>ВидУдерж</code> теперь встраиваются в эту же таблицу ниже.</p>
+          <p class="panel-subtitle">Гарантийное удержание по этому листу КС-2 идет первой строкой, ниже — все записи по авансам и их закрытию из Excel.</p>
         </div>
         <div class="panel-header-actions">
-          <button class="mini" data-action="add-holdback-row">+ Раздел</button>
-          ${renderSettlementAddMenu()}
+          <button class="mini" data-action="add-holdback-row" ${sheetIndex == null ? '' : `data-sheet-index="${sheetIndex}"`}>+ Раздел удержаний</button>
         </div>
       </div>
 
       ${app.state.common.showDocumentHeaders ? `
         <div class="excel-frame excel-frame-tight">
           <div class="excel-frame-title">Расчет суммы погашения авансов и гарантийного удержания</div>
-          <div class="excel-frame-subtitle">за период ${escapeHtml(app.state.ks3?.periodTo || '')}</div>
+          <div class="excel-frame-subtitle">за период ${escapeHtml(sheetIndex == null ? '' : (app.state.ks2Sheets[sheetIndex]?.periodTo || ''))}</div>
           <div class="excel-basis-row">
             <span class="excel-basis-label">Объект:</span>
             <div class="excel-basis-value">${escapeHtml(app.state.common.objectName || app.state.common.constructionObject || '')}</div>
@@ -2526,7 +2523,7 @@ function findHoldbackSectionIndex(index) {
   return current;
 }
 
-function buildHoldbackGroups() {
+function buildHoldbackGroups(sheetId = null) {
   const groups = [];
   let currentGroup = null;
 
@@ -2540,7 +2537,8 @@ function buildHoldbackGroups() {
     currentGroup.subitems.push({ row, index });
   });
 
-  return groups;
+  if (!sheetId) return groups;
+  return groups.filter((group) => String(group.section.row.ks2SheetId || '') === String(sheetId));
 }
 
 function buildHoldbackSheetOptions() {
@@ -2883,11 +2881,11 @@ function createBlankRow(type = 'item', overrides = {}) {
   };
 }
 
-function createBlankHoldbackRow(kind = 'section') {
+function createBlankHoldbackRow(kind = 'section', ks2SheetId = '') {
   return {
     kind,
     name: '',
-    ks2SheetId: kind === 'section' && app.state?.ks2Sheets?.length === 1 ? app.state.ks2Sheets[0].id : '',
+    ks2SheetId: ks2SheetId || (kind === 'section' && app.state?.ks2Sheets?.length === 1 ? app.state.ks2Sheets[0].id : ''),
     ks2Amount: null,
     materialsUsed: null,
     advanceReceived: null,
