@@ -868,6 +868,29 @@ button.secondary {
   margin: 0;
 }
 
+.holdback-summary-block {
+  margin-top: 18px;
+}
+
+.holdback-summary-header {
+  margin-bottom: 10px;
+}
+
+.xml-preview-focus-block {
+  margin-bottom: 14px;
+}
+
+.xml-preview-focus-title {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.xml-preview-code-compact {
+  max-height: 22vh;
+}
+
 .holdback-comment-cell textarea {
   min-height: 40px;
 }

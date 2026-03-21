@@ -1588,6 +1588,68 @@ function renderKs2ViewSwitcher(sheetIndex) {
   `;
 }
 
+
+function extractXmlBlock(xmlText, tagName) {
+  if (!xmlText) return '';
+  const start = xmlText.indexOf(`<${tagName}`);
+  const endTag = `</${tagName}>`;
+  const end = xmlText.indexOf(endTag);
+  if (start === -1 || end === -1) return '';
+  return xmlText.slice(start, end + endTag.length).trim();
+}
+
+function buildHoldbackSheetSummary(groups) {
+  return groups.reduce((acc, group) => {
+    const computed = computeHoldbackSectionComputed(group);
+    acc.workAmount += numberOrZero(group.section.row.ks2Amount);
+    acc.guaranteeAmount += numberOrZero(computed.retentionAmount);
+    acc.advanceClosing += numberOrZero(computed.closingAmount);
+    acc.payableAmount += numberOrZero(computed.payableAmount);
+    if (!acc.retentionDocName && (group.section.row.retentionDocName || group.section.row.retentionDocNumber || group.section.row.retentionDocDate)) {
+      acc.retentionDocName = group.section.row.retentionDocName || '';
+      acc.retentionDocNumber = group.section.row.retentionDocNumber || '';
+      acc.retentionDocDate = group.section.row.retentionDocDate || '';
+      acc.retentionDocExtra = group.section.row.retentionDocExtra || '';
+    }
+    return acc;
+  }, {
+    workAmount: 0,
+    guaranteeAmount: 0,
+    advanceClosing: 0,
+    payableAmount: 0,
+    retentionDocName: '',
+    retentionDocNumber: '',
+    retentionDocDate: '',
+    retentionDocExtra: '',
+  });
+}
+
+function renderHoldbackSheetSummary(summary) {
+  const formula = `${formatMoney(summary.workAmount)} − ${formatMoney(summary.guaranteeAmount)} − ${formatMoney(summary.advanceClosing)} = ${formatMoney(summary.payableAmount)}`;
+  const docParts = [summary.retentionDocName, summary.retentionDocNumber, summary.retentionDocDate, summary.retentionDocExtra].filter(Boolean);
+  return `
+    <div class="holdback-summary-block section-block">
+      <div class="panel-header holdback-summary-header">
+        <div>
+          <h3>Как сейчас собирается СвОРасч</h3>
+          <p class="kbd-note">Итог к оплате считается как сумма работ по листу КС-2 минус гарантийное удержание минус все суммы закрытия по платежкам.</p>
+        </div>
+      </div>
+      <div class="summary-grid settlement-summary-grid">
+        <div class="summary-card"><span>Сумма работ по КС-2</span><strong>${formatMoney(summary.workAmount)}</strong></div>
+        <div class="summary-card"><span>Гарантийное удержание 32</span><strong>${formatMoney(summary.guaranteeAmount)}</strong></div>
+        <div class="summary-card"><span>Закрытие авансов 31</span><strong>${formatMoney(summary.advanceClosing)}</strong></div>
+        <div class="summary-card"><span>Итого к оплате</span><strong>${formatMoney(summary.payableAmount)}</strong></div>
+      </div>
+      <div class="settlement-preview ${docParts.length ? '' : 'muted'}">
+        <strong>Формула:</strong>
+        <span>${formula}</span>
+        ${docParts.length ? `<br /><strong>Документ по 32:</strong> ${escapeHtml(docParts.join(' · '))}` : ''}
+      </div>
+    </div>
+  `;
+}
+
 function renderKs2XmlPreviewPane(sheetIndex, sheet) {
   const preview = app.state.ui.ks2XmlPreview?.[String(sheetIndex)] || null;
   if (!preview || preview.status === 'loading') {
@@ -1620,6 +1682,8 @@ function renderKs2XmlPreviewPane(sheetIndex, sheet) {
     `;
   }
 
+  const settlementBlock = extractXmlBlock(preview.xmlText || '', 'СвОРасч');
+
   return `
     <div class="section-block xml-preview-block">
       <div class="xml-preview-header">
@@ -1634,6 +1698,12 @@ function renderKs2XmlPreviewPane(sheetIndex, sheet) {
         <span>${preview.updatedAt ? `Обновлено: ${new Date(preview.updatedAt).toLocaleTimeString('ru-RU')}` : ''}</span>
       </div>
       ${preview.errors?.length ? `<div class="xml-preview-errors">${preview.errors.map((err) => `<div>строка ${err.line}: ${escapeHtml(err.message)}</div>`).join('')}</div>` : ''}
+      ${settlementBlock ? `
+        <div class="xml-preview-focus-block">
+          <div class="xml-preview-focus-title">Финальный блок СвОРасч</div>
+          <pre class="xml-preview-code xml-preview-code-compact"><code>${escapeHtml(settlementBlock)}</code></pre>
+        </div>
+      ` : ''}
       <pre class="xml-preview-code"><code>${escapeHtml(preview.xmlText || '')}</code></pre>
     </div>
   `;
