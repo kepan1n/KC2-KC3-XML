@@ -4,3 +4,5 @@ __pycache__/
 output/*.xml
 data/defaults.json
 .runtime/
+output/
+nalog docs/~$*.xlsx
