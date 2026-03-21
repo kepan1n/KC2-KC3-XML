@@ -783,6 +783,10 @@ function prepareState(raw) {
       retentionAmount: numberOrNull(row.retentionAmount),
       payableAmount: numberOrNull(row.payableAmount),
       retentionRate: numberOrNull(retentionRate),
+      retentionDocName: row.retentionDocName ?? 'Дополнительное соглашение о гарантийном удержании',
+      retentionDocNumber: row.retentionDocNumber ?? '',
+      retentionDocDate: row.retentionDocDate ?? '',
+      retentionDocExtra: row.retentionDocExtra ?? 'Гарантийное удержание 3% от стоимости работ',
     };
   });
 
@@ -2595,11 +2599,18 @@ function renderHoldbackSectionCells(rowIndex, row, computed) {
         <label>Лист КС-2</label>
         ${renderTableSelect(`holdbacks.rows.${rowIndex}.ks2SheetId`, row.ks2SheetId || '', buildHoldbackSheetOptions())}
       </div>
+      <div class="holdback-doc-grid">
+        ${renderInput('Документ гарантийного удержания', `holdbacks.rows.${rowIndex}.retentionDocName`, row.retentionDocName, 'string', 'half')}
+        ${renderInput('Номер документа', `holdbacks.rows.${rowIndex}.retentionDocNumber`, row.retentionDocNumber, 'string', 'quarter')}
+        ${renderInput('Дата документа', `holdbacks.rows.${rowIndex}.retentionDocDate`, row.retentionDocDate, 'string', 'quarter')}
+        ${renderTextarea('Доп. сведения документа', `holdbacks.rows.${rowIndex}.retentionDocExtra`, row.retentionDocExtra, 'half')}
+      </div>
     </td>
     <td class="holdback-section-cell">${renderTableInput(`holdbacks.rows.${rowIndex}.ks2Amount`, formatEditableNumber(row.ks2Amount), 'number')}</td>
     <td class="holdback-section-cell">${renderTableInput(`holdbacks.rows.${rowIndex}.materialsUsed`, formatEditableNumber(row.materialsUsed), 'number')}</td>
   `;
 }
+
 
 function renderHoldbackSectionMiddleCells(rowIndex, computed, subitemCount) {
   // Логика Excel для раздела удержаний:
@@ -2896,6 +2907,10 @@ function createBlankHoldbackRow(kind = 'section', ks2SheetId = '') {
     retentionAmount: null,
     payableAmount: null,
     retentionRate: 3,
+    retentionDocName: 'Дополнительное соглашение о гарантийном удержании',
+    retentionDocNumber: '',
+    retentionDocDate: '',
+    retentionDocExtra: 'Гарантийное удержание 3% от стоимости работ',
     comment: '',
   };
 }

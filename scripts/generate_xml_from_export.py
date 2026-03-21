@@ -610,56 +610,106 @@ def summarize_holdback_sections(sections: list[dict]) -> dict:
 
 
 def build_sheet_settlement_from_holdback_sections(sections: list[dict]) -> dict:
-    rows = []
-    total_retention = 0.0
-    total_claims = 0.0
+    guarantee_total = 0.0
+    advance_received_total = 0.0
+    advance_previous_total = 0.0
+    advance_close_total = 0.0
+    advance_next_total = 0.0
+    payable_total = 0.0
+    guarantee_doc = {
+        'name': 'Дополнительное соглашение о гарантийном удержании',
+        'number': '',
+        'date': None,
+        'extra': 'Гарантийное удержание 3% от стоимости работ',
+    }
+    payment_rows = []
 
-    for section in sections or []:
+    for section_index, section in enumerate(sections or [], start=1):
+        section_name = first_non_empty(section.get('name'), default=f'Раздел {section_index}')
         retention_amount = safe_float(section.get('retentionAmount'), 0.0)
-        section_name = first_non_empty(section.get('name'), default='')
+        retention_rate = safe_float(section.get('retentionRate'), 0.0)
+        section_amount = safe_float(section.get('ks2Amount'), 0.0)
         section_comment = first_non_empty(section.get('comment'), default='')
+        closing_sum = 0.0
+
         if retention_amount > 0:
-            rows.append({
-                'source': 'section-retention',
-                'kind': 'withhold',
-                'kindCode': '32',
-                'sectionName': section_name,
-                'amount': retention_amount,
-                'documentRef': '',
-                'customKindText': '',
-                'comment': section_comment,
-            })
-            total_retention += retention_amount
+            guarantee_total += retention_amount
+            if not guarantee_doc['number']:
+                guarantee_doc['name'] = first_non_empty(section.get('retentionDocName'), guarantee_doc['name'])
+                guarantee_doc['number'] = first_non_empty(section.get('retentionDocNumber'), default='')
+                guarantee_doc['date'] = first_non_empty(section.get('retentionDocDate'))
+                guarantee_doc['extra'] = first_non_empty(section.get('retentionDocExtra'), section_comment, guarantee_doc['extra'])
 
-        for subitem in section.get('subitems', []) or []:
+        for payment_index, subitem in enumerate(section.get('subitems', []) or [], start=1):
+            advance_received = safe_float(subitem.get('advanceReceived'), 0.0)
+            previous_balance = safe_float(subitem.get('previousBalance'), 0.0)
             closing_amount = safe_float(subitem.get('closingAmount'), 0.0)
-            if closing_amount <= 0:
+            next_balance = safe_float(subitem.get('nextBalance'), 0.0)
+            doc_ref = first_non_empty(subitem.get('advanceDoc'), default='')
+            note = first_non_empty(subitem.get('comment'), default='')
+            has_payload = any([
+                advance_received > 0,
+                previous_balance > 0,
+                closing_amount > 0,
+                next_balance > 0,
+                doc_ref,
+                note,
+            ])
+            if not has_payload:
                 continue
-            rows.append({
-                'source': 'subitem-advance-closing',
-                'kind': 'withhold',
-                'kindCode': '31',
-                'sectionName': section_name,
-                'amount': closing_amount,
-                'documentRef': first_non_empty(subitem.get('advanceDoc'), default=''),
-                'customKindText': '',
-                'comment': first_non_empty(subitem.get('comment'), section_comment, default=''),
-            })
-            total_retention += closing_amount
 
-    structured_rows = [row for row in rows if str(row.get('kindCode') or '') == '32'] or rows
-    representative_row = choose_preferred_settlement_row(structured_rows, total_claims, total_retention)
+            advance_received_total += advance_received
+            advance_previous_total += previous_balance
+            advance_close_total += closing_amount
+            advance_next_total += next_balance
+            closing_sum += closing_amount
+            payment_rows.append({
+                'sectionNo': section_index,
+                'paymentNo': len(payment_rows) + 1,
+                'sectionName': section_name,
+                'documentRef': doc_ref,
+                'advanceReceived': advance_received,
+                'previousBalance': previous_balance,
+                'closingAmount': closing_amount,
+                'nextBalance': next_balance,
+                'comment': note,
+            })
+
+        section_payable = safe_float(section.get('payableAmount'), section_amount - retention_amount - closing_sum)
+        payable_total += max(round(section_payable, 2), 0.0)
+
+    settlement_rows = []
+    representative_row = None
+    if guarantee_total > 0:
+        representative_row = {
+            'source': 'guarantee-retention',
+            'kind': 'withhold',
+            'kindCode': '32',
+            'amount': round(guarantee_total, 2),
+            'documentRef': first_non_empty(guarantee_doc.get('number'), default=''),
+            'documentName': guarantee_doc.get('name'),
+            'documentDate': guarantee_doc.get('date'),
+            'documentExtra': guarantee_doc.get('extra'),
+            'customKindText': '',
+            'comment': guarantee_doc.get('extra') or '',
+        }
+        settlement_rows.append(representative_row)
+
     return {
-        'totalRetention': round(total_retention, 2),
-        'totalClaims': round(total_claims, 2),
-        'settlementRows': structured_rows,
-        'autoRows': rows,
+        'totalRetention': round(guarantee_total + advance_close_total, 2),
+        'totalClaims': 0.0,
+        'totalGuaranteeRetention': round(guarantee_total, 2),
+        'totalAdvanceClose': round(advance_close_total, 2),
+        'totalAdvanceReceived': round(advance_received_total, 2),
+        'totalAdvancePrevious': round(advance_previous_total, 2),
+        'totalAdvanceNext': round(advance_next_total, 2),
+        'totalPayable': round(payable_total, 2),
+        'paymentRows': payment_rows,
+        'settlementRows': settlement_rows,
+        'autoRows': settlement_rows,
         'manualRows': [],
         'representativeRow': representative_row,
     }
-
-
-SETTLEMENT_INFO_SCHEMA = 'RETENTION_FMT1'
 
 
 def build_ks3_totals_from_row(row: dict | None) -> dict:
@@ -676,128 +726,27 @@ def build_settlement_info_blocks(holdback_sections: list[dict], sheet: dict | No
     if not holdback_sections:
         return []
 
-    sheet = sheet or {}
-    sheet_doc = sheet.get('document', {})
-    sheet_number = first_non_empty(sheet_doc.get('number'), sheet.get('documentNumber'), default='1')
     blocks: list[list[tuple[str, str | None]]] = []
-
-    total_ret32 = 0.0
-    total_adv31_close = 0.0
-    total_adv31_in = 0.0
-    total_adv31_prev = 0.0
-    total_adv31_next = 0.0
-    total_adv31_docs = 0
+    summary = build_sheet_settlement_from_holdback_sections(holdback_sections)
 
     blocks.append([
-        ('RET_SCHEMA', SETTLEMENT_INFO_SCHEMA),
-        ('RET_BLOCK', 'RET_META'),
-        ('KS2_ID', first_non_empty(sheet.get('id'))),
-        ('KS2_NO', str(sheet_number)),
-        ('KS2_DT', fmt_date(first_non_empty(sheet_doc.get('date'), sheet.get('documentDate'))) if first_non_empty(sheet_doc.get('date'), sheet.get('documentDate')) else None),
-        ('KS2_TITLE', first_non_empty(sheet.get('title'))),
-        ('KS2_BASIS', first_non_empty(sheet_doc.get('basis'), sheet.get('basis'))),
+        ('AVANS_TOTAL_RECEIVED_RUB', fmt_money(summary.get('totalAdvanceReceived'))),
+        ('AVANS_TOTAL_PREVIOUS_BALANCE_RUB', fmt_money(summary.get('totalAdvancePrevious'))),
+        ('AVANS_TOTAL_CLOSING_RUB', fmt_money(summary.get('totalAdvanceClose'))),
+        ('AVANS_TOTAL_NEXT_BALANCE_RUB', fmt_money(summary.get('totalAdvanceNext'))),
     ])
 
-    for section_index, section in enumerate(holdback_sections, start=1):
-        section_name = first_non_empty(section.get('name'), default=f'Раздел {section_index}')
-        section_comment = first_non_empty(section.get('comment'), default='')
-        retention_amount = safe_float(section.get('retentionAmount'), 0.0)
-        retention_rate = safe_float(section.get('retentionRate'), 0.0)
-        ks2_amount = safe_float(section.get('ks2Amount'), 0.0)
-        materials_used = safe_float(section.get('materialsUsed'), 0.0)
-        payable_amount = safe_float(section.get('payableAmount'), 0.0)
-
-        if retention_amount > 0 or ks2_amount > 0:
-            blocks.append([
-                ('RET_SCHEMA', SETTLEMENT_INFO_SCHEMA),
-                ('RET_BLOCK', 'RET32_SEC'),
-                ('RET_KIND', '32'),
-                ('RET_SEC_NO', str(section_index)),
-                ('RET_SEC_NAME', section_name),
-                ('RET32_RATE', fmt_money(retention_rate)),
-                ('RET32_BASE', fmt_money(ks2_amount)),
-                ('RET32_SUM', fmt_money(retention_amount)),
-                ('RET32_PAY', fmt_money(payable_amount)),
-                ('RET_MATL', fmt_money(materials_used)),
-                ('RET_NOTE', section_comment),
-            ])
-            total_ret32 += retention_amount
-
-        section_adv_in = 0.0
-        section_adv_prev = 0.0
-        section_adv_close = 0.0
-        section_adv_next = 0.0
-        section_doc_count = 0
-
-        for doc_index, subitem in enumerate(section.get('subitems', []) or [], start=1):
-            advance_received = safe_float(subitem.get('advanceReceived'), 0.0)
-            previous_balance = safe_float(subitem.get('previousBalance'), 0.0)
-            closing_amount = safe_float(subitem.get('closingAmount'), 0.0)
-            next_balance = safe_float(subitem.get('nextBalance'), 0.0)
-            doc_ref = first_non_empty(subitem.get('advanceDoc'), default='')
-            note = first_non_empty(subitem.get('comment'), default='')
-            has_content = any([
-                doc_ref,
-                note,
-                advance_received > 0,
-                previous_balance > 0,
-                closing_amount > 0,
-                next_balance > 0,
-            ])
-            if not has_content:
-                continue
-
-            section_adv_in += advance_received
-            section_adv_prev += previous_balance
-            section_adv_close += closing_amount
-            section_adv_next += next_balance
-            section_doc_count += 1
-
-            blocks.append([
-                ('RET_SCHEMA', SETTLEMENT_INFO_SCHEMA),
-                ('RET_BLOCK', 'ADV31_DOC'),
-                ('RET_KIND', '31'),
-                ('RET_SEC_NO', str(section_index)),
-                ('RET_DOC_NO', str(section_doc_count)),
-                ('RET_DOC_REF', doc_ref),
-                ('ADV31_IN', fmt_money(advance_received)),
-                ('ADV31_PREV', fmt_money(previous_balance)),
-                ('ADV31_CLOSE', fmt_money(closing_amount)),
-                ('ADV31_NEXT', fmt_money(next_balance)),
-                ('RET_NOTE', note),
-            ])
-
-        if section_doc_count:
-            blocks.append([
-                ('RET_SCHEMA', SETTLEMENT_INFO_SCHEMA),
-                ('RET_BLOCK', 'ADV31_SUM'),
-                ('RET_KIND', '31'),
-                ('RET_SEC_NO', str(section_index)),
-                ('RET_SEC_NAME', section_name),
-                ('ADV31_DOCS', str(section_doc_count)),
-                ('ADV31_IN', fmt_money(section_adv_in)),
-                ('ADV31_PREV', fmt_money(section_adv_prev)),
-                ('ADV31_CLOSE', fmt_money(section_adv_close)),
-                ('ADV31_NEXT', fmt_money(section_adv_next)),
-                ('RET_NOTE', section_comment),
-            ])
-
-        total_adv31_close += section_adv_close
-        total_adv31_in += section_adv_in
-        total_adv31_prev += section_adv_prev
-        total_adv31_next += section_adv_next
-        total_adv31_docs += section_doc_count
-
-    blocks.insert(1, [
-        ('RET_SCHEMA', SETTLEMENT_INFO_SCHEMA),
-        ('RET_BLOCK', 'RET_TOTAL'),
-        ('RET32_TOTAL', fmt_money(total_ret32)),
-        ('ADV31_TOTAL', fmt_money(total_adv31_close)),
-        ('ADV31_IN_TOT', fmt_money(total_adv31_in)),
-        ('ADV31_PREV_TOT', fmt_money(total_adv31_prev)),
-        ('ADV31_NEXT_TOT', fmt_money(total_adv31_next)),
-        ('ADV31_DOC_CNT', str(total_adv31_docs)),
-    ])
+    for row in summary.get('paymentRows', []):
+        blocks.append([
+            ('AVANS_ROW_NO', str(row.get('paymentNo') or '')),
+            ('AVANS_SECTION', first_non_empty(row.get('sectionName'))),
+            ('AVANS_DOC_REF', first_non_empty(row.get('documentRef'))),
+            ('AVANS_RECEIVED_RUB', fmt_money(row.get('advanceReceived'))),
+            ('AVANS_PREVIOUS_BALANCE_RUB', fmt_money(row.get('previousBalance'))),
+            ('AVANS_CLOSING_RUB', fmt_money(row.get('closingAmount'))),
+            ('AVANS_NEXT_BALANCE_RUB', fmt_money(row.get('nextBalance'))),
+            ('AVANS_NOTE', first_non_empty(row.get('comment'))),
+        ])
 
     return blocks
 
@@ -1403,7 +1352,7 @@ def build_xml(data: dict) -> ET._ElementTree:
     set_attr(settlement_el,
              СумУдержВсегоОтч=fmt_money(settlement.get('totalRetention')),
              СумТребВсегоОтч=fmt_money(settlement.get('totalClaims')),
-             ВсегоКОплатОтч=fmt_money(first_number(holdbacks.get('totals', {}).get('payableAmount'), total_period_with_vat, default=total_period_with_vat)))
+             ВсегоКОплатОтч=fmt_money(first_number(settlement.get('totalPayable'), holdbacks.get('totals', {}).get('payableAmount'), total_period_with_vat, default=total_period_with_vat)))
     settlement_rows = [row for row in settlement.get('settlementRows', []) if safe_float(row.get('amount') or 0, 0.0) > 0] or [{'amount': 1, 'kind': 'withhold', 'kindCode': '31'}]
     representative_row = settlement.get('representativeRow') or None
     aggregated_amount = sum(max(float(row.get('amount') or 0), 0) for row in settlement_rows)
@@ -1428,18 +1377,22 @@ def build_xml(data: dict) -> ET._ElementTree:
 
     # Для текущего XSD-профиля УчетТребУдерж оставляем агрегированным,
     # но передаем подтверждающий документ из первой релевантной строки удержания/требования.
-    supporting_row = next((row for row in [preferred_row, *settlement_rows] if row and row.get('documentRef')), None)
+    supporting_row = preferred_row or next((row for row in settlement_rows if row), None)
     if supporting_row:
-        document_ref = str(supporting_row.get('documentRef') or '').strip()
-        doc_name = 'Документ-основание удержания' if normalize_settlement_kind(supporting_row.get('kind'), supporting_row.get('kindCode')) == 'withhold' else 'Документ-основание требования'
-        doc_number = document_ref or 'Без номера'
-        doc_date = fmt_date(common.get('contractDate'))
+        document_ref = str(first_non_empty(supporting_row.get('documentRef'), supporting_row.get('documentNumber')) or '').strip()
+        doc_name = first_non_empty(supporting_row.get('documentName')) or ('Документ-основание удержания' if normalize_settlement_kind(supporting_row.get('kind'), supporting_row.get('kindCode')) == 'withhold' else 'Документ-основание требования')
+        doc_number = first_non_empty(supporting_row.get('documentNumber'), document_ref, default='Без номера')
+        doc_date = fmt_date(first_non_empty(supporting_row.get('documentDate'), common.get('contractDate')))
+        doc_extra = first_non_empty(supporting_row.get('documentExtra'), supporting_row.get('comment'))
         m = re.search(r'^(.*?)\s+от\s+(\d{2}\.\d{2}\.\d{4})', document_ref)
         if m:
             doc_number = m.group(1).strip() or doc_number
             doc_date = m.group(2)
         doc_block = ET.SubElement(item, 'ДокПодтСумУд')
-        ET.SubElement(doc_block, 'ТипИдДок', НаимДок=doc_name, НомерДок=doc_number, ДатаДок=doc_date)
+        doc_attrs = {'НаимДок': doc_name, 'НомерДок': doc_number, 'ДатаДок': doc_date}
+        if doc_extra:
+            doc_attrs['ДопСведДок'] = str(doc_extra)
+        ET.SubElement(doc_block, 'ТипИдДок', **doc_attrs)
 
     settlement_info_blocks = build_settlement_info_blocks(holdbacks.get('sections', []), first_sheet)
     if settlement_info_blocks:
