@@ -42,6 +42,8 @@ class AppHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == '/api/export-xml':
             return self.handle_export_xml()
+        if parsed.path == '/api/preview-xml-sheet':
+            return self.handle_preview_xml_sheet()
         if parsed.path == '/api/forms/save':
             return self.handle_save_form()
         self.send_error(HTTPStatus.NOT_FOUND, 'Unknown API route')
@@ -120,6 +122,38 @@ class AppHandler(SimpleHTTPRequestHandler):
             except Exception:
                 pass
             self._send_json({'ok': False, 'error': text}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def handle_preview_xml_sheet(self):
+        try:
+            payload = self._read_json()
+        except Exception as exc:
+            self._send_json({'ok': False, 'error': f'Invalid JSON payload: {exc}'}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        try:
+            requested_sheet_index = int(payload.get('sheetIndex', 0))
+            model = payload.get('model') or payload
+            exports = build_xml_exports_by_ks2_sheet(model)
+            item = next((entry for entry in exports if int(entry.get('sheetIndex', -1)) == requested_sheet_index), None)
+            if item is None:
+                raise ValueError(f'KS2 sheet not found: {requested_sheet_index}')
+
+            xml_bytes = ET.tostring(item['tree'], encoding='windows-1251', xml_declaration=True, pretty_print=True)
+            schema = ET.XMLSchema(ET.parse(str(XSD_PATH)))
+            xml_doc = ET.fromstring(xml_bytes)
+            valid = schema.validate(xml_doc)
+            errors = [{'line': err.line, 'message': err.message} for err in schema.error_log] if not valid else []
+            self._send_json({
+                'ok': True,
+                'sheetIndex': item['sheetIndex'],
+                'sheetTitle': item['sheetTitle'],
+                'filename': item['filename'],
+                'valid': valid,
+                'errors': errors,
+                'xmlText': xml_bytes.decode('cp1251', errors='replace'),
+            })
+        except Exception as exc:
+            self._send_json({'ok': False, 'error': str(exc)}, status=HTTPStatus.BAD_REQUEST)
 
     def handle_save_form(self):
         try:

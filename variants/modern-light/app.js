@@ -315,6 +315,20 @@ function handleContentClick(event) {
     return;
   }
 
+  if (action === 'set-ks2-view-mode') {
+    const idx = Number(sheetIndex);
+    const mode = actionButton.dataset.mode === 'xml' ? 'xml' : 'form';
+    app.state.ui.ks2ViewMode[idx] = mode;
+    render();
+    if (mode === 'xml') loadKs2XmlPreview(idx, true);
+    return;
+  }
+
+  if (action === 'refresh-ks2-xml-preview') {
+    loadKs2XmlPreview(Number(sheetIndex), true);
+    return;
+  }
+
   if (action === 'toggle-row-menu') {
     const current = app.state.ui.rowActionMenu;
     const sameRow = current && current.sheetIndex === rowCoords.sheetIndex && current.rowIndex === rowCoords.rowIndex;
@@ -579,6 +593,7 @@ function handleContentChange(event) {
   const { path, valueType = 'string' } = field.dataset;
   setByPath(app.state, path, coerceValue(field.value, valueType));
   app.state = prepareState(app.state);
+  app.state.ui.ks2XmlPreview = {};
   render();
 }
 
@@ -589,6 +604,43 @@ function loadSavedState() {
   } catch {
     return null;
   }
+}
+
+function normalizeSearchText(value) {
+  return String(value || '').toLowerCase().replaceAll('ё', 'е').replace(/\s+/g, ' ').trim();
+}
+
+function tokenizeSearchText(value) {
+  return normalizeSearchText(value).match(/[a-zа-я0-9]+/g)?.filter((token) => token.length >= 6) || [];
+}
+
+function guessKs2SheetIdForHoldbackRow(row, ks2Sheets) {
+  if (!row || (row.kind || row.type || 'section') === 'subitem') return row?.ks2SheetId || '';
+  if (row.ks2SheetId) return row.ks2SheetId;
+  if (ks2Sheets.length === 1) return ks2Sheets[0].id;
+
+  const rowText = normalizeSearchText(`${row.name || ''} ${row.comment || ''}`);
+  let best = null;
+  ks2Sheets.forEach((sheet, index) => {
+    const docNumber = String(sheet.documentNumber || sheet.document?.number || index + 1).trim();
+    let score = 0;
+    if (docNumber && [
+      `кс-2 №${docNumber}`,
+      `кс2 №${docNumber}`,
+      `акт №${docNumber}`,
+    ].some((sample) => rowText.includes(sample))) {
+      score += 200;
+    }
+    const title = normalizeSearchText(sheet.title || '');
+    const basis = normalizeSearchText(sheet.basis || sheet.document?.basis || '');
+    if (title && rowText.includes(title)) score += 50;
+    if (basis && rowText.includes(basis)) score += 50;
+    [...tokenizeSearchText(sheet.title), ...tokenizeSearchText(sheet.basis || sheet.document?.basis)].forEach((token) => {
+      if (rowText.includes(token)) score += 10;
+    });
+    if (!best || score > best.score) best = { id: sheet.id, score };
+  });
+  return best?.score > 0 ? best.id : '';
 }
 
 function prepareState(raw) {
@@ -607,6 +659,8 @@ function prepareState(raw) {
   data.ui.holdbackDeleteConfirm ??= null;
   data.ui.settlementAddMenu ??= false;
   data.ui.settlementDeleteConfirm ??= null;
+  data.ui.ks2ViewMode ??= {};
+  data.ui.ks2XmlPreview ??= {};
   data.ui.columnWidths ??= {};
   data.common ??= {};
   data.ks3 ??= {};
@@ -708,13 +762,14 @@ function prepareState(raw) {
     const ks2Amount = numberOrZero(row.ks2Amount);
     const retentionAmount = numberOrZero(row.retentionAmount);
     const retentionRate = row.retentionRate ?? (ks2Amount ? round2((retentionAmount / ks2Amount) * 100) : 3);
+    const explicitSheetId = row.ks2SheetId ?? row.linkedKs2SheetId ?? row.sheetId ?? '';
     return {
       ...row,
       kind,
       name: row.name ?? '',
       advanceDoc: row.advanceDoc ?? '',
       comment: row.comment ?? '',
-      ks2SheetId: row.ks2SheetId ?? row.linkedKs2SheetId ?? row.sheetId ?? '',
+      ks2SheetId: explicitSheetId || guessKs2SheetIdForHoldbackRow(row, data.ks2Sheets),
       ks2Amount: numberOrNull(row.ks2Amount),
       materialsUsed: numberOrNull(row.materialsUsed),
       advanceReceived: numberOrNull(row.advanceReceived),
@@ -1506,11 +1561,106 @@ function renderKs2RowActions(sheetIndex, rowIndex) {
   `;
 }
 
+async function loadKs2XmlPreview(sheetIndex, force = false) {
+  const cacheKey = String(sheetIndex);
+  const current = app.state.ui.ks2XmlPreview?.[cacheKey];
+  if (!force && current?.status === 'ready') return;
+
+  app.state.ui.ks2XmlPreview[cacheKey] = { status: 'loading' };
+  render();
+
+  try {
+    const response = await fetch('/api/preview-xml-sheet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: buildLogicBundle().model, sheetIndex }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || `Ошибка ${response.status}`);
+    app.state.ui.ks2XmlPreview[cacheKey] = {
+      status: 'ready',
+      filename: data.filename,
+      valid: Boolean(data.valid),
+      errors: data.errors || [],
+      xmlText: data.xmlText || '',
+      updatedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    app.state.ui.ks2XmlPreview[cacheKey] = {
+      status: 'error',
+      error: error.message,
+    };
+  }
+  render();
+}
+
+function renderKs2ViewSwitcher(sheetIndex) {
+  const mode = app.state.ui.ks2ViewMode?.[sheetIndex] || 'form';
+  return `
+    <div class="view-switcher">
+      <button class="mini ${mode === 'form' ? '' : 'secondary'}" data-action="set-ks2-view-mode" data-sheet-index="${sheetIndex}" data-mode="form">Форма</button>
+      <button class="mini ${mode === 'xml' ? '' : 'secondary'}" data-action="set-ks2-view-mode" data-sheet-index="${sheetIndex}" data-mode="xml">XML</button>
+    </div>
+  `;
+}
+
+function renderKs2XmlPreviewPane(sheetIndex, sheet) {
+  const preview = app.state.ui.ks2XmlPreview?.[String(sheetIndex)] || null;
+  if (!preview || preview.status === 'loading') {
+    return `
+      <div class="section-block xml-preview-block">
+        <div class="xml-preview-header">
+          <div>
+            <h3>XML по листу КС-2</h3>
+            <p class="kbd-note">Показывает, как текущий лист будет передан в отдельный XML.</p>
+          </div>
+          <button class="mini secondary" data-action="refresh-ks2-xml-preview" data-sheet-index="${sheetIndex}">Обновить XML</button>
+        </div>
+        <div class="xml-preview-status">${preview?.status === 'loading' ? 'Собираю XML…' : 'Открой вкладку XML, чтобы собрать XML по этому листу.'}</div>
+      </div>
+    `;
+  }
+
+  if (preview.status === 'error') {
+    return `
+      <div class="section-block xml-preview-block">
+        <div class="xml-preview-header">
+          <div>
+            <h3>XML по листу КС-2</h3>
+            <p class="kbd-note">Показывает, как текущий лист будет передан в отдельный XML.</p>
+          </div>
+          <button class="mini secondary" data-action="refresh-ks2-xml-preview" data-sheet-index="${sheetIndex}">Повторить</button>
+        </div>
+        <div class="xml-preview-status error">Не удалось собрать XML: ${escapeHtml(preview.error || 'неизвестная ошибка')}</div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="section-block xml-preview-block">
+      <div class="xml-preview-header">
+        <div>
+          <h3>XML по листу КС-2</h3>
+          <p class="kbd-note">Это итоговый XML, который уйдет по листу <strong>${escapeHtml(sheet.title || `КС-2 #${sheetIndex + 1}`)}</strong>. Файл: <code>${escapeHtml(preview.filename || '')}</code>.</p>
+        </div>
+        <button class="mini secondary" data-action="refresh-ks2-xml-preview" data-sheet-index="${sheetIndex}">Обновить XML</button>
+      </div>
+      <div class="xml-preview-meta ${preview.valid ? 'valid' : 'invalid'}">
+        <strong>${preview.valid ? 'XSD: OK' : 'XSD: есть ошибки'}</strong>
+        <span>${preview.updatedAt ? `Обновлено: ${new Date(preview.updatedAt).toLocaleTimeString('ru-RU')}` : ''}</span>
+      </div>
+      ${preview.errors?.length ? `<div class="xml-preview-errors">${preview.errors.map((err) => `<div>строка ${err.line}: ${escapeHtml(err.message)}</div>`).join('')}</div>` : ''}
+      <pre class="xml-preview-code"><code>${escapeHtml(preview.xmlText || '')}</code></pre>
+    </div>
+  `;
+}
+
 function renderKs2Pane(sheetIndex) {
   const sheet = app.state.ks2Sheets[sheetIndex];
   if (!sheet) return '<div class="panel"><div class="empty-state">Лист КС-2 не найден.</div></div>';
   const totals = computeSheetTotals(sheet);
   const ks2TableId = `ks2-${sheetIndex}`;
+  const viewMode = app.state.ui.ks2ViewMode?.[sheetIndex] || 'form';
 
   const rows = sheet.rows.map((row, rowIndex) => `
     <tr class="${row.type === 'section' ? 'section-row' : row.type === 'note' ? 'note-row' : isCorrectionRow(row) ? 'correction-row' : ''}">
@@ -1575,7 +1725,8 @@ function renderKs2Pane(sheetIndex) {
           <h2 class="panel-title">${escapeHtml(sheet.title)}</h2>
           <p class="panel-subtitle">Таблица построена по структуре Excel: шапка акта, основание, разделы, строки работ и итоговый блок.</p>
         </div>
-        <div class="inline-actions">
+        <div class="inline-actions ks2-header-actions">
+          ${renderKs2ViewSwitcher(sheetIndex)}
           <button class="secondary" data-action="duplicate-sheet" data-sheet-index="${sheetIndex}">Дублировать лист</button>
           <button class="icon-button danger" title="Удалить лист" aria-label="Удалить лист" data-action="delete-sheet" data-sheet-index="${sheetIndex}">×</button>
         </div>
@@ -1605,77 +1756,79 @@ function renderKs2Pane(sheetIndex) {
         ${Object.entries(totals.breakdown).map(([label, amount]) => `<span class="breakdown-chip">${categoryLabel(label)}: ${formatMoney(amount)}</span>`).join('')}
       </div>
 
-      <div class="section-block">
-        <h3>Шапка документа</h3>
-        <div class="form-grid">
-          ${renderInput('Название листа', `ks2Sheets.${sheetIndex}.title`, sheet.title, 'string', 'half')}
-          ${renderInput('Номер документа', `ks2Sheets.${sheetIndex}.documentNumber`, sheet.documentNumber, 'string', 'quarter')}
-          ${renderInput('Дата документа', `ks2Sheets.${sheetIndex}.documentDate`, sheet.documentDate, 'string', 'quarter')}
-          ${renderInput('Период с', `ks2Sheets.${sheetIndex}.periodFrom`, sheet.periodFrom, 'string', 'quarter')}
-          ${renderInput('Период по', `ks2Sheets.${sheetIndex}.periodTo`, sheet.periodTo, 'string', 'quarter')}
-          ${renderInput('Ставка НДС, %', `ks2Sheets.${sheetIndex}.vatRate`, sheet.vatRate, 'number', 'quarter')}
-          ${renderTextarea('Основание акта', `ks2Sheets.${sheetIndex}.basis`, sheet.basis, 'half')}
+      ${viewMode === 'xml' ? renderKs2XmlPreviewPane(sheetIndex, sheet) : `
+        <div class="section-block">
+          <h3>Шапка документа</h3>
+          <div class="form-grid">
+            ${renderInput('Название листа', `ks2Sheets.${sheetIndex}.title`, sheet.title, 'string', 'half')}
+            ${renderInput('Номер документа', `ks2Sheets.${sheetIndex}.documentNumber`, sheet.documentNumber, 'string', 'quarter')}
+            ${renderInput('Дата документа', `ks2Sheets.${sheetIndex}.documentDate`, sheet.documentDate, 'string', 'quarter')}
+            ${renderInput('Период с', `ks2Sheets.${sheetIndex}.periodFrom`, sheet.periodFrom, 'string', 'quarter')}
+            ${renderInput('Период по', `ks2Sheets.${sheetIndex}.periodTo`, sheet.periodTo, 'string', 'quarter')}
+            ${renderInput('Ставка НДС, %', `ks2Sheets.${sheetIndex}.vatRate`, sheet.vatRate, 'number', 'quarter')}
+            ${renderTextarea('Основание акта', `ks2Sheets.${sheetIndex}.basis`, sheet.basis, 'half')}
+          </div>
         </div>
-      </div>
 
-      <div class="section-block">
-        <h3>Строки работ и затрат</h3>
-        <p>Можно построчно добавлять работы, вставлять разделы и служебные примечания, как в исходном Excel.</p>
-        <div class="table-wrapper">
-          <table class="table table-ks2" data-table-id="${ks2TableId}">
-            <colgroup>
-              <col class="ks2-col-type" />
-              <col class="ks2-col-code" />
-              <col class="ks2-col-line" />
-              <col class="ks2-col-estimate" />
-              <col class="ks2-col-name" />
-              <col class="ks2-col-unit" />
-              <col class="ks2-col-qty" />
-              <col class="ks2-col-price" />
-              <col class="ks2-col-amount" />
-              <col class="ks2-col-consumption" />
-              <col class="ks2-col-category" />
-              <col class="ks2-col-expense" />
-              <col class="ks2-col-mode" />
-              <col class="ks2-col-note" />
-              <col class="ks2-col-actions" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-type" data-min-width="60">Тип строки<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-code" data-min-width="64">Код<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-line" data-min-width="42">№ п/п<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-estimate" data-min-width="42">№ п/п по смете<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-name" data-min-width="220">Наименование работ и затрат<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-unit" data-min-width="54">Ед. изм.<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-qty" data-min-width="70">Объем<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-price" data-min-width="90">Цена за ед., руб. с НДС<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-amount" data-min-width="96">Общая стоимость, руб. с НДС<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-consumption" data-min-width="42">Расход на единицу<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-category" data-min-width="90">Категория<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-expense" data-min-width="150">Тип затрат<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-mode" data-min-width="96">Режим строки<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-note" data-min-width="120">Примечание<span class="resize-handle"></span></th>
-                <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-actions" data-min-width="24"><span class="resize-handle"></span></th>
-              </tr>
-              <tr class="numbering-row">
-                <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>13</th><th>14</th><th></th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
+        <div class="section-block">
+          <h3>Строки работ и затрат</h3>
+          <p>Можно построчно добавлять работы, вставлять разделы и служебные примечания, как в исходном Excel.</p>
+          <div class="table-wrapper">
+            <table class="table table-ks2" data-table-id="${ks2TableId}">
+              <colgroup>
+                <col class="ks2-col-type" />
+                <col class="ks2-col-code" />
+                <col class="ks2-col-line" />
+                <col class="ks2-col-estimate" />
+                <col class="ks2-col-name" />
+                <col class="ks2-col-unit" />
+                <col class="ks2-col-qty" />
+                <col class="ks2-col-price" />
+                <col class="ks2-col-amount" />
+                <col class="ks2-col-consumption" />
+                <col class="ks2-col-category" />
+                <col class="ks2-col-expense" />
+                <col class="ks2-col-mode" />
+                <col class="ks2-col-note" />
+                <col class="ks2-col-actions" />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-type" data-min-width="60">Тип строки<span class="resize-handle"></span></th>
+                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-code" data-min-width="64">Код<span class="resize-handle"></span></th>
+                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-line" data-min-width="42">№ п/п<span class="resize-handle"></span></th>
+                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-estimate" data-min-width="42">№ п/п по смете<span class="resize-handle"></span></th>
+                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-name" data-min-width="220">Наименование работ и затрат<span class="resize-handle"></span></th>
+                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-unit" data-min-width="54">Ед. изм.<span class="resize-handle"></span></th>
+                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-qty" data-min-width="70">Объем<span class="resize-handle"></span></th>
+                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-price" data-min-width="90">Цена за ед., руб. с НДС<span class="resize-handle"></span></th>
+                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-amount" data-min-width="96">Общая стоимость, руб. с НДС<span class="resize-handle"></span></th>
+                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-consumption" data-min-width="42">Расход на единицу<span class="resize-handle"></span></th>
+                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-category" data-min-width="90">Категория<span class="resize-handle"></span></th>
+                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-expense" data-min-width="150">Тип затрат<span class="resize-handle"></span></th>
+                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-mode" data-min-width="96">Режим строки<span class="resize-handle"></span></th>
+                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-note" data-min-width="120">Примечание<span class="resize-handle"></span></th>
+                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-actions" data-min-width="24"><span class="resize-handle"></span></th>
+                </tr>
+                <tr class="numbering-row">
+                  <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>13</th><th>14</th><th></th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+          <div class="inline-actions">
+            ${renderKs2SheetAddMenu(sheetIndex)}
+            <button class="mini secondary" data-action="add-error-correction-row" data-sheet-index="${sheetIndex}" data-expense-type="1">+ Испр. ошибок</button>
+            <button class="mini secondary" data-action="add-new-circumstance-row" data-sheet-index="${sheetIndex}" data-expense-type="1">+ Новые обстоятельства</button>
+            <button class="mini secondary" data-action="add-section-row" data-sheet-index="${sheetIndex}">+ Раздел</button>
+            <button class="mini secondary" data-action="add-note-row" data-sheet-index="${sheetIndex}">+ Примечание</button>
+          </div>
         </div>
-        <div class="inline-actions">
-          ${renderKs2SheetAddMenu(sheetIndex)}
-          <button class="mini secondary" data-action="add-error-correction-row" data-sheet-index="${sheetIndex}" data-expense-type="1">+ Испр. ошибок</button>
-          <button class="mini secondary" data-action="add-new-circumstance-row" data-sheet-index="${sheetIndex}" data-expense-type="1">+ Новые обстоятельства</button>
-          <button class="mini secondary" data-action="add-section-row" data-sheet-index="${sheetIndex}">+ Раздел</button>
-          <button class="mini secondary" data-action="add-note-row" data-sheet-index="${sheetIndex}">+ Примечание</button>
-        </div>
-      </div>
 
-      ${renderKs2TotalsBlock(sheet, totals)}
-      ${app.state.common.showDocumentSignatures ? renderKs2SignatureTable(app.state.common) : ''}
+        ${renderKs2TotalsBlock(sheet, totals)}
+        ${app.state.common.showDocumentSignatures ? renderKs2SignatureTable(app.state.common) : ''}
+      `}
     </div>
   `;
 }
