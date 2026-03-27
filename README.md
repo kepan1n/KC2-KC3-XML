@@ -7,7 +7,10 @@
 - экспорт JSON
 - экспорт XML 1110335
 - локальная XSD-валидация
-- production-full XML по small sample прошёл внешнюю проверку в Контуре без замечаний
+- per-sheet режим для multi-KS2: **один XML = один лист КС-2**, экспорт нескольких листов идёт ZIP-архивом
+- корректировочные строки / отрицательные секции из большого workbook маппятся в XSD-safe модель через `ПрНовОбст` / `ПрИспрОш` + `УчОшИНовОбстСт`, без минусовых totals на уровне `Раздел`
+- production-full XML по `small sample` прошёл внешнюю проверку в Контуре без замечаний
+- `saved-forms/primer-zapolneniya.json` сейчас генерирует валидный per-sheet XML по всем листам КС-2
 
 ## Быстрый запуск одной командой
 
@@ -49,6 +52,7 @@
 - `scripts/generate_xml_from_export.py` — генерация XML из экспортной модели
 - `scripts/validate_xml_xsd.py` — XSD-валидация
 - `scripts/export_and_validate_xml.sh` — CLI: экспорт + валидация
+- `scripts/check_primer_corrections_regression.py` — регрессионная проверка большого workbook с корректировками / отрицательными секциями
 - `saved-forms/` — сохранённые формы
 - `output/` — сгенерированные XML/JSON для проверок
 
@@ -56,9 +60,25 @@
 
 - small sample из `small sample.xlsx`
 - итоговый XML для проверки: `output/small-sample-full.xml`
+- большой demo/workbook для регрессии: `saved-forms/primer-zapolneniya.json`
+
+## Regression check
+
+Проверка большого кейса с корректировками / отрицательными секциями:
+
+```bash
+python3 scripts/check_primer_corrections_regression.py
+```
+
+Скрипт проверяет, что:
+- per-sheet XML по `primer-zapolneniya.json` генерируется по всем листам КС-2;
+- каждый файл проходит XSD;
+- totals на уровне `Раздел` не уходят в минус;
+- корректировочные строки размечаются через `ПрНовОбст` / `ПрИспрОш` + `УчОшИНовОбстСт`.
 
 ## Дальше
 
-Следующий этап после small sample:
-- вернуться к большому исходному Excel с несколькими КС-2;
-- перенести production-full подход на более сложные данные без потери структуры XML.
+Следующие практические шаги:
+- довести явную привязку удержаний / документов к `ks2SheetId`, чтобы убрать эвристику;
+- расширить richer per-sheet модель по авансам / `31` рядом с уже рабочим `32`;
+- сохранить регрессионные проверки для `small sample`, `primer-zapolneniya` и multi-KS2 ZIP как обязательный smoke-check перед изменениями backend-а.
