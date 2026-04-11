@@ -1,0 +1,246 @@
+# Прогресс — KC2-KC3-XML
+
+Обновлено: 2026-03-28
+
+## Как вести этот файл дальше
+
+- Это **не дневник**, а короткий current-state документ.
+- Пишем сюда только:
+  - текущее рабочее состояние;
+  - принятые архитектурные решения;
+  - актуальные ограничения;
+  - ближайшие следующие шаги.
+- Детальная хроника удалена ради экономии контекста и остаётся в **git history**.
+
+---
+
+## 1. Цель проекта
+
+Сделать удобную **single-sheet** веб-форму по образцу `налог docs/пример заполнения.xlsx`, чтобы:
+- вводить и редактировать данные **одного текущего листа КС-2** и связанных удержаний;
+- сохранять и загружать формы;
+- экспортировать JSON;
+- экспортировать XSD-valid XML `1110335` (`P`) и `1110336` (`Z`);
+- держать КС-3 и multi-sheet логику только как legacy-совместимость, а не как активный продуктовый сценарий.
+
+---
+
+## 2. Текущее рабочее состояние
+
+### UI / форма
+- Основной интерфейс: `variants/modern-light/`.
+- Активно поддерживаются:
+  - общие реквизиты;
+  - один текущий лист КС-2;
+  - блок удержаний / settlement-строк для этого листа;
+  - preview и export связанной пары `P + Z`;
+  - отдельные XML-поля / служебные настройки.
+- Есть сохранение/загрузка формы на сервере.
+- Есть экспорт JSON.
+- Табличный ввод, базовые расчёты и редактирование строк работают.
+- КС-3 и multi-sheet данные больше не являются активным UX-сценарием; они сохраняются только как legacy-слой совместимости.
+
+### XML / backend
+- Рабочий генератор подрядческого XML: `scripts/generate_xml_from_export.py`.
+- Рабочий генератор customer XML: `scripts/generate_customer_xml_from_export.py`.
+- Splitter старых multi-sheet JSON: `scripts/split_legacy_multi_sheet_form.py`.
+- Локальная XSD-валидация: `scripts/validate_xml_xsd.py`.
+- Локальный сервер и API: `scripts/run_local_server.py`.
+- Основные маршруты экспорта работают через:
+  - `POST /api/export-xml`;
+  - `POST /api/export-customer-xml`;
+  - `POST /api/export-xml-bundle`;
+  - `POST /api/forms/split-single-sheet`.
+
+### Подтверждённые рабочие кейсы
+- `small sample`:
+  - production-full XML проходит локальную XSD-валидацию;
+  - production-full XML проходил внешнюю проверку в Контуре без замечаний;
+  - customer XML `Z` проходит локальную XSD-валидацию и корректно ссылается на `P`.
+- `primer-zapolneniya`:
+  - `saved-forms/primer-zapolneniya.json` генерирует валидный per-sheet XML по всем листам КС-2;
+  - добавлена регрессионная проверка `scripts/check_primer_corrections_regression.py`;
+  - backend-валидация больше не режет этот кейс на XML manual-полях, которые в текущем product flow допустимо закрывать generator/template fallback-значениями.
+- active UI modern-light дополнительно прикрыт регрессионной проверкой `scripts/check_single_sheet_ui_contract_regression.py`, чтобы в single-sheet интерфейс не возвращались старые multi-sheet / KS-3 обработчики и fallback-логика.
+- README и `nalog docs/Прогресс` дополнительно прикрыты регрессионной проверкой `scripts/check_single_sheet_docs_contract_regression.py`, чтобы project docs не откатывались к старому активному KS-3 / multi-sheet описанию.
+- сам стартовый sample modern-light теперь тоже хранится как прямой single-sheet state без активных legacy extra sheets и без KS-3 строк.
+- отдельный smoke/regression `scripts/check_modern_light_sample_pair_regression.py` фиксирует, что стартовый modern-light sample реально собирает валидную single-sheet пару `P + Z`.
+- отдельная backend-регрессия `scripts/check_single_sheet_fallback_validation_regression.py` фиксирует, что обязательные XML manual-поля не становятся ложным hard-blocker'ом там, где single-sheet `P` export штатно закрывается generator/template fallback-значениями.
+- отдельная регрессия `scripts/check_single_sheet_autobind_regression.py` фиксирует, что active single-sheet state и split single-sheet формы уже могут жить без явных `ks2SheetId` в удержаниях / manual settlement-строках.
+- общая логика такой очистки вынесена в `scripts/single_sheet_state_helpers.py`, чтобы splitter, regression-скрипты и export generators опирались на один и тот же single-sheet cleanup contract.
+- curated active single-sheet fixtures (`saved-forms/small-sample.json`, `variants/modern-light/data/sample-data.json`) дополнительно прогоняются через этот helper и прикрыты регрессией `scripts/check_single_sheet_fixture_minimality_regression.py`.
+- splitter `scripts/split_legacy_multi_sheet_form.py` теперь дополнительно вычищает redundant `ks2SheetId` из уже разложенных single-sheet форм.
+- подрядческий `P` и customer `Z` generators теперь тоже нормализуют state через этот helper до сборки XML, а не только тесты / splitter.
+- отдельная регрессия `scripts/check_split_single_sheet_pair_regression.py` фиксирует, что splitter старых multi-sheet JSON выпускает именно рабочие single-sheet формы с валидной парой `P + Z` на каждую форму и без лишнего sheet-binding мусора.
+- multi-KS2:
+  - экспорт нескольких листов идёт ZIP-архивом;
+  - внутри — отдельный XML на каждый лист КС-2.
+
+---
+
+## 3. Ключевые принятые решения
+
+### 3.1. Основной курс по XML
+- Главные рабочие профили сейчас — **подрядческий XML `P`** (`1110335`) и **customer XML `Z`** (`1110336`).
+- Новый рабочий принцип редактора: **одна форма = один лист КС-2**.
+- Связанный рабочий комплект: **`P + Z`** для текущего листа КС-2.
+- Legacy multi-KS2 backend-поток и регрессии пока сохраняются как совместимость / миграционный слой, но UI больше не ведёт несколько листов одновременно.
+
+### 3.2. Источник данных для `P`
+- Для per-sheet `P` XML основным источником является **сам лист КС-2**.
+- КС-3 не используется как главный источник для построения подрядческого `P` XML.
+
+### 3.3. Табличная часть
+- Основной режим табличной части: **full / как в форме**.
+- Compact-режим — только вспомогательный / fallback, не основной продуктовый сценарий.
+- Иерархия работ (`Раздел` + `СвВидРаб`) передаётся в XML.
+
+### 3.4. Удержания / расчёты
+- XML-блок `СвОРасч` не повторяет Excel-иерархию 1-в-1.
+- В форме модель удержаний может быть богаче, чем в XML.
+- Удержания теперь проектируются относительно **конкретного листа КС-2** через явный `ks2SheetId`.
+- Для multi-KS2 per-sheet projection больше не опирается на текстовую эвристику по названию/комментарию удержания.
+- Structured-часть `СвОРасч` ориентирована на XSD-safe профиль.
+- Per-sheet backend-модель теперь сохраняет автостроки `31` рядом с `32`, парсит `advanceDoc` в номер / дату / допсведения и передаёт richer-расшифровку авансов через `ИнфПолСвОРасч`.
+- Ручные строки `ВидТреб / ВидУдерж` тоже могут жить в per-sheet модели: UI и projection фильтруют их по `ks2SheetId`.
+
+### 3.5. Корректировки / отрицательные секции
+- Отрицательные totals на уровне `Раздел` в XSD недопустимы.
+- Корректировочные строки не должны уходить в XML как «минусовые разделы».
+- Рабочий мэппинг корректировок:
+  - `ПрИспрОш` / `ПрНовОбст`;
+  - `УчОшИНовОбстСт`;
+  - `УменьшДен` / `УменьшКол` / `НетИзмКол`.
+- Для текущего workbook корректировки по умолчанию уходят как **новые обстоятельства**, если нет более сильного сигнала на `errorCorrection`.
+
+---
+
+## 4. Что уже реально покрыто
+
+### Реквизиты и шапка
+- Базовые реквизиты документа и сторон.
+- Номер/дата акта.
+- Объект / стройка.
+- Код валюты.
+- Существенная часть XML manual-полей.
+
+### Табличная часть КС-2
+- `Раздел` и `СвВидРаб`.
+- Нумерация строк / разделов.
+- Позиции сметы, суммы, НДС, единицы измерения, количество.
+- `ТипЗатр` встроен в рабочий поток.
+
+### XML-переключатели и ветки
+- Первичный / исправленный акт (`ИспрАктСдПр`).
+- Изменение сметы (`ИзмСмет`).
+- Режим НДС и связанные safe-defaults.
+
+### Корректировки
+- Поддержаны два сценария:
+  - исправление ошибок;
+  - новые обстоятельства.
+- Большой workbook с корректировочными строками проходит текущий XSD-safe сценарий.
+
+---
+
+## 5. Что ещё остаётся открытым
+
+### Высокий приоритет
+1. Закрепить single-sheet режим редактора: KS-3 больше не активная сущность UI, удержания относятся только к текущему листу.
+2. При необходимости усилить readiness-check именно для customer XML `Z`: сейчас preview пары `P + Z` уже встроен во вкладку `XML`, и там же есть checklist по обязательным customer-полям / fallback-значениям.
+3. Сохранить и при необходимости расширить smoke/regression checks для:
+   - `small sample`;
+   - `primer-zapolneniya`;
+   - legacy multi-KS2 backend-экспорт;
+   - splitter старых multi-sheet JSON;
+   - stricter holdback / settlement rules;
+   - связанный комплект `P + Z`.
+4. Если понадобится, расширить ручные settlement-строки отдельными полями документа (`documentName / documentNumber / documentDate / documentExtra`) поверх текущего `documentRef`.
+
+### Средний приоритет
+4. Довести оставшиеся значимые реквизиты шапки, если для них есть корректные XML-узлы по `docx`.
+5. Проверить и актуализировать `карта полей формы в XML.md`, чтобы в ней не оставалось устаревших статусов.
+
+### Вне текущего основного фокуса
+- Генерация Excel-файла обратно в исходный шаблон.
+- Полное повторение всех Excel-формул 1-в-1.
+- Расширение альтернативных XML-профилей вне текущего рабочего `P`-сценария.
+
+---
+
+## 6. Основные проверки / команды
+
+### Локальный запуск
+```bash
+./scripts/install_and_run.sh
+# или
+./scripts/run_local.sh
+```
+
+### Проверка большого кейса с корректировками
+```bash
+python3 scripts/check_primer_corrections_regression.py
+```
+
+### Проверка строгой привязки удержаний, richer-модели `31`, splitter-а, прямого `xmlP/xmlZ` и комплекта `P + Z`
+```bash
+python3 scripts/check_holdback_sheet_binding_regression.py
+python3 scripts/check_advance_31_regression.py
+python3 scripts/check_manual_settlement_per_sheet_regression.py
+python3 scripts/check_customer_per_sheet_pair_regression.py
+python3 scripts/check_modern_light_sample_pair_regression.py
+python3 scripts/check_single_sheet_ui_contract_regression.py
+python3 scripts/check_single_sheet_docs_contract_regression.py
+python3 scripts/check_single_sheet_fallback_validation_regression.py
+python3 scripts/check_single_sheet_autobind_regression.py
+python3 scripts/check_single_sheet_fixture_minimality_regression.py
+python3 scripts/check_split_single_sheet_pair_regression.py
+python3 scripts/check_split_legacy_single_sheet_regression.py
+python3 scripts/check_xml_scopes_backend_regression.py
+```
+
+### Обычная сборка и XSD-проверка XML
+```bash
+./scripts/export_and_validate_xml.sh <export.json> [output.xml]
+```
+
+---
+
+## 7. Какие файлы сейчас считать опорными
+
+- `nalog docs/задание.txt` — исходная постановка.
+- `nalog docs/nalog target.docx` — первоисточник требований формата.
+- `nalog docs/ON_AKTREZRABP_1_971_01_01_00_03.xsd` — основная XSD подрядчика.
+- `nalog docs/ON_AKTREZRABZ.xsd` — XSD заказчика.
+- `scripts/generate_customer_xml_from_export.py` — текущий генератор customer XML / Z-файла.
+- `nalog docs/пример заполнения.xlsx` — основной большой бизнес-кейс.
+- `nalog docs/пример заполнения - перечень информации.md` — extracted-перечень полей workbook.
+- `nalog docs/обязательные поля из nalog target.md` — полная выжимка обязательных/условных полей.
+- `nalog docs/обязательные поля 1110335 (безусловные).md` — рабочий минимум по безусловным обязательным полям.
+- `nalog docs/карта полей формы в XML.md` — текущая карта маппинга форма -> XML.
+- `nalog docs/сводка по передаче Excel-иерархии в XML.md` — выводы по иерархии работ и удержаний.
+- `nalog docs/сводка по непередаваемой бизнес-информации и блокам КС-2.md` — открытые semantic-gaps.
+
+---
+
+## 8. Короткий итог
+
+Проект находится в рабочем состоянии для основного сценария:
+- форма жива;
+- JSON и XML экспорт работают;
+- multi-KS2 перешёл в per-sheet режим;
+- большой workbook с корректировками проходит текущий XSD-safe путь;
+- явная привязка удержаний/документов к конкретному листу КС-2 через `ks2SheetId` зафиксирована;
+- richer backend-модель по `31` рядом с `32` уже работает;
+- ручные per-sheet settlement-строки поверх авто-модели тоже уже работают;
+- backend-экспорт `Z` и комплект `P + Z` уже работают, включая per-sheet multi-KS2;
+- UI переведён в single-sheet режим: один лист КС-2 в редакторе, без мульти-листовой навигации и sheet-level усложнений;
+- XML preview пары `P + Z` встроен во вкладку `XML`;
+- readiness-check по обязательным customer-полям и fallback-значениям для `Z` тоже встроен рядом с preview;
+- добавлен splitter старых multi-sheet JSON в отдельные single-sheet формы, включая legacy-разнесение удержаний по листам;
+- внутренняя миграция модели продолжается: XML-слой делится на `xmlP` и `xmlZ`, backend уже умеет читать их напрямую;
+- верхний слой реквизитов тоже начинает мигрировать из `common.*` в `documentContext.*`;
+- внутри фронта удержания и ручные settlement-строки всё жёстче ведут себя как блок текущего листа, а не как остаток multi-sheet UX;
+- форма реквизитов перепакована под новый single-sheet baseline workbook и показывает меньше Excel-наследия / KS-3 следов;
+- legacy merged `xml.*` и `common.*` пока сохранены как fallback-слои совместимости;
+- следующий возможный шаг — продолжить уход от `common.*` и остаточных multi-sheet представлений в оставшихся узких местах и документации.

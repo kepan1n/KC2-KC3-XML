@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+output/*.xml
+data/defaults.json
+.runtime/
+output/
+saved-forms/split-single-sheet/
+nalog docs/~$*.xlsx

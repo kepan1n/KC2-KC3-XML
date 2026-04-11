@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KC2/KC3 XML — Excel-like</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Вариант A · Excel-like</p>
+          <h1>KC2 / KC3 / XML — форма в стиле табличного шаблона</h1>
+          <p class="subtitle">
+            Более плотный, деловой и «эксельный» вариант: зелёные акценты, строгие таблицы,
+            меньше карточности, больше ощущения рабочего документа.
+          </p>
+        </div>
+        <div class="toolbar">
+          <button id="load-sample" class="ghost">Загрузить пример из Excel</button>
+          <button id="save-local" class="ghost">Сохранить локально</button>
+          <button id="export-json">Экспорт JSON</button>
+          <button id="add-ks2-sheet">+ Лист КС-2</button>
+        </div>
+      </header>
+
+      <section class="statusbar">
+        <div id="stats"></div>
+        <div id="flash" aria-live="polite"></div>
+      </section>
+
+      <div class="workspace">
+        <aside class="sidebar" id="sidebar"></aside>
+        <main class="content" id="content"></main>
+      </div>
+
+      <footer class="footer-note">
+        Вариант A — ближе к привычному табличному документу и ручной работе с формой как в Excel.
+      </footer>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

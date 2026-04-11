@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KC2 XML — Modern Light</title>
+    <link rel="stylesheet" href="./styles.css?v=20260407-0935" />
+  </head>
+  <body>
+    <div class="app-shell" id="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Вариант B · Modern Light</p>
+          <h1>KC2 XML — современная светлая форма</h1>
+          <p class="subtitle">
+            Single-sheet интерфейс для одного акта КС-2 и связанной пары XML <code>P + Z</code>.
+            КС-3 оставлен только как legacy-контекст совместимости, а не как активный сценарий.
+          </p>
+        </div>
+        <div class="toolbar-wrap">
+          <div class="view-controls">
+            <span class="view-label">Масштаб</span>
+            <button id="scale-down" class="ghost mini" type="button">−</button>
+            <button id="scale-reset" class="ghost mini" type="button">100%</button>
+            <button id="scale-up" class="ghost mini" type="button">+</button>
+            <label class="density-toggle">
+              <input id="density-compact" type="checkbox" checked />
+              <span>Компактные строки</span>
+            </label>
+          </div>
+          <div class="toolbar">
+            <button id="load-sample" class="ghost">Загрузить пример из Excel</button>
+            <button id="save-local" class="ghost">Сохранить локально</button>
+            <button id="save-server" class="ghost">Сохранить на сервер</button>
+            <button id="load-server" class="ghost">Загрузить с сервера</button>
+            <button id="export-json">Экспорт JSON</button>
+            <button id="export-xml">Экспорт XML подрядчика (P)</button>
+            <button id="export-pair">Экспорт P + Z (ZIP)</button>
+            <span class="toolbar-note">1 лист КС-2 на форму</span>
+          </div>
+        </div>
+      </header>
+
+      <section class="statusbar">
+        <div class="statusbar-main">
+          <div id="nav-strip" class="nav-strip"></div>
+          <div class="statusbar-controls">
+            <div id="ks2-view-switcher-slot"></div>
+            <button id="toggle-headers" class="ghost mini toggle-chip" type="button">Шапки</button>
+          </div>
+        </div>
+        <div class="statusbar-meta">
+          <div id="stats"></div>
+          <div id="flash" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <div class="workspace-scale" id="workspace-scale">
+        <div class="workspace">
+          <main class="content" id="content"></main>
+        </div>
+      </div>
+
+      <footer class="footer-note">
+        Вариант B — single-sheet UI без привязки к визуалу старого Excel и без активного КС-3 UX.
+      </footer>
+    </div>
+
+    <script type="module" src="./app.js?v=20260407-0935"></script>
+  </body>
+</html>

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KC2/KC3 XML — Dark Dashboard</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Вариант C · Dark Dashboard</p>
+          <h1>KC2 / KC3 / XML — тёмный диспетчерский интерфейс</h1>
+          <p class="subtitle">
+            Контрастный тёмный вариант с акцентами и крупной аналитикой — удобен, если хочется
+            современный «операционный» интерфейс, а не документный режим.
+          </p>
+        </div>
+        <div class="toolbar">
+          <button id="load-sample" class="ghost">Загрузить пример из Excel</button>
+          <button id="save-local" class="ghost">Сохранить локально</button>
+          <button id="export-json">Экспорт JSON</button>
+          <button id="add-ks2-sheet">+ Лист КС-2</button>
+        </div>
+      </header>
+
+      <section class="statusbar">
+        <div id="stats"></div>
+        <div id="flash" aria-live="polite"></div>
+      </section>
+
+      <div class="workspace">
+        <aside class="sidebar" id="sidebar"></aside>
+        <main class="content" id="content"></main>
+      </div>
+
+      <footer class="footer-note">
+        Вариант C — тёмный интерфейс с ощущением админки / BI-панели.
+      </footer>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
