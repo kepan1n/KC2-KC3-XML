@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 from pathlib import Path
 from lxml import etree as ET
+
+from generate_xml_from_export import resolve_document_context, resolve_xml_p_payload, resolve_xml_z_payload
+from single_sheet_state_helpers import strip_redundant_single_sheet_bindings
 
 ROOT = Path(__file__).resolve().parents[1]
 XSD_Z = ROOT / 'nalog docs' / 'ON_AKTREZRABZ.xsd'
@@ -410,11 +414,13 @@ def build_acceptance_block(content: ET._Element, data: dict, manual: dict, accep
 
 
 def build_customer_xml(data: dict, contractor_xml_path: Path | None = None) -> ET._ElementTree:
-    common = data.get('common', {})
+    common = resolve_document_context(data)
     xml = data.get('xml', {})
-    generated = xml.get('generated', {})
-    manual = xml.get('manual', {})
-    constants = xml.get('constants', {})
+    xml_p = resolve_xml_p_payload(data)
+    xml_z = resolve_xml_z_payload(data)
+    generated = xml_p.get('generated', {})
+    manual = xml_z.get('manual', {})
+    constants = xml_p.get('constants', {})
 
     first_doc = get_ks2_first_doc(data)
     ks3_doc = get_ks3_doc(data)
@@ -510,6 +516,40 @@ def build_customer_xml(data: dict, contractor_xml_path: Path | None = None) -> E
         add_signer_authority(signer_parent, signer_data, manual)
 
     return ET.ElementTree(root)
+
+
+def build_customer_xml_exports_by_ks2_sheet(data: dict):
+    data = strip_redundant_single_sheet_bindings(data)
+    from generate_xml_from_export import project_payload_to_single_ks2_sheet
+
+    ks2_sheets = data.get('ks2Sheets', []) or []
+    if len(ks2_sheets) <= 1:
+        projected = copy.deepcopy(data)
+        tree = build_customer_xml(projected)
+        filename = f"{tree.getroot().get('ИдФайл') or 'generated_1110336'}.xml"
+        return [{
+            'sheetIndex': 0,
+            'sheetTitle': first_non_empty((ks2_sheets[0] if ks2_sheets else {}).get('title'), default='КС-2'),
+            'filename': filename,
+            'tree': tree,
+            'projected': projected,
+            'contractorFileId': first_non_empty((((projected.get('xml') or {}).get('generated') or {}).get('fileId')), default='ON_AKTREZRABP_UNKNOWN'),
+        }]
+
+    exports = []
+    for sheet_index, sheet in enumerate(ks2_sheets):
+        projected = project_payload_to_single_ks2_sheet(data, sheet_index)
+        tree = build_customer_xml(projected)
+        filename = f"{tree.getroot().get('ИдФайл') or f'generated_1110336_{sheet_index + 1:02d}'}.xml"
+        exports.append({
+            'sheetIndex': sheet_index,
+            'sheetTitle': first_non_empty(sheet.get('title'), default=f'КС-2 #{sheet_index + 1}'),
+            'filename': filename,
+            'tree': tree,
+            'projected': projected,
+            'contractorFileId': first_non_empty((((projected.get('xml') or {}).get('generated') or {}).get('fileId')), default='ON_AKTREZRABP_UNKNOWN'),
+        })
+    return exports
 
 
 def main():

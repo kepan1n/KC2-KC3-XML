@@ -3,18 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>KC2/KC3 XML — Modern Light</title>
-    <link rel="stylesheet" href="./styles.css?v=20260321-2200" />
+    <title>KC2 XML — Modern Light</title>
+    <link rel="stylesheet" href="./styles.css?v=20260407-0935" />
   </head>
   <body>
     <div class="app-shell" id="app-shell">
       <header class="topbar">
         <div>
           <p class="eyebrow">Вариант B · Modern Light</p>
-          <h1>KC2 / KC3 / XML — современная светлая форма</h1>
+          <h1>KC2 XML — современная светлая форма</h1>
           <p class="subtitle">
-            Более продуктовый интерфейс: аккуратные карточки, понятная навигация, чистый светлый UI
-            для ежедневной работы менеджера или сметчика.
+            Single-sheet интерфейс для одного акта КС-2 и связанной пары XML <code>P + Z</code>.
+            КС-3 оставлен только как legacy-контекст совместимости, а не как активный сценарий.
           </p>
         </div>
         <div class="toolbar-wrap">
@@ -34,8 +34,9 @@
             <button id="save-server" class="ghost">Сохранить на сервер</button>
             <button id="load-server" class="ghost">Загрузить с сервера</button>
             <button id="export-json">Экспорт JSON</button>
-            <button id="export-xml">Экспорт XML / ZIP (XSD-ready)</button>
-            <button id="add-ks2-sheet">+ Лист КС-2</button>
+            <button id="export-xml">Экспорт XML подрядчика (P)</button>
+            <button id="export-pair">Экспорт P + Z (ZIP)</button>
+            <span class="toolbar-note">1 лист КС-2 на форму</span>
           </div>
         </div>
       </header>
@@ -61,10 +62,10 @@
       </div>
 
       <footer class="footer-note">
-        Вариант B — самый нейтральный и продуктовый, без привязки к визуалу старого Excel.
+        Вариант B — single-sheet UI без привязки к визуалу старого Excel и без активного КС-3 UX.
       </footer>
     </div>
 
-    <script type="module" src="./app.js?v=20260321-2200"></script>
+    <script type="module" src="./app.js?v=20260407-0935"></script>
   </body>
 </html>
