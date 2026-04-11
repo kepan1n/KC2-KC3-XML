@@ -151,6 +151,47 @@ def flatten_holdback_groups(groups: list[dict]) -> list[dict]:
     return rows
 
 
+def build_holdback_source_rows(state: dict) -> list[dict]:
+    holdbacks = state.get('holdbacks') or {}
+    rows = holdbacks.get('rows') or []
+    if rows:
+        return copy.deepcopy(rows)
+
+    prepared_rows = []
+    for section in holdbacks.get('sections') or []:
+        prepared_section = copy.deepcopy(section)
+        nested_rows = prepared_section.pop('subitems', None)
+        if nested_rows is None:
+            nested_rows = prepared_section.pop('items', None)
+        if nested_rows is None:
+            nested_rows = prepared_section.pop('rows', None)
+        prepared_section['kind'] = prepared_section.get('kind') or 'section'
+        prepared_rows.append(prepared_section)
+        for row in nested_rows or []:
+            prepared_row = copy.deepcopy(row)
+            prepared_row['kind'] = prepared_row.get('kind') or 'subitem'
+            prepared_rows.append(prepared_row)
+    return prepared_rows
+
+
+def build_manual_settlement_source_rows(state: dict) -> list[dict]:
+    xml_extras_rows = ((state.get('xmlExtras') or {}).get('settlementRows') or [])
+    if xml_extras_rows:
+        return copy.deepcopy(xml_extras_rows)
+
+    collected = []
+    seen = set()
+    for bucket_name in ['xmlP', 'xml']:
+        settlement = ((state.get(bucket_name) or {}).get('settlement') or {})
+        for row in settlement.get('manualRows') or []:
+            key = json.dumps(row, ensure_ascii=False, sort_keys=True)
+            if key in seen:
+                continue
+            seen.add(key)
+            collected.append(copy.deepcopy(row))
+    return collected
+
+
 def split_holdback_groups(groups: list[dict], source_sheets: list[dict]):
     matched = {sheet['id']: [] for sheet in source_sheets}
     unassigned = []
@@ -232,8 +273,8 @@ def build_split_form_items(payload: dict) -> list[dict]:
     if not source_sheets:
         raise ValueError('No KS-2 sheets found in state')
 
-    holdback_groups = build_holdback_groups(((state.get('holdbacks') or {}).get('rows') or []))
-    manual_rows = ((state.get('xmlExtras') or {}).get('settlementRows') or [])
+    holdback_groups = build_holdback_groups(build_holdback_source_rows(state))
+    manual_rows = build_manual_settlement_source_rows(state)
     holdback_groups_by_sheet, unassigned_holdback_groups = split_holdback_groups(holdback_groups, source_sheets)
     settlement_rows_by_sheet, unassigned_settlement_rows = split_manual_settlement_rows(manual_rows, source_sheets)
 

@@ -83,6 +83,7 @@ Legacy multi-KS2 и старые КС-3 данные сохраняются то
 - `scripts/check_split_single_sheet_pair_regression.py` — регрессия по splitter-выходу: каждая разложенная форма должна стать single-sheet, не тащить redundant `ks2SheetId` и собирать валидную пару `P + Z`
 - `scripts/split_legacy_multi_sheet_form.py` — splitter старых multi-sheet JSON в отдельные single-sheet формы
 - `scripts/check_split_legacy_single_sheet_regression.py` — регрессия по splitter-скрипту
+- `scripts/check_split_legacy_compat_sources_regression.py` — регрессия по совместимости splitter-а со старыми источниками (`holdbacks.sections`, manualRows из `xmlP/xml`)
 - `scripts/check_xml_scopes_backend_regression.py` — регрессия по прямому backend-чтению `xmlP/xmlZ`
 - `saved-forms/` — сохранённые формы
 - `output/` — сгенерированные XML/JSON для проверок
@@ -141,6 +142,7 @@ python3 scripts/check_single_sheet_fallback_validation_regression.py
 python3 scripts/check_single_sheet_autobind_regression.py
 python3 scripts/check_single_sheet_fixture_minimality_regression.py
 python3 scripts/check_split_single_sheet_pair_regression.py
+python3 scripts/check_split_legacy_compat_sources_regression.py
 ```
 
 Скрипт по sample pair regression дополнительно проверяет, что:
@@ -174,6 +176,11 @@ python3 scripts/check_split_single_sheet_pair_regression.py
 - splitter старых multi-sheet форм действительно выпускает отдельные active single-sheet формы;
 - у каждой такой формы нет extra legacy sheets и активных KS-3 строк;
 - каждая split-форма собирает валидную пару `P + Z`.
+
+Скрипт по legacy compat splitter regression дополнительно проверяет, что:
+- splitter умеет читать старый источник удержаний через `holdbacks.sections`;
+- splitter умеет подхватывать manual settlement rows из legacy `xmlP/xml`, даже если `xmlExtras.settlementRows` ещё не заполнен;
+- single-sheet output остаётся очищенным от active KS-3 строк.
 
 Скрипт по manual settlement дополнительно проверяет, что:
 - ручные settlement-строки фильтруются по `ks2SheetId` при per-sheet projection;
