@@ -12,6 +12,7 @@ const refs = {
   loadServer: document.getElementById('load-server'),
   exportJson: document.getElementById('export-json'),
   exportXml: document.getElementById('export-xml'),
+  exportPair: document.getElementById('export-pair'),
   addSheet: document.getElementById('add-ks2-sheet'),
   ks2ViewSwitcherSlot: document.getElementById('ks2-view-switcher-slot'),
   toggleHeaders: document.getElementById('toggle-headers'),
@@ -67,6 +68,98 @@ const SETTLEMENT_ROW_PRESETS = {
   withholdOtherObjects: { kind: 'withhold', kindCode: '35', label: 'Удержание: иной объект' },
   withholdOther: { kind: 'withhold', kindCode: '36', label: 'Удержание: иное' },
 };
+
+const XML_P_CONSTANT_KEYS = [
+  'isGovMunicipal',
+  'vatCalcInTotalOnly',
+  'cumulativeMode',
+  'priceIndexYear',
+  'requiresSettlementApproval',
+  'diadocCompactMode',
+];
+
+const XML_P_MANUAL_KEYS = [
+  'economicSubjectName',
+  'isCorrectionAct',
+  'correctionNumber',
+  'correctionDate',
+  'hasEstimateChange',
+  'estimateVersionCode',
+  'supplementDocType',
+  'supplementDocNumber',
+  'supplementDocDate',
+  'contractorInn',
+  'customerInn',
+  'developerPostalIndex',
+  'developerRegionCode',
+  'signerName',
+  'signerPosition',
+  'signerStatus',
+  'signatureType',
+  'customInfoValue',
+  'contractorPostalIndex',
+  'contractorRegionCode',
+  'contractorSignaturePayload',
+  'contractorSignaturePayloads',
+  'contractorSignatures',
+];
+
+const XML_Z_MANUAL_KEYS = [
+  'customerEconomicSubjectName',
+  'customerAuthorityDocName',
+  'customerAuthorityDocNumber',
+  'customerAuthorityDocDate',
+  'customerAuthorityDocId',
+  'customerAuthorityDocInfo',
+  'customerSignerAuthorityDocName',
+  'customerSignerAuthorityDocNumber',
+  'customerSignerAuthorityDocDate',
+  'customerSignerAuthorityDocId',
+  'customerSignerAuthorityDocInfo',
+  'customerSignerStatus',
+  'customerSignatureType',
+  'customerSignatureStorageId',
+  'customerAcceptanceCode',
+  'customerAcceptanceText',
+  'customerAcceptanceDate',
+  'customerAcceptanceRefusalInfo',
+  'customerAcceptanceRefusalDate',
+  'customerAcceptanceRefusalDocName',
+  'customerAcceptanceRefusalDocNumber',
+  'customerAcceptanceRefusalDocDate',
+  'customerAcceptanceRefusalDocId',
+  'customerAcceptanceDefectInfo',
+  'customerAcceptanceDefectDocName',
+  'customerAcceptanceDefectDocNumber',
+  'customerAcceptanceDefectDocDate',
+  'customerAcceptanceDefectDocId',
+  'customerAcceptanceNdflAmount',
+  'customerReductionBaseAmount',
+  'customerReductionTaxAmount',
+  'customerReductionToBePaidAmount',
+  'customerReductionToBePaidFromStartAmount',
+  'customerReductionTotalAmount',
+  'customerSettlementNotice',
+  'customerSettlementDisagreementReason',
+  'customerSettlementExtraDocName',
+  'customerSettlementExtraDocNumber',
+  'customerSettlementExtraDocDate',
+  'customerSettlementExtraDocId',
+  'customerSettlementIgnoredDocName',
+  'customerSettlementIgnoredDocNumber',
+  'customerSettlementIgnoredDocDate',
+  'customerSettlementIgnoredDocId',
+  'customerSignerPowerId',
+  'customerSignerPowerNumber',
+  'customerSignerPowerDate',
+  'customerSignerPowerInternalNumber',
+  'customerSignerPowerRegistrationDate',
+  'customerSignerPowerSystemMark',
+  'customerSignerPaperPowerDate',
+  'customerSignerPaperPowerInternalNumber',
+  'customerSignerPaperPowerIdentity',
+  'customerSignerPaperPowerFio',
+];
 
 boot();
 
@@ -205,24 +298,65 @@ function bindGlobalEvents() {
       link.download = filename;
       link.click();
       URL.revokeObjectURL(url);
-      flash(filename.endsWith('.zip') ? 'Архив XML по листам КС-2 прошёл XSD-проверку и выгружен.' : 'XML прошёл XSD-проверку и выгружен.');
+      flash(filename.endsWith('.zip') ? 'Архив XML прошёл XSD-проверку и выгружен.' : 'XML подрядчика прошёл XSD-проверку и выгружен.');
     } catch (error) {
       flash(`Не удалось выполнить XSD-проверку: ${error.message}`);
     } finally {
       refs.exportXml.disabled = false;
-      refs.exportXml.textContent = 'Экспорт XML / ZIP (XSD-ready)';
+      refs.exportXml.textContent = 'Экспорт XML подрядчика (P)';
     }
   });
 
-  refs.addSheet.addEventListener('click', () => {
-    app.state.ks2Sheets.push(createBlankSheet(app.state.ks2Sheets.length + 1));
-    app.state.ui.activePane = `ks2:${app.state.ks2Sheets.length - 1}`;
-    render();
-    flash('Добавлен новый лист КС-2.');
+  refs.exportPair?.addEventListener('click', async () => {
+    const payload = buildLogicBundle().model;
+    refs.exportPair.disabled = true;
+    refs.exportPair.textContent = 'Сборка P + Z…';
+    try {
+      const response = await fetch('/api/export-xml-bundle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        let errorMessage = `Ошибка ${response.status}`;
+        try {
+          const data = await response.json();
+          if (Array.isArray(data.validationErrors) && data.validationErrors.length) {
+            errorMessage = data.validationErrors.slice(0, 5).map((err) => err.message).join(' | ');
+          } else if ((Array.isArray(data.contractorSheetErrors) && data.contractorSheetErrors.length) || (Array.isArray(data.customerSheetErrors) && data.customerSheetErrors.length)) {
+            const contractorSummary = (data.contractorSheetErrors || []).slice(0, 2).map((sheet) => `P/${sheet.sheetTitle || `Лист ${sheet.sheetIndex + 1}`}: ${(sheet.errors || []).slice(0, 2).map((err) => err.message).join(' | ')}`).join(' || ');
+            const customerSummary = (data.customerSheetErrors || []).slice(0, 2).map((sheet) => `Z/${sheet.sheetTitle || `Лист ${sheet.sheetIndex + 1}`}: ${(sheet.errors || []).slice(0, 2).map((err) => err.message).join(' | ')}`).join(' || ');
+            errorMessage = [contractorSummary, customerSummary].filter(Boolean).join(' || ');
+          } else if (data.error) {
+            errorMessage = data.error;
+          }
+        } catch (_) {}
+        flash(`Комплект P + Z не выгружен: ${errorMessage}`);
+        return;
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="([^"]+)"/);
+      const filename = match?.[1] || `${payload.xml.generated.fileId || `ON_AKTREZRABP_${new Date().toISOString().slice(0, 10)}`}-p-z.zip`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+      flash('Комплект подрядчик + заказчик (P + Z) собран и выгружен.');
+    } catch (error) {
+      flash(`Не удалось собрать комплект P + Z: ${error.message}`);
+    } finally {
+      refs.exportPair.disabled = false;
+      refs.exportPair.textContent = 'Экспорт P + Z (ZIP)';
+    }
   });
 
   refs.toggleHeaders?.addEventListener('click', () => {
-    app.state.common.showDocumentHeaders = !app.state.common.showDocumentHeaders;
+    app.state.documentContext.showDocumentHeaders = !app.state.documentContext.showDocumentHeaders;
     render();
   });
   refs.scaleDown?.addEventListener('click', () => shiftScale(-1));
@@ -261,6 +395,24 @@ function handleContentClick(event) {
 
   const { action, sheetIndex, rowIndex, holdIndex, traceIndex, rowKind } = actionButton.dataset;
   const rowCoords = { sheetIndex: Number(sheetIndex), rowIndex: Number(rowIndex) };
+
+  if (action === 'split-legacy-forms') {
+    const defaultName = app.state?.meta?.serverSaveName || `split-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}`;
+    const name = window.prompt('Базовое имя для single-sheet файлов:', defaultName);
+    if (!name) return;
+    fetch('/api/forms/split-single-sheet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, state: app.state }),
+    })
+      .then((response) => response.json().then((data) => ({ response, data })))
+      .then(({ response, data }) => {
+        if (!response.ok || !data.ok) throw new Error(data.error || `Ошибка ${response.status}`);
+        flash(`Создано single-sheet форм: ${data.count}. Каталог: saved-forms/split-single-sheet/`);
+      })
+      .catch((error) => flash(`Не удалось разложить legacy-форму: ${error.message}`));
+    return;
+  }
 
   if (action === 'toggle-sheet-add-menu') {
     const idx = Number(sheetIndex);
@@ -312,7 +464,7 @@ function handleContentClick(event) {
     const mode = actionButton.dataset.mode === 'xml' ? 'xml' : 'form';
     app.state.ui.ks2ViewMode[idx] = mode;
     render();
-    if (mode === 'xml') loadKs2XmlPreview(idx, true);
+    if (mode === 'xml') loadKs2XmlPreviewPair(idx, true);
     return;
   }
 
@@ -321,16 +473,40 @@ function handleContentClick(event) {
     return;
   }
 
+  if (action === 'refresh-customer-xml-preview') {
+    loadCustomerXmlPreview(Number(sheetIndex), true);
+    return;
+  }
+
+  if (action === 'refresh-ks2-xml-preview-pair') {
+    loadKs2XmlPreviewPair(Number(sheetIndex), true);
+    return;
+  }
+
   if (action === 'copy-ks2-xml-preview') {
     const idx = Number(sheetIndex);
     const preview = app.state.ui.ks2XmlPreview?.[String(idx)];
     const xmlText = prettyFormatXml(preview?.xmlText || '');
     if (!xmlText) {
-      flash('Сначала собери XML по листу.');
+      flash('Сначала собери XML подрядчика по листу.');
       return;
     }
     navigator.clipboard.writeText(xmlText)
-      .then(() => flash('XML скопирован в буфер обмена.'))
+      .then(() => flash('XML подрядчика скопирован в буфер обмена.'))
+      .catch((error) => flash(`Не удалось скопировать XML: ${error.message}`));
+    return;
+  }
+
+  if (action === 'copy-customer-xml-preview') {
+    const idx = Number(sheetIndex);
+    const preview = app.state.ui.ks2CustomerXmlPreview?.[String(idx)];
+    const xmlText = prettyFormatXml(preview?.xmlText || '');
+    if (!xmlText) {
+      flash('Сначала собери XML заказчика по листу.');
+      return;
+    }
+    navigator.clipboard.writeText(xmlText)
+      .then(() => flash('XML заказчика скопирован в буфер обмена.'))
       .catch((error) => flash(`Не удалось скопировать XML: ${error.message}`));
     return;
   }
@@ -388,75 +564,9 @@ function handleContentClick(event) {
     return;
   }
 
-  if (action === 'duplicate-sheet') {
+  if (action === 'duplicate-sheet' || action === 'delete-sheet') {
     clearTransientRowUi();
-    const sheet = clone(app.state.ks2Sheets[Number(sheetIndex)]);
-    sheet.id = `ks2-${Date.now()}`;
-    sheet.title = `${sheet.title} (копия)`;
-    app.state.ks2Sheets.splice(Number(sheetIndex) + 1, 0, sheet);
-    render();
-    flash('Лист КС-2 дублирован.');
-    return;
-  }
-
-  if (action === 'delete-sheet') {
-    clearTransientRowUi();
-    if (app.state.ks2Sheets.length === 1) {
-      flash('Нужно оставить хотя бы один лист КС-2.');
-      return;
-    }
-    app.state.ks2Sheets.splice(Number(sheetIndex), 1);
-    app.state.ui.activePane = 'requisites';
-    render();
-    flash('Лист КС-2 удалён.');
-    return;
-  }
-
-  if (action === 'add-ks3-row') {
-    clearTransientRowUi();
-    app.state.ks3.rows.push(createBlankKs3Row());
-    render();
-    return;
-  }
-
-  if (action === 'toggle-ks3-row-menu') {
-    const idx = Number(actionButton.dataset.ks3Index);
-    const sameRow = app.state.ui.ks3RowActionMenu === idx;
-    app.state.ui.ks3RowActionMenu = sameRow ? null : idx;
-    app.state.ui.ks3RowDeleteConfirm = null;
-    render();
-    return;
-  }
-
-  if (action === 'insert-ks3-row-after') {
-    clearTransientRowUi();
-    const idx = Number(actionButton.dataset.ks3Index);
-    app.state.ks3.rows.splice(idx + 1, 0, createBlankKs3Row());
-    render();
-    flash('Строка КС-3 добавлена.');
-    return;
-  }
-
-  if (action === 'prompt-delete-ks3-row') {
-    const idx = Number(actionButton.dataset.ks3Index);
-    app.state.ui.ks3RowActionMenu = null;
-    app.state.ui.ks3RowDeleteConfirm = idx;
-    render();
-    return;
-  }
-
-  if (action === 'cancel-delete-ks3-row') {
-    app.state.ui.ks3RowDeleteConfirm = null;
-    render();
-    return;
-  }
-
-  if (action === 'confirm-delete-ks3-row') {
-    const idx = Number(actionButton.dataset.ks3Index);
-    app.state.ks3.rows.splice(idx, 1);
-    clearTransientRowUi();
-    render();
-    flash('Строка КС-3 удалена.');
+    flash('Редактор работает только с одним листом КС-2 за раз.');
     return;
   }
 
@@ -552,8 +662,10 @@ function handleContentClick(event) {
   if (action === 'add-settlement-row') {
     clearTransientRowUi();
     const presetKey = actionButton.dataset.preset || 'withholdAdvance';
-    const isFirst = !(app.state.xmlExtras.settlementRows || []).length;
-    app.state.xmlExtras.settlementRows.push(createBlankSettlementRow(presetKey, { isPrimary: isFirst }));
+    const sheetIndex = Number(actionButton.dataset.sheetIndex);
+    const targetSheetId = Number.isFinite(sheetIndex) ? (app.state.ks2Sheets[sheetIndex]?.id || '') : (app.state.ks2Sheets.length === 1 ? app.state.ks2Sheets[0].id : '');
+    const hasPrimaryForSheet = (app.state.xmlExtras.settlementRows || []).some((row) => row.isPrimary && String(getExplicitSettlementSheetId(row) || '') === String(targetSheetId || ''));
+    app.state.xmlExtras.settlementRows.push(createBlankSettlementRow(presetKey, { ks2SheetId: targetSheetId, isPrimary: !hasPrimaryForSheet }));
     app.state = prepareState(app.state);
     render();
     flash(`Добавлена строка XML: ${SETTLEMENT_ROW_PRESETS[presetKey]?.label || 'расчеты / удержания'}.`);
@@ -562,9 +674,10 @@ function handleContentClick(event) {
 
   if (action === 'set-primary-settlement-row') {
     const idx = Number(actionButton.dataset.settlementIndex);
+    const targetSheetId = String(getExplicitSettlementSheetId(app.state.xmlExtras.settlementRows?.[idx]) || '');
     app.state.xmlExtras.settlementRows = (app.state.xmlExtras.settlementRows || []).map((row, rowIndex) => ({
       ...row,
-      isPrimary: rowIndex === idx,
+      isPrimary: String(getExplicitSettlementSheetId(row) || '') === targetSheetId ? rowIndex === idx : Boolean(row.isPrimary),
     }));
     app.state = prepareState(app.state);
     render();
@@ -615,6 +728,7 @@ function handleContentChange(event) {
   setByPath(app.state, path, coerceValue(field.value, valueType));
   app.state = prepareState(app.state);
   app.state.ui.ks2XmlPreview = {};
+  app.state.ui.ks2CustomerXmlPreview = {};
   render();
 }
 
@@ -635,9 +749,24 @@ function tokenizeSearchText(value) {
   return normalizeSearchText(value).match(/[a-zа-я0-9]+/g)?.filter((token) => token.length >= 6) || [];
 }
 
+function getExplicitHoldbackSheetId(row) {
+  return String(row?.ks2SheetId ?? row?.linkedKs2SheetId ?? row?.sheetId ?? '').trim();
+}
+
+function getExplicitSettlementSheetId(row) {
+  return String(row?.ks2SheetId ?? row?.linkedKs2SheetId ?? row?.sheetId ?? '').trim();
+}
+
+function isKnownKs2SheetId(sheetId, ks2Sheets = app.state?.ks2Sheets || []) {
+  const normalizedSheetId = String(sheetId || '').trim();
+  if (!normalizedSheetId) return false;
+  return (ks2Sheets || []).some((sheet) => String(sheet.id || '').trim() === normalizedSheetId);
+}
+
 function guessKs2SheetIdForHoldbackRow(row, ks2Sheets) {
-  if (!row || (row.kind || row.type || 'section') === 'subitem') return row?.ks2SheetId || '';
-  if (row.ks2SheetId) return row.ks2SheetId;
+  if (!row || (row.kind || row.type || 'section') === 'subitem') return getExplicitHoldbackSheetId(row);
+  const explicitSheetId = getExplicitHoldbackSheetId(row);
+  if (explicitSheetId) return explicitSheetId;
   if (ks2Sheets.length === 1) return ks2Sheets[0].id;
 
   const rowText = normalizeSearchText(`${row.name || ''} ${row.comment || ''}`);
@@ -664,13 +793,163 @@ function guessKs2SheetIdForHoldbackRow(row, ks2Sheets) {
   return best?.score > 0 ? best.id : '';
 }
 
+function migrateLegacyHoldbackSheetBindings(rows, ks2Sheets) {
+  if (ks2Sheets.length === 1) {
+    const singleSheetId = ks2Sheets[0].id;
+    return (rows || []).map((row) => ({
+      ...row,
+      kind: row.kind || row.type || 'section',
+      ks2SheetId: singleSheetId,
+    }));
+  }
+
+  let currentSectionSheetId = '';
+  return (rows || []).map((row) => {
+    const kind = row.kind || row.type || 'section';
+    const explicitSheetId = getExplicitHoldbackSheetId(row);
+    let ks2SheetId = explicitSheetId;
+
+    if (kind === 'subitem') {
+      ks2SheetId = explicitSheetId || currentSectionSheetId || '';
+    } else {
+      ks2SheetId = explicitSheetId || guessKs2SheetIdForHoldbackRow(row, ks2Sheets);
+      currentSectionSheetId = ks2SheetId;
+    }
+
+    return {
+      ...row,
+      kind,
+      ks2SheetId,
+    };
+  });
+}
+
+function migrateLegacySettlementSheetBindings(rows, ks2Sheets) {
+  if (ks2Sheets.length === 1) {
+    const singleSheetId = ks2Sheets[0].id;
+    return (rows || []).map((row) => ({
+      ...row,
+      ks2SheetId: singleSheetId,
+    }));
+  }
+  return (rows || []).map((row) => ({
+    ...row,
+    ks2SheetId: getExplicitSettlementSheetId(row) || '',
+  }));
+}
+
+function ensureSettlementPrimaryRows(rows, ks2Sheets) {
+  const groups = new Map();
+  (rows || []).forEach((row, index) => {
+    const key = getExplicitSettlementSheetId(row) || (ks2Sheets.length === 1 ? ks2Sheets[0].id : '');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ row, index });
+  });
+
+  const nextRows = (rows || []).map((row) => ({ ...row, isPrimary: false }));
+  groups.forEach((entries) => {
+    const preferred = entries.find(({ row }) => row.isPrimary) || entries[0];
+    if (preferred) nextRows[preferred.index].isPrimary = true;
+  });
+  return nextRows;
+}
+
+function buildUniqueKs2SheetId(rawId, index, usedIds) {
+  const baseId = String(rawId || '').trim() || `ks2-${index + 1}`;
+  let candidate = baseId;
+  let suffix = 2;
+  while (usedIds.has(candidate)) {
+    candidate = `${baseId}-${suffix}`;
+    suffix += 1;
+  }
+  usedIds.add(candidate);
+  return candidate;
+}
+
+function enforceSingleKs2SheetMode(data) {
+  data.legacy ??= {};
+  const sheets = Array.isArray(data.ks2Sheets) ? data.ks2Sheets : [];
+  if (!sheets.length) {
+    data.ks2Sheets = [createBlankSheet(1)];
+    data.legacy.extraKs2Sheets = [];
+  } else if (sheets.length > 1) {
+    const [firstSheet, ...restSheets] = sheets;
+    data.ks2Sheets = [firstSheet];
+    data.legacy.extraKs2Sheets = restSheets;
+  } else {
+    data.ks2Sheets = sheets;
+    data.legacy.extraKs2Sheets = Array.isArray(data.legacy.extraKs2Sheets) ? data.legacy.extraKs2Sheets : [];
+  }
+
+  const droppedCount = (data.legacy.extraKs2Sheets || []).length;
+  data.ui.singleSheetModeNotice = droppedCount
+    ? `Редактор работает только с одним листом КС-2. Текущий лист оставлен активным, а ещё ${droppedCount} лист(ов) сохранены как legacy-данные и не участвуют в текущем экспорте.`
+    : 'Редактор работает только с одним листом КС-2 за раз.';
+}
+
+function migrateLegacyDocumentContext(data) {
+  data.documentContext = {
+    ...(data.common || {}),
+    ...(data.documentContext || {}),
+  };
+  data.common = data.documentContext;
+}
+
+function mergeXmlManualScopes(xmlPManual = {}, xmlZManual = {}) {
+  return {
+    ...clone(xmlPManual || {}),
+    ...clone(xmlZManual || {}),
+  };
+}
+
+function scopeXmlManual(manual = {}, scope = 'p') {
+  const keys = new Set(scope === 'z' ? XML_Z_MANUAL_KEYS : XML_P_MANUAL_KEYS);
+  return Object.fromEntries(Object.entries(manual || {}).filter(([key]) => keys.has(key) || (scope === 'p' && !XML_Z_MANUAL_KEYS.includes(key))));
+}
+
+function migrateLegacyXmlScopes(data) {
+  data.xmlP ??= {};
+  data.xmlZ ??= {};
+  data.xmlExtras ??= {};
+
+  data.xmlP.generated = {
+    ...(data.xmlExtras.generated || {}),
+    ...(data.xmlP.generated || {}),
+  };
+  data.xmlP.constants = {
+    ...(data.xmlExtras.constants || {}),
+    ...(data.xmlP.constants || {}),
+  };
+
+  const legacyManual = data.xmlExtras.manual || {};
+  data.xmlP.manual = {
+    ...scopeXmlManual(legacyManual, 'p'),
+    ...(data.xmlP.manual || {}),
+  };
+  data.xmlZ.manual = {
+    ...scopeXmlManual(legacyManual, 'z'),
+    ...(data.xmlZ.manual || {}),
+  };
+
+  data.xmlExtras.generated = data.xmlP.generated;
+  data.xmlExtras.constants = data.xmlP.constants;
+  data.xmlExtras.manual = mergeXmlManualScopes(data.xmlP.manual, data.xmlZ.manual);
+}
+
+function normalizeActivePaneSingleSheet(value) {
+  const pane = String(value ?? '').trim();
+  if (!pane) return 'requisites';
+  if (pane === 'ks3' || pane === 'holdbacks') return 'requisites';
+  if (pane === 'ks2' || pane === 'sheet' || pane === 'current-sheet') return 'ks2:0';
+  if (pane.startsWith('ks2:')) return 'ks2:0';
+  if (pane === 'requisites' || pane === 'xml') return pane;
+  return 'requisites';
+}
+
 function prepareState(raw) {
   const data = clone(raw);
   data.ui ??= {};
-  data.ui.activePane ??= 'requisites';
-  if (data.ui.activePane === 'ks3' || data.ui.activePane === 'holdbacks') {
-    data.ui.activePane = 'requisites';
-  }
+  data.ui.activePane = normalizeActivePaneSingleSheet(data.ui.activePane);
   data.ui.scale = normalizeScale(data.ui.scale ?? 100);
   data.ui.compactRows = data.ui.compactRows ?? true;
   data.ui.rowActionMenu ??= null;
@@ -684,10 +963,16 @@ function prepareState(raw) {
   data.ui.settlementDeleteConfirm ??= null;
   data.ui.ks2ViewMode ??= {};
   data.ui.ks2XmlPreview ??= {};
+  data.ui.ks2CustomerXmlPreview ??= {};
   data.ui.columnWidths ??= {};
   data.common ??= {};
+  data.documentContext ??= {};
+  migrateLegacyDocumentContext(data);
   data.ks3 ??= {};
   data.holdbacks ??= { rows: [] };
+  data.legacy ??= {};
+  enforceSingleKs2SheetMode(data);
+  data.ui.activePane = normalizeActivePaneSingleSheet(data.ui.activePane);
   data.holdbacks.rows ??= [];
   data.xmlExtras ??= {};
   data.xmlExtras.generated ??= {};
@@ -695,18 +980,22 @@ function prepareState(raw) {
   data.xmlExtras.manual ??= {};
   data.xmlExtras.traceableGoods ??= [];
   data.xmlExtras.settlementRows ??= [];
+  data.xmlP ??= {};
+  data.xmlZ ??= {};
+  migrateLegacyXmlScopes(data);
+  data.xmlExtras.traceableGoods ??= [];
   data.xmlExtras.settlementRows = (data.xmlExtras.settlementRows || []).map((row) => prepareSettlementRow(row));
-  if (data.xmlExtras.settlementRows.length && !data.xmlExtras.settlementRows.some((row) => row.isPrimary)) {
-    data.xmlExtras.settlementRows[0].isPrimary = true;
-  }
-  data.xmlExtras.constants.isGovMunicipal ||= '0';
-  data.xmlExtras.constants.vatCalcInTotalOnly ||= '0';
-  data.xmlExtras.constants.cumulativeMode ||= '1';
-  data.xmlExtras.constants.priceIndexYear ||= '0000';
-  data.xmlExtras.constants.requiresSettlementApproval ||= '0';
-  data.xmlExtras.constants.diadocCompactMode ||= '0';
-  data.xmlExtras.manual.isCorrectionAct ||= '0';
-  data.xmlExtras.manual.hasEstimateChange ||= '1';
+  data.xmlP.constants.isGovMunicipal ||= '0';
+  data.xmlP.constants.vatCalcInTotalOnly ||= '0';
+  data.xmlP.constants.cumulativeMode ||= '1';
+  data.xmlP.constants.priceIndexYear ||= '0000';
+  data.xmlP.constants.requiresSettlementApproval ||= '0';
+  data.xmlP.constants.diadocCompactMode ||= '0';
+  data.xmlP.manual.isCorrectionAct ||= '0';
+  data.xmlP.manual.hasEstimateChange ||= '1';
+  data.xmlExtras.constants = data.xmlP.constants;
+  data.xmlExtras.generated = data.xmlP.generated;
+  data.xmlExtras.manual = mergeXmlManualScopes(data.xmlP.manual, data.xmlZ.manual);
 
   data.common.okudKs3 = data.common.okudKs3 && data.common.okudKs3 !== 'Форма по ОКУД' ? data.common.okudKs3 : '0322001';
   data.common.showDocumentHeaders = data.common.showDocumentHeaders ?? false;
@@ -717,23 +1006,24 @@ function prepareState(raw) {
   data.common.customerSignLabel ||= 'Принял';
   data.common.customerSignerPosition ||= 'ООО «СЗ «АСПЕЙС Хорошевская» в лице Генерального директора управляющей организации ООО «АСПЕЙС Девелопмент»';
   data.common.customerSignerName ||= 'О.В. Смирнов';
+  data.common.techCustomerSignerPosition ||= '';
+  data.common.techCustomerSignerName ||= '';
   data.common.objectOkpo ||= '';
   data.common.okdpCode ||= '';
   data.common.ks2DocLabel ||= 'АКТ';
   data.common.ks2DocSubtitle ||= 'О ПРИЕМКЕ ВЫПОЛНЕННЫХ РАБОТ';
   data.common.ks3DocLabel ||= 'СПРАВКА';
   data.common.ks3DocSubtitle ||= 'О СТОИМОСТИ ВЫПОЛНЕННЫХ РАБОТ И ЗАТРАТ';
-  data.common.ks3DeveloperPosition ||= data.common.customerSignerPosition || '';
-  data.common.ks3DeveloperName ||= data.common.customerSignerName || '';
-  data.common.ks3TechCustomerPosition ||= data.common.techCustomerSignerPosition || '';
-  data.common.ks3TechCustomerName ||= data.common.techCustomerSignerName || '';
+  data.common.customerSignerPosition ||= '';
+  data.common.customerSignerName ||= '';
   data.common.ks3ContractorPosition ||= data.common.contractorSignerPosition || 'Генеральный директор ООО «ЛегендаЭлит»';
   data.common.ks3ContractorName ||= data.common.contractorSignerName || 'А. Дылюк';
 
+  const usedKs2SheetIds = new Set();
   data.ks2Sheets = (data.ks2Sheets || []).map((sheet, index) => {
     const prepared = {
       ...sheet,
-      id: sheet.id || `ks2-${index + 1}`,
+      id: buildUniqueKs2SheetId(sheet.id, index, usedKs2SheetIds),
       rows: (sheet.rows || []).map((row) => ({
         ...row,
         type: row.type || 'item',
@@ -767,7 +1057,6 @@ function prepareState(raw) {
     return prepared;
   });
 
-  data.ks3.title ||= `КС-3 №${data.ks2Sheets[0]?.documentNumber || '1'}`;
   data.ks3.documentNumber ||= data.ks2Sheets[0]?.documentNumber || '1';
   data.ks3.documentDate ||= data.ks2Sheets[0]?.documentDate || new Date().toISOString().slice(0, 10);
   data.ks3.periodFrom ||= data.ks2Sheets[0]?.periodFrom || new Date().toISOString().slice(0, 10);
@@ -781,19 +1070,28 @@ function prepareState(raw) {
     vat: numberOrNull(legacyKs3Totals.vat),
   };
 
-  data.holdbacks.rows = (data.holdbacks.rows || []).map((row) => {
+  data.xmlExtras.settlementRows = ensureSettlementPrimaryRows(
+    migrateLegacySettlementSheetBindings(data.xmlExtras.settlementRows || [], data.ks2Sheets).map((row) => prepareSettlementRow(row)),
+    data.ks2Sheets,
+  );
+
+  data.holdbacks.rows = migrateLegacyHoldbackSheetBindings(data.holdbacks.rows || [], data.ks2Sheets).map((row) => {
     const kind = row.kind || row.type || 'section';
     const ks2Amount = numberOrZero(row.ks2Amount);
     const retentionAmount = numberOrZero(row.retentionAmount);
     const retentionRate = row.retentionRate ?? (ks2Amount ? round2((retentionAmount / ks2Amount) * 100) : 3);
-    const explicitSheetId = row.ks2SheetId ?? row.linkedKs2SheetId ?? row.sheetId ?? '';
+    const explicitSheetId = getExplicitHoldbackSheetId(row);
     return {
       ...row,
       kind,
       name: row.name ?? '',
       advanceDoc: row.advanceDoc ?? '',
+      advanceDocName: row.advanceDocName ?? '',
+      advanceDocNumber: row.advanceDocNumber ?? '',
+      advanceDocDate: row.advanceDocDate ?? '',
+      advanceDocExtra: row.advanceDocExtra ?? '',
       comment: row.comment ?? '',
-      ks2SheetId: explicitSheetId || guessKs2SheetIdForHoldbackRow(row, data.ks2Sheets),
+      ks2SheetId: explicitSheetId || (data.ks2Sheets.length === 1 ? data.ks2Sheets[0].id : ''),
       ks2Amount: numberOrNull(row.ks2Amount),
       materialsUsed: numberOrNull(row.materialsUsed),
       advanceReceived: numberOrNull(row.advanceReceived),
@@ -832,8 +1130,8 @@ function applyUiPreferences() {
   if (refs.scaleReset) refs.scaleReset.textContent = `${normalizeScale(app.state.ui.scale)}%`;
   if (refs.densityCompact) refs.densityCompact.checked = Boolean(app.state.ui.compactRows);
   if (refs.toggleHeaders) {
-    refs.toggleHeaders.textContent = app.state.common.showDocumentHeaders ? 'Шапки: вкл' : 'Шапки: выкл';
-    refs.toggleHeaders.classList.toggle('is-active', Boolean(app.state.common.showDocumentHeaders));
+    refs.toggleHeaders.textContent = app.state.documentContext.showDocumentHeaders ? 'Шапки: вкл' : 'Шапки: выкл';
+    refs.toggleHeaders.classList.toggle('is-active', Boolean(app.state.documentContext.showDocumentHeaders));
   }
 }
 
@@ -937,13 +1235,12 @@ function renderNavStrip() {
     <button class="nav-chip ${active === item.pane ? 'active' : ''}" data-pane="${item.pane}" title="${escapeAttr(item.label)}">${escapeHtml(item.label)}</button>
   `).join('');
 
-  const ks2Buttons = app.state.ks2Sheets.map((sheet, index) => {
-    const docNo = sheet.documentNumber || index + 1;
-    const title = sheet.title || `Лист КС-2 #${index + 1}`;
-    return `
-      <button class="nav-chip ${active === `ks2:${index}` ? 'active' : ''}" data-pane="ks2:${index}" title="${escapeAttr(`${title} · №${docNo}`)}">КС-2 №${escapeHtml(String(docNo))}</button>
-    `;
-  }).join('');
+  const sheet = app.state.ks2Sheets[0] || createBlankSheet(1);
+  const docNo = sheet.documentNumber || 1;
+  const title = sheet.title || 'Лист КС-2';
+  const ks2Button = `
+    <button class="nav-chip ${active === 'ks2:0' ? 'active' : ''}" data-pane="ks2:0" title="${escapeAttr(`${title} · №${docNo}`)}">КС-2</button>
+  `;
 
   refs.navStrip.innerHTML = `
     <div class="nav-strip-group">
@@ -951,7 +1248,7 @@ function renderNavStrip() {
     </div>
     <div class="nav-strip-divider"></div>
     <div class="nav-strip-group nav-strip-group-scroll">
-      ${ks2Buttons}
+      ${ks2Button}
     </div>
   `;
 }
@@ -960,7 +1257,8 @@ function renderStats() {
   const totalRows = app.state.ks2Sheets.reduce((sum, sheet) => sum + sheet.rows.length, 0);
   const grossTotal = app.state.ks2Sheets.reduce((sum, sheet) => sum + computeSheetTotals(sheet).gross, 0);
   const validation = buildLogicBundle().validation;
-  refs.stats.textContent = `${app.state.ks2Sheets.length} листов КС-2 · ${totalRows} строк · общая сумма с НДС: ${formatMoney(grossTotal)} · ошибок: ${validation.errors.length} · предупреждений: ${validation.warnings.length}`;
+  const ignoredSheets = app.state.legacy?.extraKs2Sheets?.length || 0;
+  refs.stats.textContent = `1 лист КС-2 · ${totalRows} строк · общая сумма с НДС: ${formatMoney(grossTotal)} · ошибок: ${validation.errors.length} · предупреждений: ${validation.warnings.length}${ignoredSheets ? ` · доп. legacy-листов вне текущей формы: ${ignoredSheets}` : ''}`;
 }
 
 function renderContent() {
@@ -1076,7 +1374,8 @@ function buildDocumentModel() {
 
   return {
     generatedAt: new Date().toISOString(),
-    common: clone(app.state.common),
+    documentContext: clone(app.state.documentContext),
+    common: clone(app.state.documentContext),
     ks2Sheets,
     ks3: {
       document: {},
@@ -1088,13 +1387,239 @@ function buildDocumentModel() {
       sections: holdbackSections,
       totals: holdbacksTotals,
     },
+    legacy: {
+      extraKs2Sheets: clone(app.state.legacy?.extraKs2Sheets || []),
+    },
+    xmlP: {
+      generated: buildGeneratedXmlFields(),
+      constants: clone(app.state.xmlP.constants),
+      manual: clone(app.state.xmlP.manual),
+      traceableGoods: clone(app.state.xmlExtras.traceableGoods),
+    },
+    xmlZ: {
+      manual: clone(app.state.xmlZ.manual),
+    },
     xml: {
       generated: buildGeneratedXmlFields(),
-      constants: clone(app.state.xmlExtras.constants),
-      manual: clone(app.state.xmlExtras.manual),
+      constants: clone(app.state.xmlP.constants),
+      manual: mergeXmlManualScopes(app.state.xmlP.manual, app.state.xmlZ.manual),
       traceableGoods: clone(app.state.xmlExtras.traceableGoods),
       settlement: holdbacksXml,
     },
+  };
+}
+
+function firstFilledValue(...values) {
+  for (const value of values) {
+    if (value == null) continue;
+    if (typeof value === 'string') {
+      if (!value.trim()) continue;
+      return value.trim();
+    }
+    return value;
+  }
+  return '';
+}
+
+function getContractorManualState(source = {}) {
+  return source.xmlP?.manual || source.xml?.p?.manual || scopeXmlManual(source.xml?.manual || source.xmlExtras?.manual || {}, 'p');
+}
+
+function getCustomerManualState(source = {}) {
+  return source.xmlZ?.manual || source.xml?.z?.manual || scopeXmlManual(source.xml?.manual || source.xmlExtras?.manual || {}, 'z');
+}
+
+function getCustomerConstantsState(source = {}) {
+  return source.xmlP?.constants || source.xml?.p?.constants || source.xml?.constants || source.xmlExtras?.constants || {};
+}
+
+function getGeneratedXmlState(source = {}) {
+  return source.xmlP?.generated || source.xml?.p?.generated || source.xml?.generated || source.xmlExtras?.generated || {};
+}
+
+function getSheetDocumentForCustomerReadiness(sheet = {}) {
+  return sheet.document || {
+    number: sheet.documentNumber,
+    date: sheet.documentDate,
+    periodFrom: sheet.periodFrom,
+    periodTo: sheet.periodTo,
+    basis: sheet.basis,
+    vatRate: sheet.vatRate,
+  };
+}
+
+function buildResolvedCustomerSigners(common = {}) {
+  const candidates = [
+    { name: common.customerSignerName, position: common.customerSignerPosition },
+    { name: common.techCustomerSignerName, position: common.techCustomerSignerPosition },
+    { name: common.techCustomerSignerName, position: common.techCustomerSignerPosition },
+  ];
+
+  const unique = [];
+  const seen = new Set();
+  candidates.forEach((candidate) => {
+    const name = firstFilledValue(candidate.name);
+    const position = firstFilledValue(candidate.position);
+    if (!name && !position) return;
+    const key = `${name || ''}::${position || ''}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    unique.push({
+      name: name || 'Иванов Иван',
+      position: position || 'Уполномоченное лицо заказчика',
+    });
+  });
+  return unique;
+}
+
+function buildCustomerXmlReadiness(source, sheetIndex = 0, preview = null, options = {}) {
+  const { includeSheetSpecific = true } = options;
+  const common = source.documentContext || source.common || {};
+  const manual = getCustomerManualState(source);
+  const constants = getCustomerConstantsState(source);
+  const generated = getGeneratedXmlState(source);
+  const sheets = source.ks2Sheets || [];
+  const sheet = sheets[sheetIndex] || sheets[0] || {};
+  const document = getSheetDocumentForCustomerReadiness(sheet);
+  const sheetLabel = sheet.title || `КС-2 #${sheetIndex + 1}`;
+  const errors = [];
+  const warnings = [];
+  const checks = [];
+  const contractorFileId = firstFilledValue(preview?.contractorFileId, generated.fileId);
+  const pushCheck = (status, path, label, value, message = '') => {
+    checks.push({ status, path, label, value, message });
+    if (status === 'error') errors.push({ severity: 'error', path, label, message });
+    if (status === 'warning') warnings.push({ severity: 'warning', path, label, message });
+  };
+
+  const customerSubjectName = firstFilledValue(
+    manual.customerEconomicSubjectName,
+    common.techCustomerName,
+    common.developerName,
+    manual.economicSubjectName,
+  );
+  pushCheck(
+    customerSubjectName ? 'ok' : 'error',
+    'xmlZ.manual.customerEconomicSubjectName',
+    'Составитель файла Z',
+    customerSubjectName || 'не задан',
+    customerSubjectName ? 'Используется в НаимЭконСубСост.' : 'Для файла Z не определён составитель. Иначе генератор подставит слишком общий fallback «Заказчик».',
+  );
+
+  const authorityDocName = firstFilledValue(manual.customerAuthorityDocName, manual.customerSignerAuthorityDocName);
+  const authorityDocNumber = firstFilledValue(manual.customerAuthorityDocNumber, manual.customerSignerAuthorityDocNumber, common.contractNumber);
+  const authorityDocDate = firstFilledValue(manual.customerAuthorityDocDate, manual.customerSignerAuthorityDocDate, common.contractDate);
+  const authorityValue = [authorityDocName || 'без названия', authorityDocNumber || 'без номера', authorityDocDate || 'без даты'].join(' · ');
+  if (!authorityDocDate) {
+    pushCheck('error', 'xmlZ.manual.customerAuthorityDocDate', 'Основание подписания заказчика', authorityValue, 'Не указана дата основания подписания заказчика. Иначе Z уйдет с дефолтной датой 01.01.2026.');
+  } else if (!authorityDocName || !authorityDocNumber) {
+    pushCheck('warning', !authorityDocName ? 'xmlZ.manual.customerAuthorityDocName' : 'xmlZ.manual.customerAuthorityDocNumber', 'Основание подписания заказчика', authorityValue, !authorityDocName ? 'Нет наименования основания подписания — генератор подставит дефолтный текст.' : 'Нет номера основания подписания — генератор подставит «без номера».');
+  } else {
+    pushCheck('ok', 'xmlZ.manual.customerAuthorityDocName', 'Основание подписания заказчика', authorityValue, 'Документ основания для Z заполнен.');
+  }
+
+  const signers = buildResolvedCustomerSigners(common);
+  const signerStatus = String(firstFilledValue(manual.customerSignerStatus, manual.signerStatus, '1'));
+  const signerValue = signers.length
+    ? `${signers.length} шт. · ${signers.map((signer) => `${signer.name} (${signer.position})`).join('; ')}`
+    : 'нет реальных подписантов';
+  pushCheck(
+    signers.length ? 'ok' : 'error',
+    'documentContext.customerSignerName',
+    'Подписант(ы) заказчика',
+    signerValue,
+    signers.length ? `Статус подписанта Z: ${signerStatus}.` : 'Для Z не найден ни один осмысленный подписант заказчика. Иначе генератор подставит fallback «Иванов Иван».',
+  );
+
+  if (signerStatus === '2') {
+    const hasMchdDetails = Boolean(firstFilledValue(
+      manual.customerSignerPowerId,
+      manual.customerSignerPowerNumber,
+      manual.customerSignerPowerDate,
+      manual.customerSignerPowerInternalNumber,
+      manual.customerSignerPowerRegistrationDate,
+      manual.customerSignerPowerSystemMark,
+      authorityDocNumber,
+      authorityDocDate,
+    ));
+    pushCheck(
+      hasMchdDetails ? 'ok' : 'warning',
+      'xmlZ.manual.customerSignerPowerId',
+      'МЧД / доверенность в ЭФ',
+      hasMchdDetails ? 'реквизиты найдены' : 'реквизиты не заданы',
+      hasMchdDetails ? 'Для статуса 2 есть данные доверенности / МЧД.' : 'Для статуса 2 лучше явно заполнить реквизиты МЧД / доверенности в ЭФ.',
+    );
+  }
+  if (signerStatus === '3') {
+    const hasPaperPowerDetails = Boolean(firstFilledValue(
+      manual.customerSignerPaperPowerDate,
+      manual.customerSignerPaperPowerInternalNumber,
+      manual.customerSignerPaperPowerIdentity,
+      manual.customerSignerPaperPowerFio,
+      authorityDocNumber,
+      authorityDocDate,
+    ));
+    pushCheck(
+      hasPaperPowerDetails ? 'ok' : 'warning',
+      'xmlZ.manual.customerSignerPaperPowerDate',
+      'Бумажная доверенность Z',
+      hasPaperPowerDetails ? 'реквизиты найдены' : 'реквизиты не заданы',
+      hasPaperPowerDetails ? 'Для статуса 3 есть данные бумажной доверенности.' : 'Для статуса 3 лучше явно заполнить реквизиты бумажной доверенности.',
+    );
+  }
+
+  const acceptanceCode = String(firstFilledValue(manual.customerAcceptanceCode, '1'));
+  const acceptanceText = firstFilledValue(manual.customerAcceptanceText);
+  const acceptanceDate = firstFilledValue(manual.customerAcceptanceDate, document.date);
+  const acceptanceLabel = acceptanceText || acceptanceCode;
+  if (!acceptanceDate) {
+    pushCheck('error', 'xmlZ.manual.customerAcceptanceDate', 'Приёмка работ в Z', `${acceptanceLabel || 'не задано'} · дата не определена`, 'Не определена дата приемки / отказа для Z.');
+  } else if (acceptanceCode === '4' && numberOrNull(manual.customerReductionBaseAmount) == null) {
+    pushCheck('error', 'xmlZ.manual.customerReductionBaseAmount', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Для кода 4 нужно заполнить базовую сумму уменьшения стоимости договора.');
+  } else if (acceptanceCode === '0' && !firstFilledValue(manual.customerAcceptanceRefusalInfo, manual.customerAcceptanceRefusalDocName, manual.customerAcceptanceRefusalDocNumber, manual.customerAcceptanceRefusalDocDate)) {
+    pushCheck('warning', 'xmlZ.manual.customerAcceptanceRefusalInfo', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Для отказа в приемке лучше указать причину и/или документ отказа.');
+  } else if (['2', '4', '5'].includes(acceptanceCode) && !firstFilledValue(manual.customerAcceptanceDefectInfo, manual.customerAcceptanceDefectDocName, manual.customerAcceptanceDefectDocNumber, manual.customerAcceptanceDefectDocDate)) {
+    pushCheck('warning', 'xmlZ.manual.customerAcceptanceDefectInfo', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Для этого кода приемки лучше указать сведения о недостатках и/или подтверждающий документ.');
+  } else {
+    pushCheck('ok', 'xmlZ.manual.customerAcceptanceCode', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Реквизиты приемки для Z выглядят заполненными.');
+  }
+
+  const settlementNotice = firstFilledValue(manual.customerSettlementNotice);
+  if (String(constants.requiresSettlementApproval || '0') === '1' && !settlementNotice) {
+    pushCheck('warning', 'xmlZ.manual.customerSettlementNotice', 'Извещение по расчётам Z', 'не выбрано', 'В XML включен режим согласования расчетов, но текст извещения заказчика пока не выбран.');
+  } else if (settlementNotice === 'С представленными подрядчиком сведениями о расчетах не согласен' && !firstFilledValue(manual.customerSettlementDisagreementReason)) {
+    pushCheck('warning', 'xmlZ.manual.customerSettlementDisagreementReason', 'Извещение по расчётам Z', settlementNotice, 'Для несогласия по расчетам лучше заполнить причину несогласия.');
+  } else {
+    pushCheck('ok', 'xmlZ.manual.customerSettlementNotice', 'Извещение по расчётам Z', settlementNotice || 'не требуется / не выбрано', settlementNotice ? 'Текст извещения заказчика задан.' : 'Извещение по расчетам не требуется или не используется в текущем профиле.');
+  }
+
+  if (includeSheetSpecific) {
+    const postingNumber = firstFilledValue(document.number);
+    const postingDate = firstFilledValue(document.date);
+    pushCheck(
+      postingNumber && postingDate ? 'ok' : 'error',
+      postingNumber ? `ks2Sheets.${sheetIndex}.document.date` : `ks2Sheets.${sheetIndex}.document.number`,
+      'Постановочный документ Z',
+      [postingNumber || 'без номера', postingDate || 'без даты'].join(' · '),
+      postingNumber && postingDate ? 'Номер и дата постановочного документа для текущего листа определены.' : 'Для Z по текущему листу не хватает номера или даты постановочного документа.',
+    );
+
+    pushCheck(
+      contractorFileId ? 'ok' : 'error',
+      'xmlP.generated.fileId',
+      'Связка с P-файлом',
+      contractorFileId || 'не определена',
+      contractorFileId ? 'Customer XML будет ссылаться на соответствующий файл подрядчика.' : 'Не удалось определить идентификатор связанного P-файла.',
+    );
+  }
+
+  return {
+    ready: errors.length === 0,
+    errors,
+    warnings,
+    issues: [...errors, ...warnings],
+    checks,
+    sheetLabel,
   };
 }
 
@@ -1111,20 +1636,20 @@ function buildValidationReport(model) {
     }
   };
 
-  requireValue(model.common.developerName, 'common.developerName', 'Застройщик');
-  requireValue(model.common.developerOkpo, 'common.developerOkpo', 'ОКПО застройщика');
-  requireValue(model.common.techCustomerName, 'common.techCustomerName', 'Технический заказчик');
-  requireValue(model.common.techCustomerOkpo, 'common.techCustomerOkpo', 'ОКПО технического заказчика');
-  requireValue(model.common.contractorName, 'common.contractorName', 'Генподрядчик');
-  requireValue(model.common.contractorOkpo, 'common.contractorOkpo', 'ОКПО генподрядчика');
-  requireValue(model.common.constructionObject, 'common.constructionObject', 'Стройка');
-  requireValue(model.common.objectName, 'common.objectName', 'Объект');
-  requireValue(model.common.contractNumber, 'common.contractNumber', 'Номер договора');
-  requireValue(model.common.contractDate, 'common.contractDate', 'Дата договора');
-  requireValue(model.common.operationType, 'common.operationType', 'Вид операции');
-  requireValue(model.common.okudKs2, 'common.okudKs2', 'ОКУД КС-2');
-  requireValue(model.common.objectOkpo, 'common.objectOkpo', 'ОКПО объекта', 'warning');
-  requireValue(model.common.okdpCode, 'common.okdpCode', 'ОКДП', 'warning');
+  requireValue(((model.documentContext || model.common)).developerName, 'documentContext.developerName', 'Застройщик');
+  requireValue(((model.documentContext || model.common)).developerOkpo, 'documentContext.developerOkpo', 'ОКПО застройщика');
+  requireValue(((model.documentContext || model.common)).techCustomerName, 'documentContext.techCustomerName', 'Технический заказчик');
+  requireValue(((model.documentContext || model.common)).techCustomerOkpo, 'documentContext.techCustomerOkpo', 'ОКПО технического заказчика');
+  requireValue(((model.documentContext || model.common)).contractorName, 'documentContext.contractorName', 'Генподрядчик');
+  requireValue(((model.documentContext || model.common)).contractorOkpo, 'documentContext.contractorOkpo', 'ОКПО генподрядчика');
+  requireValue(((model.documentContext || model.common)).constructionObject, 'documentContext.constructionObject', 'Стройка');
+  requireValue(((model.documentContext || model.common)).objectName, 'documentContext.objectName', 'Объект');
+  requireValue(((model.documentContext || model.common)).contractNumber, 'documentContext.contractNumber', 'Номер договора');
+  requireValue(((model.documentContext || model.common)).contractDate, 'documentContext.contractDate', 'Дата договора');
+  requireValue(((model.documentContext || model.common)).operationType, 'documentContext.operationType', 'Вид операции');
+  requireValue(((model.documentContext || model.common)).okudKs2, 'documentContext.okudKs2', 'ОКУД КС-2');
+  requireValue(((model.documentContext || model.common)).objectOkpo, 'documentContext.objectOkpo', 'ОКПО объекта', 'warning');
+  requireValue(((model.documentContext || model.common)).okdpCode, 'documentContext.okdpCode', 'ОКДП', 'warning');
 
   model.ks2Sheets.forEach((sheet, index) => {
     const prefix = `ks2Sheets.${index}`;
@@ -1143,40 +1668,57 @@ function buildValidationReport(model) {
     });
   });
 
+  if ((model.legacy?.extraKs2Sheets || []).length) {
+    pushIssue('warning', 'legacy.extraKs2Sheets', 'Single-sheet режим', `Во входных данных были дополнительные листы КС-2 (${model.legacy.extraKs2Sheets.length} шт.). Редактор и экспорт используют только текущий лист; остальные можно разложить в отдельные single-sheet формы.`);
+  }
+
   if (!model.holdbacks.rows.length) {
     pushIssue('warning', 'holdbacks.rows', 'Удержания', 'Нет ни одной строки удержаний');
   }
 
   if (model.ks2Sheets.length > 1) {
     model.holdbacks.sections.forEach((section, index) => {
-      if (!String(section.ks2SheetId || '').trim()) {
-        pushIssue('warning', `holdbacks.sections.${index}.ks2SheetId`, `Удержания: раздел ${index + 1}`, 'Для multi-KS2 лучше явно выбрать лист КС-2 у каждой строки удержаний, чтобы уйти от эвристики при per-sheet XML.');
+      const sheetId = String(section.ks2SheetId || '').trim();
+      if (!sheetId) {
+        pushIssue('error', `holdbacks.sections.${index}.ks2SheetId`, `Удержания: раздел ${index + 1}`, 'Во входных legacy-данных у каждой строки удержаний должна быть явная привязка к листу КС-2. Без неё текущий single-sheet export не собирается.');
+        return;
+      }
+      if (!isKnownKs2SheetId(sheetId, model.ks2Sheets)) {
+        pushIssue('error', `holdbacks.sections.${index}.ks2SheetId`, `Удержания: раздел ${index + 1}`, `Указанный лист КС-2 (${sheetId}) не найден среди текущих листов. Выбери актуальную привязку.`);
       }
     });
   }
 
-  requireValue(model.xml.manual.contractorInn, 'xml.manual.contractorInn', 'ИНН подрядчика', 'warning');
-  requireValue(model.xml.manual.customerInn, 'xml.manual.customerInn', 'ИНН заказчика', 'warning');
-  requireValue(model.xml.manual.economicSubjectName || model.common.contractorName, 'xml.manual.economicSubjectName', 'Составитель XML', 'warning');
-  if (String(model.xml.manual.isCorrectionAct || '0') === '1') {
-    requireValue(model.xml.manual.correctionNumber, 'xml.manual.correctionNumber', 'Исправление №', 'warning');
-    requireValue(model.xml.manual.correctionDate, 'xml.manual.correctionDate', 'Дата исправления', 'warning');
+  requireValue(model.xmlP.manual.contractorInn, 'xmlP.manual.contractorInn', 'ИНН подрядчика', 'warning');
+  requireValue(model.xmlP.manual.customerInn, 'xmlP.manual.customerInn', 'ИНН заказчика', 'warning');
+  requireValue(model.xmlP.manual.economicSubjectName || ((model.documentContext || model.common)).contractorName, 'xmlP.manual.economicSubjectName', 'Составитель XML', 'warning');
+  if (String(model.xmlP.manual.isCorrectionAct || '0') === '1') {
+    requireValue(model.xmlP.manual.correctionNumber, 'xmlP.manual.correctionNumber', 'Исправление №', 'warning');
+    requireValue(model.xmlP.manual.correctionDate, 'xmlP.manual.correctionDate', 'Дата исправления', 'warning');
   }
 
-  if (String(model.xml.manual.hasEstimateChange || '1') === '1') {
-    requireValue(model.xml.manual.estimateVersionCode, 'xml.manual.estimateVersionCode', 'Версия сметы (КодСмет)', 'warning');
-    requireValue(model.xml.manual.supplementDocType, 'xml.manual.supplementDocType', 'Тип допсоглашения', 'warning');
-    requireValue(model.xml.manual.supplementDocNumber, 'xml.manual.supplementDocNumber', 'Номер допсоглашения', 'warning');
-    requireValue(model.xml.manual.supplementDocDate, 'xml.manual.supplementDocDate', 'Дата допсоглашения', 'warning');
+  if (String(model.xmlP.manual.hasEstimateChange || '1') === '1') {
+    requireValue(model.xmlP.manual.estimateVersionCode, 'xmlP.manual.estimateVersionCode', 'Версия сметы (КодСмет)', 'warning');
+    requireValue(model.xmlP.manual.supplementDocType, 'xmlP.manual.supplementDocType', 'Тип допсоглашения', 'warning');
+    requireValue(model.xmlP.manual.supplementDocNumber, 'xmlP.manual.supplementDocNumber', 'Номер допсоглашения', 'warning');
+    requireValue(model.xmlP.manual.supplementDocDate, 'xmlP.manual.supplementDocDate', 'Дата допсоглашения', 'warning');
   }
-  requireValue(model.xml.manual.developerPostalIndex, 'xml.manual.developerPostalIndex', 'Индекс адреса', 'warning');
-  requireValue(model.xml.manual.developerRegionCode, 'xml.manual.developerRegionCode', 'Код региона', 'warning');
-  requireValue(model.xml.manual.signerName || model.common.contractorSignerName, 'xml.manual.signerName', 'Подписант XML: ФИО', 'warning');
+  requireValue(model.xmlP.manual.developerPostalIndex, 'xmlP.manual.developerPostalIndex', 'Индекс адреса', 'warning');
+  requireValue(model.xmlP.manual.developerRegionCode, 'xmlP.manual.developerRegionCode', 'Код региона', 'warning');
+  requireValue(model.xmlP.manual.signerName || ((model.documentContext || model.common)).contractorSignerName, 'xmlP.manual.signerName', 'Подписант XML: ФИО', 'warning');
 
   const manualSettlementRows = model.xml.settlement?.manualRows || [];
   manualSettlementRows.forEach((row, index) => {
     const hasContent = numberOrZero(row.amount) > 0 || row.documentRef || row.comment || row.customKindText;
     if (!hasContent) return;
+    if (model.ks2Sheets.length > 1) {
+      const sheetId = String(row.ks2SheetId || '').trim();
+      if (!sheetId) {
+        pushIssue('error', `xml.settlement.manualRows.${index}.ks2SheetId`, `СвОРасч: строка ${index + 1}`, 'Во входных legacy-данных ручную строку ВидТреб / ВидУдерж нужно явно привязать к листу КС-2. Без этого single-sheet export не собирается.');
+      } else if (!isKnownKs2SheetId(sheetId, model.ks2Sheets)) {
+        pushIssue('error', `xml.settlement.manualRows.${index}.ks2SheetId`, `СвОРасч: строка ${index + 1}`, `Указанный лист КС-2 (${sheetId}) не найден среди текущих листов.`);
+      }
+    }
     if (row.amount == null || numberOrZero(row.amount) <= 0) {
       pushIssue('warning', `xml.settlement.manualRows.${index}.amount`, `СвОРасч: строка ${index + 1}`, 'Для typed-строки ВидТреб / ВидУдерж нужна сумма больше 0');
     }
@@ -1195,6 +1737,11 @@ function buildValidationReport(model) {
     pushIssue('warning', 'xml.settlement.settlementRows', 'СвОРасч', `В текущем XSD-ready профиле несколько видов требований / удержаний будут сжаты в один УчетТребУдерж. Сейчас основной строкой выбрана: ${buildRepresentativeSettlementLabel(representativeRow)}.`);
   }
 
+  const customerReadiness = buildCustomerXmlReadiness(model, 0, null, { includeSheetSpecific: false });
+  customerReadiness.issues.forEach((issue) => {
+    pushIssue(issue.severity, issue.path, `Файл Z: ${issue.label}`, issue.message);
+  });
+
   return {
     errors,
     warnings,
@@ -1207,1171 +1754,181 @@ function renderValidationIssue(issue) {
 }
 
 function renderRequisitesPane() {
-  const c = app.state.common;
-  const totals = app.state.ks2Sheets.map(computeSheetTotals);
-  const totalGross = totals.reduce((sum, sheet) => sum + sheet.gross, 0);
-  const totalVat = totals.reduce((sum, sheet) => sum + sheet.vat, 0);
-  const totalBase = totalGross - totalVat;
-  const logic = buildLogicBundle();
+  const c = app.state.documentContext;
+  const sheet = app.state.ks2Sheets[0] || createBlankSheet(1);
+  const sheetTotals = computeSheetTotals(sheet);
+  const totalGross = sheetTotals.gross;
+  const totalVat = sheetTotals.vat;
+  const totalBase = Math.max(totalGross - totalVat, 0);
 
   return `
     <div class="panel">
       <div class="panel-header">
         <div>
-          <h2 class="panel-title">Реквизиты и общая шапка</h2>
-          <p class="panel-subtitle">Эти значения одинаково используются в листах КС-2, КС-3 и при последующей генерации XML.</p>
+          <h2 class="panel-title">Реквизиты single-sheet формы</h2>
+          <p class="panel-subtitle">Опираемся на новый эталонный workbook <code>new example 1 sheet.xlsx</code>: один акт КС-2, один блок удержаний, без отдельного UX для КС-3.</p>
         </div>
-        <div class="badge">База загружена из example Excel</div>
       </div>
 
       <div class="summary-grid">
-        <div class="summary-card"><span>Сумма с НДС по всем КС-2</span><strong>${formatMoney(totalGross)}</strong></div>
+        <div class="summary-card"><span>Сумма с НДС по КС-2</span><strong>${formatMoney(totalGross)}</strong></div>
         <div class="summary-card"><span>Суммарный НДС</span><strong>${formatMoney(totalVat)}</strong></div>
         <div class="summary-card"><span>Сумма без НДС</span><strong>${formatMoney(totalBase)}</strong></div>
-        <div class="summary-card"><span>Листов КС-2</span><strong>${app.state.ks2Sheets.length}</strong></div>
+        <div class="summary-card"><span>Режим формы</span><strong>1 лист КС-2</strong></div>
       </div>
 
-      <div class="section-block">
-        <h3>Логика формы и проверка обязательных полей</h3>
-        <div class="summary-grid">
-          <div class="summary-card"><span>Ошибки</span><strong>${logic.validation.errors.length}</strong></div>
-          <div class="summary-card"><span>Предупреждения</span><strong>${logic.validation.warnings.length}</strong></div>
-          <div class="summary-card"><span>Готовность к экспорту</span><strong>${logic.validation.readyForExport ? 'Да' : 'Нет'}</strong></div>
-          <div class="summary-card"><span>Логическая модель</span><strong>${logic.model.ks2Sheets.length + 2} док.</strong></div>
+      <div class="inline-hint">${escapeHtml(app.state.ui.singleSheetModeNotice || 'Редактор работает только с одним листом КС-2 за раз.')}</div>
+      <div class="inline-hint">Основной сценарий теперь такой: реквизиты документа → текущий лист КС-2 → удержания этого листа → XML P/Z. Всё, что относится к старой multi-sheet книге, вынесено в совместимость.</div>
+      ${(app.state.legacy?.extraKs2Sheets || []).length ? `
+        <div class="inline-actions section-block">
+          <button class="secondary" data-action="split-legacy-forms">Разложить legacy-листы в отдельные single-sheet JSON</button>
+          <span class="kbd-note">Будут созданы отдельные формы по каждому листу КС-2 в <code>saved-forms/split-single-sheet/</code>.</span>
         </div>
-        <div class="card-grid section-block">
-          <div class="info-card">
-            <span class="label">Критичные ошибки</span>
-            ${logic.validation.errors.length ? `<ul class="issue-list">${logic.validation.errors.slice(0, 8).map(renderValidationIssue).join('')}</ul>` : '<div class="logic-ok">Критичных ошибок пока нет.</div>'}
-          </div>
-          <div class="info-card">
-            <span class="label">Предупреждения</span>
-            ${logic.validation.warnings.length ? `<ul class="issue-list">${logic.validation.warnings.slice(0, 8).map(renderValidationIssue).join('')}</ul>` : '<div class="logic-ok">Предупреждений пока нет.</div>'}
-          </div>
-        </div>
-      </div>
+      ` : ''}
 
       <div class="section-block">
-        <h3>Коды формы и договор</h3>
+        <h3>Стороны и объект</h3>
         <div class="form-grid">
-          ${renderInput('ОКУД КС-2', 'common.okudKs2', c.okudKs2, 'string', 'quarter')}
-          ${renderInput('ОКУД КС-3', 'common.okudKs3', c.okudKs3, 'string', 'quarter')}
-          ${renderInput('ОКПО объекта', 'common.objectOkpo', c.objectOkpo, 'string', 'quarter')}
-          ${renderInput('ОКДП', 'common.okdpCode', c.okdpCode, 'string', 'quarter')}
-          ${renderInput('Валюта (код)', 'common.currencyCode', c.currencyCode, 'string', 'quarter')}
-          ${renderInput('Валюта (наименование)', 'common.currencyName', c.currencyName, 'string', 'quarter')}
-          ${renderInput('Номер договора', 'common.contractNumber', c.contractNumber, 'string', 'half')}
-          ${renderInput('Дата договора', 'common.contractDate', c.contractDate, 'string', 'half')}
-          ${renderInput('Вид операции', 'common.operationType', c.operationType, 'string', 'half')}
+          ${renderInput('Заказчик / застройщик', 'documentContext.developerName', c.developerName, 'string', 'half')}
+          ${renderInput('Технический заказчик', 'documentContext.techCustomerName', c.techCustomerName, 'string', 'half')}
+          ${renderInput('Подрядчик', 'documentContext.contractorName', c.contractorName, 'string', 'half')}
+          ${renderInput('Наименование объекта', 'documentContext.objectName', c.objectName, 'string', 'half')}
+          ${renderTextarea('Стройка / адрес / описание объекта', 'documentContext.constructionObject', c.constructionObject, 'half')}
+          ${renderInput('ОКПО объекта', 'documentContext.objectOkpo', c.objectOkpo, 'string', 'quarter')}
+          ${renderInput('Краткое название подрядчика', 'documentContext.contractorShortName', c.contractorShortName, 'string', 'quarter')}
         </div>
       </div>
 
       <div class="section-block">
-        <h3>Стороны</h3>
+        <h3>Документ и договор</h3>
         <div class="form-grid">
-          ${renderTextarea('Застройщик (наименование + адрес)', 'common.developerName', c.developerName, 'half')}
-          ${renderInput('ОКПО застройщика', 'common.developerOkpo', c.developerOkpo, 'string', 'quarter')}
-          ${renderTextarea('Технический заказчик (наименование + адрес)', 'common.techCustomerName', c.techCustomerName, 'half')}
-          ${renderInput('ОКПО техзаказчика', 'common.techCustomerOkpo', c.techCustomerOkpo, 'string', 'quarter')}
-          ${renderTextarea('Генподрядчик (наименование + адрес)', 'common.contractorName', c.contractorName, 'half')}
-          ${renderInput('ОКПО генподрядчика', 'common.contractorOkpo', c.contractorOkpo, 'string', 'quarter')}
+          ${renderInput('ОКУД КС-2', 'documentContext.okudKs2', c.okudKs2, 'string', 'quarter')}
+          ${renderInput('ОКДП', 'documentContext.okdpCode', c.okdpCode, 'string', 'quarter')}
+          ${renderInput('Валюта (код)', 'documentContext.currencyCode', c.currencyCode, 'string', 'quarter')}
+          ${renderInput('Валюта (наименование)', 'documentContext.currencyName', c.currencyName, 'string', 'quarter')}
+          ${renderInput('Номер договора', 'documentContext.contractNumber', c.contractNumber, 'string', 'half')}
+          ${renderInput('Дата договора', 'documentContext.contractDate', c.contractDate, 'string', 'half')}
+          ${renderInput('Вид операции', 'documentContext.operationType', c.operationType, 'string', 'half')}
+          ${renderInput('Заголовок документа', 'documentContext.ks2DocLabel', c.ks2DocLabel, 'string', 'quarter')}
+          ${renderInput('Подзаголовок документа', 'documentContext.ks2DocSubtitle', c.ks2DocSubtitle, 'string', 'half')}
         </div>
       </div>
 
       <div class="section-block">
-        <h3>Объект строительства</h3>
+        <h3>Подписи и печатные роли</h3>
+        <p class="kbd-note">Оставлены только роли, которые реально помогают собрать текущий single-sheet КС-2 и XML. КС-3-специфичные роли из активного сценария убраны.</p>
         <div class="form-grid">
-          ${renderTextarea('Стройка', 'common.constructionObject', c.constructionObject, 'half')}
-          ${renderTextarea('Объект', 'common.objectName', c.objectName, 'half')}
+          ${renderInput('Подрядчик: заголовок подписи', 'documentContext.contractorSignLabel', c.contractorSignLabel, 'string', 'quarter')}
+          ${renderTextarea('Подрядчик: должность', 'documentContext.contractorSignerPosition', c.contractorSignerPosition, 'half')}
+          ${renderInput('Подрядчик: ФИО', 'documentContext.contractorSignerName', c.contractorSignerName, 'string', 'quarter')}
+
+          ${renderInput('Заказчик: заголовок подписи', 'documentContext.customerSignLabel', c.customerSignLabel, 'string', 'quarter')}
+          ${renderTextarea('Заказчик: должность', 'documentContext.customerSignerPosition', c.customerSignerPosition, 'half')}
+          ${renderInput('Заказчик: ФИО', 'documentContext.customerSignerName', c.customerSignerName, 'string', 'quarter')}
+
+          ${renderInput('Проверил: заголовок', 'documentContext.ks2CheckedLabel', c.ks2CheckedLabel, 'string', 'quarter')}
+          ${renderTextarea('Проверил: должность', 'documentContext.ks2CheckedPosition', c.ks2CheckedPosition, 'half')}
+          ${renderInput('Проверил: ФИО', 'documentContext.ks2CheckedName', c.ks2CheckedName, 'string', 'quarter')}
+
+          ${renderTextarea('Технический заказчик: должность', 'documentContext.techCustomerSignerPosition', c.techCustomerSignerPosition, 'half')}
+          ${renderInput('Технический заказчик: ФИО', 'documentContext.techCustomerSignerName', c.techCustomerSignerName, 'string', 'quarter')}
         </div>
       </div>
 
-      <div class="section-block">
-        <h3>Названия документов</h3>
-        <div class="form-grid">
-          ${renderInput('КС-2: заголовок', 'common.ks2DocLabel', c.ks2DocLabel, 'string', 'quarter')}
-          ${renderInput('КС-2: подзаголовок', 'common.ks2DocSubtitle', c.ks2DocSubtitle, 'string', 'half')}
-          ${renderInput('КС-3: заголовок', 'common.ks3DocLabel', c.ks3DocLabel, 'string', 'quarter')}
-          ${renderInput('КС-3: подзаголовок', 'common.ks3DocSubtitle', c.ks3DocSubtitle, 'string', 'half')}
+      <details class="section-block advanced-requisites">
+        <summary>Поля совместимости / редко нужны</summary>
+        <div class="form-grid" style="margin-top: 14px;">
+          ${renderInput('ОКПО застройщика', 'documentContext.developerOkpo', c.developerOkpo, 'string', 'quarter')}
+          ${renderInput('ОКПО техзаказчика', 'documentContext.techCustomerOkpo', c.techCustomerOkpo, 'string', 'quarter')}
+          ${renderInput('ОКПО подрядчика', 'documentContext.contractorOkpo', c.contractorOkpo, 'string', 'quarter')}
+          ${renderInput('Печатный блок «Принял»: должность', 'documentContext.ks2AcceptedPosition', c.ks2AcceptedPosition, 'string', 'half')}
+          ${renderInput('Печатный блок «Принял»: ФИО', 'documentContext.ks2AcceptedName', c.ks2AcceptedName, 'string', 'quarter')}
         </div>
-      </div>
-
-      <div class="section-block">
-        <h3>Подписанты и нижние блоки документов</h3>
-        <p>Эти поля дублируются внизу КС-2, КС-3 и листа удержаний. Показ самих подписей включается кнопкой сверху.</p>
-        <div class="form-grid">
-          ${renderInput('КС-2: Сдал — заголовок', 'common.contractorSignLabel', c.contractorSignLabel, 'string', 'quarter')}
-          ${renderTextarea('КС-2: Сдал — должность', 'common.contractorSignerPosition', c.contractorSignerPosition, 'half')}
-          ${renderInput('КС-2: Сдал — ФИО', 'common.contractorSignerName', c.contractorSignerName, 'string', 'quarter')}
-
-          ${renderInput('КС-2: Принял — заголовок', 'common.customerSignLabel', c.customerSignLabel, 'string', 'quarter')}
-          ${renderTextarea('КС-2: Принял — должность', 'common.ks2AcceptedPosition', c.ks2AcceptedPosition, 'half')}
-          ${renderInput('КС-2: Принял — ФИО', 'common.ks2AcceptedName', c.ks2AcceptedName, 'string', 'quarter')}
-
-          ${renderInput('КС-2: Проверил — заголовок', 'common.ks2CheckedLabel', c.ks2CheckedLabel, 'string', 'quarter')}
-          ${renderTextarea('КС-2: Проверил — должность', 'common.ks2CheckedPosition', c.ks2CheckedPosition, 'half')}
-          ${renderInput('КС-2: Проверил — ФИО', 'common.ks2CheckedName', c.ks2CheckedName, 'string', 'quarter')}
-
-          ${renderTextarea('КС-3 / Удержания: Застройщик — должность', 'common.ks3DeveloperPosition', c.ks3DeveloperPosition, 'half')}
-          ${renderInput('КС-3 / Удержания: Застройщик — ФИО', 'common.ks3DeveloperName', c.ks3DeveloperName, 'string', 'quarter')}
-          ${renderTextarea('КС-3 / Удержания: Техзаказчик — должность', 'common.ks3TechCustomerPosition', c.ks3TechCustomerPosition, 'half')}
-          ${renderInput('КС-3 / Удержания: Техзаказчик — ФИО', 'common.ks3TechCustomerName', c.ks3TechCustomerName, 'string', 'quarter')}
-          ${renderTextarea('КС-3 / Удержания: Генподрядчик — должность', 'common.ks3ContractorPosition', c.ks3ContractorPosition, 'half')}
-          ${renderInput('КС-3 / Удержания: Генподрядчик — ФИО', 'common.ks3ContractorName', c.ks3ContractorName, 'string', 'quarter')}
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function renderExcelDocFrame({ formTitle, docLabel = '', docSubtitle = '', formCodeLabel = 'Форма по ОКУД', formCode, common, contractLabel = 'Договор генподряда', docKindLabel = 'Номер документа / дата / период', documentNumber, documentDate, periodFrom, periodTo, basis, objectLabel = 'Объект' }) {
-  return `
-    <div class="excel-frame">
-      <div class="excel-frame-top">
-        <div>
-          <div class="excel-frame-caption">Унифицированная форма</div>
-          <div class="excel-frame-title">${escapeHtml(docLabel || formTitle)}</div>
-          <div class="excel-frame-subtitle">${escapeHtml(docSubtitle || 'Утверждена постановлением Госкомстата России от 11.11.99 № 100')}</div>
-        </div>
-        <div class="excel-code-box">
-          <span>${escapeHtml(formCodeLabel)}</span>
-          <strong>${escapeHtml(formCode || '')}</strong>
-        </div>
-      </div>
-
-      <div class="excel-org-list">
-        ${renderExcelPartyLine('Застройщик', common.developerName, common.developerOkpo)}
-        ${renderExcelPartyLine('Технический заказчик', common.techCustomerName, common.techCustomerOkpo)}
-        ${renderExcelPartyLine('Генподрядчик', common.contractorName, common.contractorOkpo)}
-        ${renderExcelSimpleLine('Стройка', common.constructionObject, 'наименование, адрес')}
-        ${renderExcelPartyLine(objectLabel, common.objectName, common.objectOkpo)}
-        ${renderExcelSimpleLine('Вид деятельности по ОКДП', common.okdpCode, '')}
-      </div>
-
-      <div class="excel-meta-grid">
-        <div class="excel-meta-cell">
-          <span class="excel-meta-label">${escapeHtml(contractLabel)}</span>
-          <strong>${escapeHtml(common.contractNumber || '')}</strong>
-          <em>${escapeHtml(common.contractDate || '')}</em>
-        </div>
-        <div class="excel-meta-cell">
-          <span class="excel-meta-label">Вид операции</span>
-          <strong>${escapeHtml(common.operationType || '')}</strong>
-        </div>
-        <div class="excel-meta-cell excel-meta-cell-wide">
-          <span class="excel-meta-label">${escapeHtml(docKindLabel)}</span>
-          <strong>№ ${escapeHtml(documentNumber || '')} · ${escapeHtml(documentDate || '')}</strong>
-          <em>${escapeHtml(periodFrom || '')} — ${escapeHtml(periodTo || '')}</em>
-        </div>
-      </div>
-
-      ${basis ? `
-        <div class="excel-basis-row">
-          <span class="excel-basis-label">Основание:</span>
-          <div class="excel-basis-value">${escapeHtml(basis)}</div>
-        </div>
-      ` : ''}
-    </div>
-  `;
-}
-
-function renderExcelPartyLine(label, value, okpo) {
-  return `
-    <div class="excel-line">
-      <div class="excel-line-main">
-        <span class="excel-line-label">${escapeHtml(label)}:</span>
-        <span class="excel-line-value">${escapeHtml(value || '')}</span>
-      </div>
-      <div class="excel-line-side">
-        <span class="excel-line-side-label">по ОКПО</span>
-        <strong>${escapeHtml(okpo || '')}</strong>
-      </div>
-    </div>
-  `;
-}
-
-function renderExcelSimpleLine(label, value, hint = '') {
-  return `
-    <div class="excel-line excel-line-simple">
-      <div class="excel-line-main">
-        <span class="excel-line-label">${escapeHtml(label)}:</span>
-        <span class="excel-line-value">${escapeHtml(value || '')}</span>
-      </div>
-      ${hint ? `<div class="excel-line-hint">${escapeHtml(hint)}</div>` : ''}
-    </div>
-  `;
-}
-
-function renderSignatureRow(label, position, name) {
-  return `
-    <div class="signature-excel-block">
-      <div class="signature-excel-main">
-        <div class="signature-role">${escapeHtml(label)}</div>
-        <div class="signature-position-wide">${escapeHtml(position || '')}</div>
-        <div class="signature-sign-line"></div>
-        <div class="signature-name-wide">${escapeHtml(name || '')}</div>
-      </div>
-      <div class="signature-excel-hints">
-        <div></div>
-        <div class="signature-mark">(должность)</div>
-        <div class="signature-mark">(подпись)</div>
-        <div class="signature-mark">(расшифровка подписи)</div>
-      </div>
-      <div class="signature-excel-stamp">
-        <div></div>
-        <div class="signature-stamp">М.П.</div>
-        <div></div>
-        <div></div>
-      </div>
-    </div>
-  `;
-}
-
-function renderKs2TotalsBlock(sheet, totals) {
-  const workAmount = round2((totals.breakdown.work || 0) + (totals.breakdown.frame || 0));
-  const breakdownRows = [
-    ['материал, в т.ч.:', totals.breakdown.material || 0],
-    ['металлопрокат', totals.breakdown.metal || 0],
-    ['бетон', totals.breakdown.concrete || 0],
-    ['пр.мат.', totals.breakdown.misc || 0],
-    ['работа', workAmount],
-  ];
-  return `
-    <div class="ks2-footer-grid">
-      <div class="excel-totals-block">
-        <div class="excel-total-line">
-          <span>ВСЕГО по Акту:</span>
-          <strong>${formatMoney(totals.gross)}</strong>
-        </div>
-        <div class="excel-total-line">
-          <span>в том числе НДС (${sheet.vatRate}%)</span>
-          <strong>${formatMoney(totals.vat)}</strong>
-        </div>
-      </div>
-      <div class="ks2-breakdown-block">
-        ${breakdownRows.map(([label, amount]) => `
-          <div class="ks2-breakdown-row">
-            <span>${escapeHtml(label)}</span>
-            <strong>${formatMoney(amount)}</strong>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-  `;
-}
-
-function inferKs3VatRate(totals, vat) {
-  const period = numberOrZero(totals?.forPeriod);
-  const vatValue = numberOrZero(vat);
-  if (period > 0 && vatValue >= 0) {
-    const rate = round2((vatValue / period) * 100);
-    if (rate > 0) return rate;
-  }
-  return app.state.ks2Sheets[0]?.vatRate || 20;
-}
-
-function renderKs3TotalsBlock(totals, vat) {
-  const vatRate = inferKs3VatRate(totals, vat);
-  const withVat = numberOrZero(totals.forPeriod) + numberOrZero(vat);
-  return `
-    <div class="excel-totals-block">
-      <div class="excel-total-line"><span>Итого:</span><strong>${formatMoney(totals.forPeriod)}</strong></div>
-      <div class="excel-total-line"><span>Сумма НДС (${formatMoney(vatRate).replace('.00', '').replace(',00', '')}%)</span><strong>${formatMoney(vat)}</strong></div>
-      <div class="excel-total-line"><span>Всего с учетом НДС (${formatMoney(vatRate).replace('.00', '').replace(',00', '')}%):</span><strong>${formatMoney(withVat)}</strong></div>
-    </div>
-  `;
-}
-
-function renderHoldbacksTotalsBlock(totals) {
-  const vat = (value) => round2(numberOrZero(value) * 22 / 122);
-  const valueColumns = [
-    totals.ks2Amount,
-    totals.materialsUsed,
-    totals.advanceReceived,
-    totals.previousBalance,
-    totals.closingAmount,
-    totals.nextBalance,
-    totals.retentionAmount,
-    totals.payableAmount,
-  ];
-  return `
-    <div class="holdbacks-totals-grid">
-      <div class="holdbacks-total-row holdbacks-total-head">
-        <span>Всего:</span>
-        ${valueColumns.map((value) => `<strong>${formatMoney(value)}</strong>`).join('')}
-      </div>
-      <div class="holdbacks-total-row">
-        <span>в том числе НДС 22%</span>
-        ${valueColumns.map((value) => `<strong>${formatMoney(vat(value))}</strong>`).join('')}
-      </div>
-    </div>
-  `;
-}
-
-function renderKs2SignatureTable() {
-  return '';
-}
-
-function renderKs3SignatureTable() {
-  return '';
-}
-
-function renderKs2RowActions(sheetIndex, rowIndex) {
-  const menuOpen = app.state.ui.rowActionMenu
-    && app.state.ui.rowActionMenu.sheetIndex === sheetIndex
-    && app.state.ui.rowActionMenu.rowIndex === rowIndex;
-  const confirmOpen = app.state.ui.rowDeleteConfirm
-    && app.state.ui.rowDeleteConfirm.sheetIndex === sheetIndex
-    && app.state.ui.rowDeleteConfirm.rowIndex === rowIndex;
-
-  return `
-    <div class="row-action-stack">
-      <button class="stack-button add" title="Добавить строку ниже" aria-label="Добавить строку ниже" data-action="toggle-row-menu" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+</button>
-      <button class="stack-button remove" title="Удалить строку" aria-label="Удалить строку" data-action="prompt-delete-row" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">×</button>
-      ${menuOpen ? `
-        <div class="row-action-menu">
-          <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="section" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Раздел</button>
-          ${renderExpenseTypeMenuItems(sheetIndex, rowIndex)}
-          <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="errorCorrection" data-expense-type="1" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Испр. ошибок</button>
-          <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="newCircumstances" data-expense-type="1" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Новые обстоятельства</button>
-          <button class="row-action-menu-item" data-action="insert-row-after" data-row-kind="note" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+ Примечание</button>
-        </div>
-      ` : ''}
-      ${confirmOpen ? `
-        <div class="row-action-confirm">
-          <div class="row-action-confirm-title">Удалить?</div>
-          <div class="row-action-confirm-buttons">
-            <button class="confirm-icon confirm-yes" title="Подтвердить" aria-label="Подтвердить" data-action="confirm-delete-row" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">✓</button>
-            <button class="confirm-icon confirm-no" title="Отмена" aria-label="Отмена" data-action="cancel-delete-row" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">×</button>
-          </div>
-        </div>
-      ` : ''}
-    </div>
-  `;
-}
-
-async function loadKs2XmlPreview(sheetIndex, force = false) {
-  const cacheKey = String(sheetIndex);
-  const current = app.state.ui.ks2XmlPreview?.[cacheKey];
-  if (!force && current?.status === 'ready') return;
-
-  app.state.ui.ks2XmlPreview[cacheKey] = { status: 'loading' };
-  render();
-
-  try {
-    const response = await fetch('/api/preview-xml-sheet', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: buildLogicBundle().model, sheetIndex }),
-    });
-    const data = await response.json();
-    if (!response.ok || !data.ok) throw new Error(data.error || `Ошибка ${response.status}`);
-    app.state.ui.ks2XmlPreview[cacheKey] = {
-      status: 'ready',
-      filename: data.filename,
-      valid: Boolean(data.valid),
-      errors: data.errors || [],
-      xmlText: data.xmlText || '',
-      updatedAt: new Date().toISOString(),
-    };
-  } catch (error) {
-    app.state.ui.ks2XmlPreview[cacheKey] = {
-      status: 'error',
-      error: error.message,
-    };
-  }
-  render();
-}
-
-function renderKs2ViewSwitcher(sheetIndex) {
-  const mode = app.state.ui.ks2ViewMode?.[sheetIndex] || 'form';
-  return `
-    <div class="view-switcher">
-      <button class="mini ${mode === 'form' ? '' : 'secondary'}" data-action="set-ks2-view-mode" data-sheet-index="${sheetIndex}" data-mode="form">Форма</button>
-      <button class="mini ${mode === 'xml' ? '' : 'secondary'}" data-action="set-ks2-view-mode" data-sheet-index="${sheetIndex}" data-mode="xml">XML</button>
-    </div>
-  `;
-}
-
-
-function prettyFormatXml(xmlText) {
-  const source = String(xmlText || '').trim();
-  if (!source) return '';
-  const tokens = source.replace(/>\s*</g, '>\n<').split('\n').map((line) => line.trim()).filter(Boolean);
-  let indent = 0;
-  return tokens.map((line) => {
-    const isClosing = /^<\//.test(line);
-    const isDeclaration = /^<\?/.test(line) || /^<!/.test(line);
-    const isSelfClosing = /\/>$/.test(line) || /^<[^>]+>.*<\/[^>]+>$/.test(line);
-    if (isClosing) indent = Math.max(indent - 1, 0);
-    const prefix = '  '.repeat(indent);
-    if (!isClosing && !isDeclaration && !isSelfClosing && /^<[^/][^>]*>$/.test(line)) {
-      indent += 1;
-    }
-    return `${prefix}${line}`;
-  }).join('\n');
-}
-
-function detectXmlLineType(trimmedLine, stackTop = '') {
-  if (/^<\/?СвОРасч\b/.test(trimmedLine)) return 'settlement';
-  if (/^<\/?УчетТребУдерж\b/.test(trimmedLine) || /^<\/?ВидУдерж\b/.test(trimmedLine) || /^<\/?ДокПодтСумУд\b/.test(trimmedLine)) return 'retention';
-  if (/^<\/?ИнфПолСвОРасч\b/.test(trimmedLine) || /Идентиф="AVANS_/.test(trimmedLine)) return 'advance';
-  if (/^<\/?НаимИСт\b/.test(trimmedLine)) return 'sheet';
-  if (/^<\/?Раздел\b/.test(trimmedLine)) return 'section';
-  if (/^<\/?СвВидРаб\b/.test(trimmedLine)) return 'work';
-  return stackTop || '';
-}
-
-function renderFormattedXmlHtml(xmlText) {
-  const formattedXml = prettyFormatXml(xmlText);
-  if (!formattedXml) return '';
-  const lines = formattedXml.split('\n');
-  const stack = [];
-
-  return lines.map((line) => {
-    const trimmed = line.trim();
-    const type = detectXmlLineType(trimmed, stack.at(-1) || '');
-    const classes = ['xml-line'];
-    if (type) classes.push(`xml-line-${type}`);
-
-    const isOpenTag = /^<([^/!?][^\s/>]*)\b/.exec(trimmed);
-    const isCloseTag = /^<\/([^>]+)>/.exec(trimmed);
-    const isSelfClosing = /\/>$/.test(trimmed) || /^<[^>]+>.*<\/[^>]+>$/.test(trimmed);
-
-    if (isCloseTag) {
-      const closingType = detectXmlLineType(trimmed, stack.at(-1) || '');
-      if (closingType) classes.push(`xml-line-${closingType}`);
-    }
-
-    const html = `<div class="${classes.join(' ')}"><span class="xml-line-text">${escapeHtml(line) || '&nbsp;'}</span></div>`;
-
-    if (isCloseTag) {
-      stack.pop();
-    } else if (isOpenTag && !isSelfClosing) {
-      const openedType = detectXmlLineType(trimmed, '');
-      if (openedType) stack.push(openedType);
-    }
-
-    return html;
-  }).join('');
-}
-
-function buildHoldbackSheetSummary(groups) {
-  return groups.reduce((acc, group) => {
-    const computed = computeHoldbackSectionComputed(group);
-    acc.workAmount += numberOrZero(group.section.row.ks2Amount);
-    acc.guaranteeAmount += numberOrZero(computed.retentionAmount);
-    acc.advanceClosing += numberOrZero(computed.closingAmount);
-    acc.payableAmount += numberOrZero(computed.payableAmount);
-    if (!acc.retentionDocName && (group.section.row.retentionDocName || group.section.row.retentionDocNumber || group.section.row.retentionDocDate)) {
-      acc.retentionDocName = group.section.row.retentionDocName || '';
-      acc.retentionDocNumber = group.section.row.retentionDocNumber || '';
-      acc.retentionDocDate = group.section.row.retentionDocDate || '';
-      acc.retentionDocExtra = group.section.row.retentionDocExtra || '';
-    }
-    return acc;
-  }, {
-    workAmount: 0,
-    guaranteeAmount: 0,
-    advanceClosing: 0,
-    payableAmount: 0,
-    retentionDocName: '',
-    retentionDocNumber: '',
-    retentionDocDate: '',
-    retentionDocExtra: '',
-  });
-}
-
-function renderHoldbackSheetSummary(summary) {
-  const formula = `${formatMoney(summary.workAmount)} − ${formatMoney(summary.guaranteeAmount)} − ${formatMoney(summary.advanceClosing)} = ${formatMoney(summary.payableAmount)}`;
-  const docParts = [summary.retentionDocName, summary.retentionDocNumber, summary.retentionDocDate, summary.retentionDocExtra].filter(Boolean);
-  return `
-    <div class="holdback-summary-block section-block">
-      <div class="panel-header holdback-summary-header">
-        <div>
-          <h3>Как сейчас собирается СвОРасч</h3>
-          <p class="kbd-note">Итог к оплате считается как сумма работ по листу КС-2 минус гарантийное удержание минус все суммы закрытия по платежкам.</p>
-        </div>
-      </div>
-      <div class="summary-grid settlement-summary-grid">
-        <div class="summary-card"><span>Сумма работ по КС-2</span><strong>${formatMoney(summary.workAmount)}</strong></div>
-        <div class="summary-card"><span>Гарантийное удержание 32</span><strong>${formatMoney(summary.guaranteeAmount)}</strong></div>
-        <div class="summary-card"><span>Закрытие авансов 31</span><strong>${formatMoney(summary.advanceClosing)}</strong></div>
-        <div class="summary-card"><span>Итого к оплате</span><strong>${formatMoney(summary.payableAmount)}</strong></div>
-      </div>
-      <div class="settlement-preview ${docParts.length ? '' : 'muted'}">
-        <strong>Формула:</strong>
-        <span>${formula}</span>
-        ${docParts.length ? `<br /><strong>Документ по 32:</strong> ${escapeHtml(docParts.join(' · '))}` : ''}
-      </div>
-    </div>
-  `;
-}
-
-function renderKs2XmlPreviewPane(sheetIndex, sheet) {
-  const preview = app.state.ui.ks2XmlPreview?.[String(sheetIndex)] || null;
-  if (!preview || preview.status === 'loading') {
-    return `
-      <div class="section-block xml-preview-block">
-        <div class="xml-preview-header">
-          <div>
-            <h3>XML по листу КС-2</h3>
-            <p class="kbd-note">Показывает, как текущий лист будет передан в отдельный XML.</p>
-          </div>
-          <div class="xml-preview-actions">
-            <button class="mini secondary" data-action="refresh-ks2-xml-preview" data-sheet-index="${sheetIndex}">Обновить XML</button>
-          </div>
-        </div>
-        <div class="xml-preview-status">${preview?.status === 'loading' ? 'Собираю XML…' : 'Открой вкладку XML, чтобы собрать XML по этому листу.'}</div>
-      </div>
-    `;
-  }
-
-  if (preview.status === 'error') {
-    return `
-      <div class="section-block xml-preview-block">
-        <div class="xml-preview-header">
-          <div>
-            <h3>XML по листу КС-2</h3>
-            <p class="kbd-note">Показывает, как текущий лист будет передан в отдельный XML.</p>
-          </div>
-          <div class="xml-preview-actions">
-            <button class="mini secondary" data-action="refresh-ks2-xml-preview" data-sheet-index="${sheetIndex}">Повторить</button>
-          </div>
-        </div>
-        <div class="xml-preview-status error">Не удалось собрать XML: ${escapeHtml(preview.error || 'неизвестная ошибка')}</div>
-      </div>
-    `;
-  }
-
-  return `
-    <div class="section-block xml-preview-block">
-      <div class="xml-preview-header">
-        <div>
-          <h3>XML по листу КС-2</h3>
-          <p class="kbd-note">Это итоговый XML, который уйдет по листу <strong>${escapeHtml(sheet.title || `КС-2 #${sheetIndex + 1}`)}</strong>. Файл: <code>${escapeHtml(preview.filename || '')}</code>.</p>
-        </div>
-        <div class="xml-preview-actions">
-          <button class="mini secondary" data-action="copy-ks2-xml-preview" data-sheet-index="${sheetIndex}">Копировать XML</button>
-          <button class="mini secondary" data-action="refresh-ks2-xml-preview" data-sheet-index="${sheetIndex}">Обновить XML</button>
-        </div>
-      </div>
-      <div class="xml-preview-meta ${preview.valid ? 'valid' : 'invalid'}">
-        <strong>${preview.valid ? 'XSD: OK' : 'XSD: есть ошибки'}</strong>
-        <span>${preview.updatedAt ? `Обновлено: ${new Date(preview.updatedAt).toLocaleTimeString('ru-RU')}` : ''}</span>
-      </div>
-      ${preview.errors?.length ? `<div class="xml-preview-errors">${preview.errors.map((err) => `<div>строка ${err.line}: ${escapeHtml(err.message)}</div>`).join('')}</div>` : ''}
-      <div class="xml-preview-code">${renderFormattedXmlHtml(preview.xmlText || '')}</div>
-    </div>
-  `;
-}
-
-function renderKs2Pane(sheetIndex) {
-  const sheet = app.state.ks2Sheets[sheetIndex];
-  if (!sheet) return '<div class="panel"><div class="empty-state">Лист КС-2 не найден.</div></div>';
-  const totals = computeSheetTotals(sheet);
-  const ks2TableId = `ks2-${sheetIndex}`;
-  const viewMode = app.state.ui.ks2ViewMode?.[sheetIndex] || 'form';
-
-  const rows = sheet.rows.map((row, rowIndex) => `
-    <tr class="${row.type === 'section' ? 'section-row' : row.type === 'note' ? 'note-row' : isCorrectionRow(row) ? 'correction-row' : ''}">
-      <td>${renderTableSelect(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.type`, row.type, { item: 'Строка', section: 'Раздел', note: 'Примечание' })}</td>
-      <td>${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.code`, row.code)}</td>
-      <td>${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.lineNo`, row.lineNo)}</td>
-      <td>${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.estimateNo`, row.estimateNo)}</td>
-      <td>${renderTableTextarea(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.name`, row.name)}</td>
-      <td>${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.unit`, row.unit)}</td>
-      <td class="number-cell">${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.quantity`, formatEditableNumber(row.quantity), 'number')}</td>
-      <td class="number-cell">${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.price`, formatEditableNumber(row.price), 'number')}</td>
-      <td class="amount-cell">${renderTableComputed(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.__displayAmount`, `
-        <div class="amount-stack">
-          <strong>${formatMoney(computeRowDisplayAmount(row))}</strong>
-          ${isCorrectionRow(row) ? `<span class="calc-mode-chip subtract">${correctionModeLabel(row)}</span>` : ''}
-        </div>
-      `)}</td>
-      <td class="number-cell">${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.unitConsumption`, formatEditableNumber(row.unitConsumption), 'number')}</td>
-      <td>${renderTableSelect(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.category`, row.category, {
-            work: 'Работа',
-            metal: 'Металлопрокат',
-            frame: 'Каркас',
-            concrete: 'Бетон',
-            misc: 'Прочее',
-            material: 'Материал',
-          })}</td>
-      <td>
-        ${row.type === 'item'
-          ? renderTableSelect(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.expenseType`, normalizeExpenseType(row.expenseType, row), EXPENSE_TYPE_OPTIONS)
-          : renderTableComputed(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.expenseType`, '<div class="table-muted-cell">—</div>')}
-      </td>
-      <td>
-        ${row.type === 'item'
-          ? renderTableSelect(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.calcMode`, normalizeCalcMode(row.calcMode, row), {
-              normal: 'Обычная',
-              errorCorrection: 'Исправление ошибок',
-              newCircumstances: 'Новые обстоятельства',
-            })
-          : renderTableComputed(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.calcMode`, '<div class="table-muted-cell">—</div>')}
-      </td>
-      <td>${renderTableTextarea(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.note`, row.note)}</td>
-      <td class="actions-cell">${renderKs2RowActions(sheetIndex, rowIndex)}</td>
-    </tr>
-  `).join('');
-
-  return `
-    <div class="panel">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title">${escapeHtml(sheet.title)}</h2>
-          <p class="panel-subtitle">Таблица построена по структуре Excel: шапка акта, основание, разделы, строки работ и итоговый блок.</p>
-        </div>
-        <div class="inline-actions ks2-header-actions">
-          <button class="secondary" data-action="duplicate-sheet" data-sheet-index="${sheetIndex}">Дублировать лист</button>
-          <button class="icon-button danger" title="Удалить лист" aria-label="Удалить лист" data-action="delete-sheet" data-sheet-index="${sheetIndex}">×</button>
-        </div>
-      </div>
-
-      ${app.state.common.showDocumentHeaders ? renderExcelDocFrame({
-        formTitle: '№ КС-2 · О приемке выполненных работ',
-        docLabel: app.state.common.ks2DocLabel,
-        docSubtitle: app.state.common.ks2DocSubtitle,
-        formCode: app.state.common.okudKs2,
-        common: app.state.common,
-        documentNumber: sheet.documentNumber,
-        documentDate: sheet.documentDate,
-        periodFrom: sheet.periodFrom,
-        periodTo: sheet.periodTo,
-        basis: sheet.basis,
-      }) : ''}
-
-      <div class="summary-grid">
-        <div class="summary-card"><span>Сумма с НДС</span><strong>${formatMoney(totals.gross)}</strong></div>
-        <div class="summary-card"><span>НДС (${sheet.vatRate}%)</span><strong>${formatMoney(totals.vat)}</strong></div>
-        <div class="summary-card"><span>Без НДС</span><strong>${formatMoney(totals.base)}</strong></div>
-        <div class="summary-card"><span>Строки работ</span><strong>${sheet.rows.filter((row) => row.type === 'item').length}</strong></div>
-      </div>
-
-      <div class="breakdown-list">
-        ${Object.entries(totals.breakdown).map(([label, amount]) => `<span class="breakdown-chip">${categoryLabel(label)}: ${formatMoney(amount)}</span>`).join('')}
-      </div>
-
-      ${viewMode === 'xml' ? renderKs2XmlPreviewPane(sheetIndex, sheet) : `
-        <div class="section-block">
-          <h3>Шапка документа</h3>
-          <div class="form-grid">
-            ${renderInput('Название листа', `ks2Sheets.${sheetIndex}.title`, sheet.title, 'string', 'half')}
-            ${renderInput('Номер документа', `ks2Sheets.${sheetIndex}.documentNumber`, sheet.documentNumber, 'string', 'quarter')}
-            ${renderInput('Дата документа', `ks2Sheets.${sheetIndex}.documentDate`, sheet.documentDate, 'string', 'quarter')}
-            ${renderInput('Период с', `ks2Sheets.${sheetIndex}.periodFrom`, sheet.periodFrom, 'string', 'quarter')}
-            ${renderInput('Период по', `ks2Sheets.${sheetIndex}.periodTo`, sheet.periodTo, 'string', 'quarter')}
-            ${renderInput('Ставка НДС, %', `ks2Sheets.${sheetIndex}.vatRate`, sheet.vatRate, 'number', 'quarter')}
-            ${renderTextarea('Основание акта', `ks2Sheets.${sheetIndex}.basis`, sheet.basis, 'half')}
-          </div>
-        </div>
-
-        <div class="section-block">
-          <h3>Строки работ и затрат</h3>
-          <p>Можно построчно добавлять работы, вставлять разделы и служебные примечания, как в исходном Excel.</p>
-          <div class="table-wrapper">
-            <table class="table table-ks2" data-table-id="${ks2TableId}">
-              <colgroup>
-                <col class="ks2-col-type" />
-                <col class="ks2-col-code" />
-                <col class="ks2-col-line" />
-                <col class="ks2-col-estimate" />
-                <col class="ks2-col-name" />
-                <col class="ks2-col-unit" />
-                <col class="ks2-col-qty" />
-                <col class="ks2-col-price" />
-                <col class="ks2-col-amount" />
-                <col class="ks2-col-consumption" />
-                <col class="ks2-col-category" />
-                <col class="ks2-col-expense" />
-                <col class="ks2-col-mode" />
-                <col class="ks2-col-note" />
-                <col class="ks2-col-actions" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-type" data-min-width="60">Тип строки<span class="resize-handle"></span></th>
-                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-code" data-min-width="64">Код<span class="resize-handle"></span></th>
-                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-line" data-min-width="42">№ п/п<span class="resize-handle"></span></th>
-                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-estimate" data-min-width="42">№ п/п по смете<span class="resize-handle"></span></th>
-                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-name" data-min-width="220">Наименование работ и затрат<span class="resize-handle"></span></th>
-                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-unit" data-min-width="54">Ед. изм.<span class="resize-handle"></span></th>
-                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-qty" data-min-width="70">Объем<span class="resize-handle"></span></th>
-                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-price" data-min-width="90">Цена за ед., руб. с НДС<span class="resize-handle"></span></th>
-                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-amount" data-min-width="96">Общая стоимость, руб. с НДС<span class="resize-handle"></span></th>
-                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-consumption" data-min-width="42">Расход на единицу<span class="resize-handle"></span></th>
-                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-category" data-min-width="90">Категория<span class="resize-handle"></span></th>
-                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-expense" data-min-width="150">Тип затрат<span class="resize-handle"></span></th>
-                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-mode" data-min-width="96">Режим строки<span class="resize-handle"></span></th>
-                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-note" data-min-width="120">Примечание<span class="resize-handle"></span></th>
-                  <th data-table-id="${ks2TableId}" data-col-selector="ks2-col-actions" data-min-width="24"><span class="resize-handle"></span></th>
-                </tr>
-                <tr class="numbering-row">
-                  <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th>13</th><th>14</th><th></th>
-                </tr>
-              </thead>
-              <tbody>${rows}</tbody>
-            </table>
-          </div>
-        </div>
-
-        ${renderHoldbacksPane(sheetIndex)}
-        ${renderKs2TotalsBlock(sheet, totals)}
-      `}
-    </div>
-  `;
-}
-
-function renderHoldbackRowActions(rowIndex, rowKind) {
-  const effectiveIndex = rowKind === 'subitem' ? findHoldbackSectionIndex(rowIndex) : rowIndex;
-  const menuOpen = app.state.ui.holdbackActionMenu === rowIndex;
-  const confirmDelete = app.state.ui.holdbackDeleteConfirm === rowIndex;
-  return `
-    <div class="row-action-stack">
-      <button class="stack-button add" title="Добавить" aria-label="Добавить" data-action="open-holdback-menu" data-hold-index="${effectiveIndex}">+</button>
-      <button class="stack-button danger" title="Удалить строку" aria-label="Удалить строку" data-action="request-holdback-delete" data-hold-index="${rowIndex}">×</button>
-      ${menuOpen ? `
-        <div class="row-action-menu">
-          <button class="row-action-menu-item" data-action="insert-holdback-section" data-hold-index="${effectiveIndex}">+ Раздел</button>
-          <button class="row-action-menu-item" data-action="insert-holdback-subitem" data-hold-index="${effectiveIndex}">+ Подпункт</button>
-        </div>
-      ` : ''}
-      ${confirmDelete ? `
-        <div class="row-action-confirm">
-          <div class="row-action-confirm-label">${rowKind === 'subitem' ? 'Удалить подпункт?' : 'Удалить раздел со вложениями?'}</div>
-          <div class="row-action-confirm-buttons">
-            <button class="row-action-confirm-btn confirm" data-action="confirm-holdback-delete" data-hold-index="${rowIndex}">✓</button>
-            <button class="row-action-confirm-btn cancel" data-action="cancel-holdback-delete" data-hold-index="${rowIndex}">×</button>
-          </div>
-        </div>
-      ` : ''}
-    </div>
-  `;
-}
-
-
-function renderSettlementPresetButtons(presets) {
-  return presets.map((presetKey) => {
-    const preset = SETTLEMENT_ROW_PRESETS[presetKey];
-    return `<button class="row-action-menu-item" data-action="add-settlement-row" data-preset="${presetKey}">+ ${escapeHtml(preset.label)}</button>`;
-  }).join('');
-}
-
-function renderSettlementAddMenu() {
-  const menuOpen = Boolean(app.state.ui.settlementAddMenu);
-  return `
-    <div class="settlement-add-anchor">
-      <button class="mini" data-action="toggle-settlement-add-menu">+ ВидТреб / ВидУдерж</button>
-      ${menuOpen ? `
-        <div class="row-action-menu row-action-menu-wide settlement-add-menu">
-          <div class="settlement-menu-group">
-            <div class="settlement-menu-title">ВидУдерж</div>
-            ${renderSettlementPresetButtons(['withholdAdvance', 'withholdGuarantee', 'withholdPenalty', 'withholdErrorCorrection', 'withholdOtherObjects', 'withholdOther'])}
-          </div>
-          <div class="settlement-menu-group">
-            <div class="settlement-menu-title">ВидТреб</div>
-            ${renderSettlementPresetButtons(['claimPenalty', 'claimGuarantee', 'claimErrorCorrection', 'claimOtherObjects', 'claimOther'])}
-          </div>
-        </div>
-      ` : ''}
-    </div>
-  `;
-}
-
-function renderSettlementRowActions(rowIndex, row) {
-  const confirmOpen = app.state.ui.settlementDeleteConfirm === rowIndex;
-  return `
-    <div class="settlement-inline-actions">
-      <button class="mini ${row.isPrimary ? '' : 'secondary'} settlement-primary-btn" data-action="set-primary-settlement-row" data-settlement-index="${rowIndex}">${row.isPrimary ? 'Основная XSD-ready' : 'Сделать основной'}</button>
-      ${confirmOpen ? `
-        <div class="settlement-inline-confirm">
-          <span>Удалить строку?</span>
-          <button class="mini danger" data-action="confirm-settlement-delete" data-settlement-index="${rowIndex}">Да</button>
-          <button class="mini secondary" data-action="cancel-settlement-delete" data-settlement-index="${rowIndex}">Нет</button>
-        </div>
-      ` : `<button class="mini danger" data-action="request-settlement-delete" data-settlement-index="${rowIndex}">Удалить</button>`}
-    </div>
-  `;
-}
-
-function renderInlineSettlementRows(settlement) {
-  const manualRows = settlement.manualRows || [];
-  const autoRows = settlement.autoRows || [];
-  const representativeRow = settlement.representativeRow || null;
-  const autoRowsSummary = autoRows.length
-    ? autoRows.map((row) => `<span class="settlement-chip">${escapeHtml(settlementCodeLabel(row.kind, row.kindCode))}: <strong>${formatMoney(numberOrZero(row.amount))}</strong></span>`).join('')
-    : '<span class="settlement-chip settlement-chip-muted">Автострок из таблицы удержаний пока нет.</span>';
-
-  const previewRow = `
-    <tr class="holdback-xml-preview-row">
-      <td colspan="13">
-        <div class="settlement-preview ${representativeRow ? '' : 'muted'}">
-          <strong>XSD-ready сейчас возьмет:</strong>
-          <span>${escapeHtml(buildRepresentativeSettlementLabel(representativeRow))}</span>
-        </div>
-        <div class="settlement-chip-list">${autoRowsSummary}</div>
-      </td>
-    </tr>
-  `;
-
-  const manualRowsHtml = manualRows.map((row, index) => {
-    const otherCode = isSettlementOtherCode(row);
-    return `
-      <tr class="holdback-xml-row ${row.isPrimary ? 'is-primary' : ''}">
-        <td colspan="13">
-          <div class="holdback-xml-card">
-            <div class="holdback-xml-card-head">
-              <div>
-                <div class="holdback-xml-title">${escapeHtml(row.comment || `Ручная строка СвОРасч #${index + 1}`)}</div>
-                <div class="holdback-xml-subtitle">Встроенная XML-строка внутри общей таблицы удержаний</div>
-              </div>
-              ${renderSettlementRowActions(index, row)}
-            </div>
-            <div class="form-grid holdback-xml-grid">
-              ${renderSelect('Ветка XML', `xmlExtras.settlementRows.${index}.kind`, row.kind, { withhold: 'ВидУдерж', claim: 'ВидТреб' }, 'quarter')}
-              ${renderSelect('Код вида', `xmlExtras.settlementRows.${index}.kindCode`, row.kindCode, settlementCodeOptions(row.kind), 'half')}
-              ${renderInput('Сумма, руб.', `xmlExtras.settlementRows.${index}.amount`, row.amount, 'number', 'quarter')}
-              ${renderInput('Документ-основание', `xmlExtras.settlementRows.${index}.documentRef`, row.documentRef, 'string', 'half')}
-              ${otherCode
-                ? renderInput('Иной вид', `xmlExtras.settlementRows.${index}.customKindText`, row.customKindText, 'string', 'half')
-                : renderReadonly('Иной вид', '—', 'half')}
-              ${renderTextarea('Комментарий / пометка', `xmlExtras.settlementRows.${index}.comment`, row.comment, 'half')}
-            </div>
-          </div>
-        </td>
-      </tr>
-    `;
-  }).join('');
-
-  const emptyRow = manualRows.length ? '' : `
-    <tr class="holdback-xml-empty-row">
-      <td colspan="13">
-        <div class="settlement-empty">Если нужен ручной <strong>ВидТреб</strong> или <strong>ВидУдерж</strong>, добавь его прямо сюда через кнопку <strong>+ ВидТреб / ВидУдерж</strong>.</div>
-      </td>
-    </tr>
-  `;
-
-  return previewRow + emptyRow + manualRowsHtml;
-}
-
-function renderKs3RowActions(rowIndex) {
-  const menuOpen = app.state.ui.ks3RowActionMenu === rowIndex;
-  const confirmOpen = app.state.ui.ks3RowDeleteConfirm === rowIndex;
-  return `
-    <div class="row-action-stack">
-      <button class="stack-button add" title="Добавить строку ниже" aria-label="Добавить строку ниже" data-action="toggle-ks3-row-menu" data-ks3-index="${rowIndex}">+</button>
-      <button class="stack-button remove" title="Удалить строку" aria-label="Удалить строку" data-action="prompt-delete-ks3-row" data-ks3-index="${rowIndex}">×</button>
-      ${menuOpen ? `
-        <div class="row-action-menu">
-          <button class="row-action-menu-item" data-action="insert-ks3-row-after" data-ks3-index="${rowIndex}">+ Строка</button>
-        </div>
-      ` : ''}
-      ${confirmOpen ? `
-        <div class="row-action-confirm">
-          <div class="row-action-confirm-title">Удалить?</div>
-          <div class="row-action-confirm-buttons">
-            <button class="confirm-icon confirm-yes" title="Подтвердить" aria-label="Подтвердить" data-action="confirm-delete-ks3-row" data-ks3-index="${rowIndex}">✓</button>
-            <button class="confirm-icon confirm-no" title="Отмена" aria-label="Отмена" data-action="cancel-delete-ks3-row" data-ks3-index="${rowIndex}">×</button>
-          </div>
-        </div>
-      ` : ''}
-    </div>
-  `;
-}
-
-function renderKs3Pane() {
-  const ks3 = app.state.ks3;
-  const rows = buildKs3Rows();
-  const totals = buildKs3Totals(rows);
-  const vat = totals.vat;
-
-  return `
-    <div class="panel">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title">КС-3 — сводная справка</h2>
-          <p class="panel-subtitle">Лист КС-3 заполняется вручную. Данные из листов КС-2 сюда автоматически не подтягиваются.</p>
-        </div>
-        <button class="mini" data-action="add-ks3-row">+ Строка КС-3</button>
-      </div>
-
-      ${app.state.common.showDocumentHeaders ? renderExcelDocFrame({
-        formTitle: '№ КС-3 · Справка о стоимости выполненных работ и затрат',
-        docLabel: app.state.common.ks3DocLabel,
-        docSubtitle: app.state.common.ks3DocSubtitle,
-        formCode: app.state.common.okudKs3,
-        common: app.state.common,
-        contractLabel: 'Договор подряда (контракт)',
-        documentNumber: ks3.documentNumber,
-        documentDate: ks3.documentDate,
-        periodFrom: ks3.periodFrom,
-        periodTo: ks3.periodTo,
-        objectLabel: 'Объект',
-      }) : ''}
-
-      <div class="form-grid">
-        ${renderInput('Номер справки', 'ks3.documentNumber', ks3.documentNumber, 'string', 'quarter')}
-        ${renderInput('Дата составления', 'ks3.documentDate', ks3.documentDate, 'string', 'quarter')}
-        ${renderInput('Период с', 'ks3.periodFrom', ks3.periodFrom, 'string', 'quarter')}
-        ${renderInput('Период по', 'ks3.periodTo', ks3.periodTo, 'string', 'quarter')}
-      </div>
-
-      <div class="section-block">
-        <h3>Ручные строки КС-3</h3>
-        <p class="kbd-note">Можно добавлять строки, которых нет среди листов КС-2. КС-3 больше не строится как автосвод по актам.</p>
-        <div class="table-wrapper">
-          <table class="table table-ks3-like" data-table-id="ks3">
-            <colgroup>
-              <col class="ks3-col-order" />
-              <col class="ks3-col-name" />
-              <col class="ks3-col-code" />
-              <col class="ks3-col-start" />
-              <col class="ks3-col-year" />
-              <col class="ks3-col-period" />
-              <col class="ks3-col-actions" />
-            </colgroup>
-            <thead>
-              <tr>
-                <th data-table-id="ks3" data-col-selector="ks3-col-order" data-min-width="46">№ п/п<span class="resize-handle"></span></th>
-                <th data-table-id="ks3" data-col-selector="ks3-col-name" data-min-width="260">Наименование пусковых комплексов, этапов, объектов, видов выполненных работ, оборудования, затрат<span class="resize-handle"></span></th>
-                <th data-table-id="ks3" data-col-selector="ks3-col-code" data-min-width="64">Код<span class="resize-handle"></span></th>
-                <th data-table-id="ks3" data-col-selector="ks3-col-start" data-min-width="120">С начала проведения работ<span class="resize-handle"></span></th>
-                <th data-table-id="ks3" data-col-selector="ks3-col-year" data-min-width="110">С начала года<span class="resize-handle"></span></th>
-                <th data-table-id="ks3" data-col-selector="ks3-col-period" data-min-width="120">В том числе за отчетный период<span class="resize-handle"></span></th>
-                <th data-table-id="ks3" data-col-selector="ks3-col-actions" data-min-width="24"><span class="resize-handle"></span></th>
-              </tr>
-              <tr class="numbering-row">
-                <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th></th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows.map((row, index) => {
-                const rowClass = /всего работ и затрат/i.test(row.name || '')
-                  ? 'ks3-row-total'
-                  : /^в том числе/i.test(row.name || '')
-                    ? 'ks3-row-subhead'
-                    : '';
-                return `
-                  <tr class="${rowClass}">
-                    <td>${renderTableInput(`ks3.rows.${index}.order`, row.order)}</td>
-                    <td class="ks3-name-cell">${renderTableTextarea(`ks3.rows.${index}.name`, row.name)}</td>
-                    <td>${renderTableInput(`ks3.rows.${index}.code`, row.code)}</td>
-                    <td class="number-cell">${renderTableInput(`ks3.rows.${index}.fromStart`, formatEditableNumber(row.fromStart), 'number')}</td>
-                    <td class="number-cell">${renderTableInput(`ks3.rows.${index}.fromYearStart`, formatEditableNumber(row.fromYearStart), 'number')}</td>
-                    <td class="number-cell">${renderTableInput(`ks3.rows.${index}.forPeriod`, formatEditableNumber(row.forPeriod), 'number')}</td>
-                    <td class="actions-cell">${renderKs3RowActions(index)}</td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-        <div class="inline-actions">
-          <button class="mini" data-action="add-ks3-row">+ Строка КС-3</button>
-        </div>
-      </div>
-
-      <div class="section-block">
-        <h3>Ручные итоги КС-3</h3>
-        <div class="form-grid">
-          ${renderInput('Итого с начала работ', 'ks3.totals.fromStart', totals.fromStart, 'number', 'quarter')}
-          ${renderInput('Итого с начала года', 'ks3.totals.fromYearStart', totals.fromYearStart, 'number', 'quarter')}
-          ${renderInput('Итого за период', 'ks3.totals.forPeriod', totals.forPeriod, 'number', 'quarter')}
-          ${renderInput('Сумма НДС', 'ks3.totals.vat', totals.vat, 'number', 'quarter')}
-        </div>
-      </div>
-
-      <div class="summary-grid">
-        <div class="summary-card"><span>Итого с начала работ</span><strong>${formatMoney(totals.fromStart)}</strong></div>
-        <div class="summary-card"><span>Итого с начала года</span><strong>${formatMoney(totals.fromYearStart)}</strong></div>
-        <div class="summary-card"><span>Итого за период</span><strong>${formatMoney(totals.forPeriod)}</strong></div>
-        <div class="summary-card"><span>Сумма НДС</span><strong>${formatMoney(vat)}</strong></div>
-      </div>
-
-      ${renderKs3TotalsBlock(totals, vat)}
-      
-    </div>
-  `;
-}
-
-function renderHoldbacksPane(sheetIndex = null) {
-  const targetSheetId = sheetIndex == null ? null : app.state.ks2Sheets[sheetIndex]?.id;
-  const groups = buildHoldbackGroups(targetSheetId);
-  const rows = groups.map((group) => renderHoldbackGroup(group)).join('');
-
-  const totals = groups.reduce((acc, group) => {
-    const sectionRow = group.section.row;
-    const computed = computeHoldbackSectionComputed(group);
-    acc.ks2Amount += numberOrZero(sectionRow.ks2Amount);
-    acc.materialsUsed += numberOrZero(sectionRow.materialsUsed);
-    acc.advanceReceived += computed.advanceReceived;
-    acc.previousBalance += computed.previousBalance;
-    acc.closingAmount += computed.closingAmount;
-    acc.nextBalance += computed.nextBalance;
-    acc.retentionAmount += computed.retentionAmount;
-    acc.payableAmount += computed.payableAmount;
-    return acc;
-  }, { ks2Amount: 0, materialsUsed: 0, advanceReceived: 0, previousBalance: 0, closingAmount: 0, nextBalance: 0, retentionAmount: 0, payableAmount: 0 });
-
-  return `
-    <div class="panel">
-      <div class="panel-header">
-        <div>
-          <h2 class="panel-title">Удержания и авансы</h2>
-          <p class="panel-subtitle">Гарантийное удержание по этому листу КС-2 идет первой строкой, ниже — все записи по авансам и их закрытию из Excel.</p>
-        </div>
-        <div class="panel-header-actions">
-          <button class="mini" data-action="add-holdback-advance-doc" ${sheetIndex == null ? '' : `data-sheet-index="${sheetIndex}"`}>+ Документ аванса</button>
-        </div>
-      </div>
-
-      ${app.state.common.showDocumentHeaders ? `
-        <div class="excel-frame excel-frame-tight">
-          <div class="excel-frame-title">Расчет суммы погашения авансов и гарантийного удержания</div>
-          <div class="excel-frame-subtitle">за период ${escapeHtml(sheetIndex == null ? '' : (app.state.ks2Sheets[sheetIndex]?.periodTo || ''))}</div>
-          <div class="excel-basis-row">
-            <span class="excel-basis-label">Объект:</span>
-            <div class="excel-basis-value">${escapeHtml(app.state.common.objectName || app.state.common.constructionObject || '')}</div>
-          </div>
-        </div>
-      ` : ''}
-
-      <div class="table-wrapper">
-        <table class="table table-holdbacks" data-table-id="holdbacks">
-          <colgroup>
-            <col class="hold-col-name" />
-            <col class="hold-col-ks2" />
-            <col class="hold-col-materials" />
-            <col class="hold-col-advance" />
-            <col class="hold-col-doc" />
-            <col class="hold-col-previous" />
-            <col class="hold-col-closing" />
-            <col class="hold-col-next" />
-            <col class="hold-col-percent" />
-            <col class="hold-col-retention" />
-            <col class="hold-col-payable" />
-            <col class="hold-col-comment" />
-            <col class="hold-col-actions" />
-          </colgroup>
-          <thead>
-            <tr>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-name" data-min-width="220">Всего работ и затрат / наименование<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-ks2" data-min-width="84">Сумма работ по акту КС-2, руб.<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-materials" data-min-width="84">Использовано материалов, руб.<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-advance" data-min-width="84">Полученный аванс, руб.<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-doc" data-min-width="120">№ п/п, дата<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-previous" data-min-width="84">Незакрытый остаток прошлого периода, руб.<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-closing" data-min-width="84">Сумма закрытия, руб.<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-next" data-min-width="84">Остаток к закрытию следующего периода, руб.<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-percent" data-min-width="40">Удерж., %<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-retention" data-min-width="84">Удержание, руб.<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-payable" data-min-width="84">Итого к оплате, руб.<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-comment" data-min-width="100">Комментарий<span class="resize-handle"></span></th>
-              <th data-table-id="holdbacks" data-col-selector="hold-col-actions" data-min-width="40"><span class="resize-handle"></span></th>
-            </tr>
-            <tr class="numbering-row">
-              <th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th><th>8</th><th>9</th><th>10</th><th>11</th><th>12</th><th></th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-
-      <div class="summary-grid section-block">
-        <div class="summary-card"><span>Сумма КС-2</span><strong>${formatMoney(totals.ks2Amount)}</strong></div>
-        <div class="summary-card"><span>Материалы</span><strong>${formatMoney(totals.materialsUsed)}</strong></div>
-        <div class="summary-card"><span>Закрытие аванса</span><strong>${formatMoney(totals.closingAmount)}</strong></div>
-        <div class="summary-card"><span>Удержания</span><strong>${formatMoney(totals.retentionAmount)}</strong></div>
-        <div class="summary-card"><span>Итого к оплате</span><strong>${formatMoney(totals.payableAmount)}</strong></div>
-      </div>
-
-      ${renderHoldbacksTotalsBlock(totals)}
-      
+      </details>
     </div>
   `;
 }
 
 function renderXmlPane() {
   const generated = buildGeneratedXmlFields();
-  const constants = app.state.xmlExtras.constants;
-  const manual = app.state.xmlExtras.manual;
+  const constants = app.state.xmlP.constants;
+  const contractorManual = app.state.xmlP.manual;
+  const customerManual = app.state.xmlZ.manual;
 
   return `
     <div class="panel">
       <div class="panel-header">
         <div>
-          <h2 class="panel-title">Дополнительные поля для XML</h2>
-          <p class="panel-subtitle">Сюда вынесены обязательные данные КНД 1110335, которых нет напрямую в Excel: ИНН, индексы, признаки формирования, реквизиты допсоглашений и т.п.</p>
+          <h2 class="panel-title">XML-модель: P и Z</h2>
+          <p class="panel-subtitle">Внутренняя модель уже разделена на подрядческий слой <code>xmlP</code> и customer-слой <code>xmlZ</code>. На экспорт пока дополнительно собирается совместимый legacy payload.</p>
         </div>
       </div>
 
       <div class="section-block">
-        <h3>Автогенерируемые поля</h3>
+        <h3>xmlP: автогенерируемые поля</h3>
         <div class="form-grid">
-          ${renderReadonly('Идентификатор файла', generated.fileId, 'half', 'xml.generated.fileId')}
-          ${renderReadonly('Дата формирования', generated.fileDate, 'quarter', 'xml.generated.fileDate')}
-          ${renderReadonly('Время формирования', generated.fileTime, 'quarter', 'xml.generated.fileTime')}
-          ${renderReadonly('КНД', generated.knd, 'quarter', 'xml.generated.knd')}
-          ${renderReadonly('Версия формата', generated.formatVersion, 'quarter', 'xml.generated.formatVersion')}
-          ${renderReadonly('Версия программы', generated.programVersion, 'quarter', 'xml.generated.programVersion')}
+          ${renderReadonly('Идентификатор файла', generated.fileId, 'half', 'xmlP.generated.fileId')}
+          ${renderReadonly('Дата формирования', generated.fileDate, 'quarter', 'xmlP.generated.fileDate')}
+          ${renderReadonly('Время формирования', generated.fileTime, 'quarter', 'xmlP.generated.fileTime')}
+          ${renderReadonly('КНД', generated.knd, 'quarter', 'xmlP.generated.knd')}
+          ${renderReadonly('Версия формата', generated.formatVersion, 'quarter', 'xmlP.generated.formatVersion')}
+          ${renderReadonly('Версия программы', generated.programVersion, 'quarter', 'xmlP.generated.programVersion')}
         </div>
       </div>
 
       <div class="section-block">
-        <h3>Постоянные настройки документа</h3>
+        <h3>xmlP: постоянные настройки подрядческого файла</h3>
         <div class="form-grid">
-          ${renderSelect('Строительство для гос/мун нужд', 'xmlExtras.constants.isGovMunicipal', constants.isGovMunicipal, { '0': '0 — нет', '1': '1 — да' }, 'quarter')}
-          ${renderSelect('Режим НДС', 'xmlExtras.constants.vatCalcInTotalOnly', constants.vatCalcInTotalOnly, { '0': '0 — НДС по строкам/разделам (основной)', '1': '1 — НДС только в итоге' }, 'half')}
-          ${renderSelect('Признак накопительного итога', 'xmlExtras.constants.cumulativeMode', constants.cumulativeMode, { '0': '0 — без накопления', '1': '1 — в акте всё', '2': '2 — только строка «Всего»' }, 'half')}
-          ${renderInput('Год индекса цен', 'xmlExtras.constants.priceIndexYear', constants.priceIndexYear, 'string', 'quarter')}
-          ${renderSelect('Сведения о расчётах для согласования', 'xmlExtras.constants.requiresSettlementApproval', constants.requiresSettlementApproval, { '0': '0 — нет', '1': '1 — да' }, 'quarter')}
-          ${renderSelect('Режим табличной части XML', 'xmlExtras.constants.diadocCompactMode', constants.diadocCompactMode || '0', { '1': 'compact / pass-friendly', '0': 'full / как в форме' }, 'half')}
+          ${renderSelect('Строительство для гос/мун нужд', 'xmlP.constants.isGovMunicipal', constants.isGovMunicipal, { '0': '0 — нет', '1': '1 — да' }, 'quarter')}
+          ${renderSelect('Режим НДС', 'xmlP.constants.vatCalcInTotalOnly', constants.vatCalcInTotalOnly, { '0': '0 — НДС по строкам/разделам (основной)', '1': '1 — НДС только в итоге' }, 'half')}
+          ${renderSelect('Признак накопительного итога', 'xmlP.constants.cumulativeMode', constants.cumulativeMode, { '0': '0 — без накопления', '1': '1 — в акте всё', '2': '2 — только строка «Всего»' }, 'half')}
+          ${renderInput('Год индекса цен', 'xmlP.constants.priceIndexYear', constants.priceIndexYear, 'string', 'quarter')}
+          ${renderSelect('Сведения о расчётах для согласования', 'xmlP.constants.requiresSettlementApproval', constants.requiresSettlementApproval, { '0': '0 — нет', '1': '1 — да' }, 'quarter')}
+          ${renderSelect('Режим табличной части XML', 'xmlP.constants.diadocCompactMode', constants.diadocCompactMode || '0', { '1': 'compact / pass-friendly', '0': 'full / как в форме' }, 'half')}
         </div>
       </div>
 
       <div class="section-block">
-        <h3>Подрядчик / общий XML (P)</h3>
+        <h3>xmlP: подрядчик / общий XML</h3>
         <div class="form-grid">
-          ${renderInput('Наименование экономического субъекта-составителя', 'xmlExtras.manual.economicSubjectName', manual.economicSubjectName, 'string', 'half')}
-          ${renderSelect('Тип акта', 'xmlExtras.manual.isCorrectionAct', manual.isCorrectionAct || '0', { '0': '0 — первичный акт', '1': '1 — исправленный акт' }, 'half')}
-          ${String(manual.isCorrectionAct || '0') === '1' ? renderInput('Исправление №', 'xmlExtras.manual.correctionNumber', manual.correctionNumber, 'string', 'quarter') : ''}
-          ${String(manual.isCorrectionAct || '0') === '1' ? renderInput('Дата исправления', 'xmlExtras.manual.correctionDate', manual.correctionDate, 'string', 'quarter') : ''}
-          ${renderSelect('Изменение сметы', 'xmlExtras.manual.hasEstimateChange', manual.hasEstimateChange || '1', { '0': '0 — смета не менялась', '1': '1 — смета менялась' }, 'half')}
-          ${String(manual.hasEstimateChange || '1') === '1' ? renderInput('Версия сметы (КодСмет)', 'xmlExtras.manual.estimateVersionCode', manual.estimateVersionCode, 'string', 'quarter') : ''}
-          ${String(manual.hasEstimateChange || '1') === '1' ? renderInput('Тип допсоглашения', 'xmlExtras.manual.supplementDocType', manual.supplementDocType, 'string', 'quarter') : ''}
-          ${String(manual.hasEstimateChange || '1') === '1' ? renderInput('Номер допсоглашения', 'xmlExtras.manual.supplementDocNumber', manual.supplementDocNumber, 'string', 'quarter') : ''}
-          ${String(manual.hasEstimateChange || '1') === '1' ? renderInput('Дата допсоглашения', 'xmlExtras.manual.supplementDocDate', manual.supplementDocDate, 'string', 'quarter') : ''}
-          ${renderInput('ИНН подрядчика', 'xmlExtras.manual.contractorInn', manual.contractorInn, 'string', 'quarter')}
-          ${renderInput('ИНН заказчика', 'xmlExtras.manual.customerInn', manual.customerInn, 'string', 'quarter')}
-          ${renderInput('Индекс застройщика / адреса работ', 'xmlExtras.manual.developerPostalIndex', manual.developerPostalIndex, 'string', 'quarter')}
-          ${renderInput('Код региона застройщика / адреса работ', 'xmlExtras.manual.developerRegionCode', manual.developerRegionCode, 'string', 'quarter')}
-          ${renderInput('Подписант XML — ФИО', 'xmlExtras.manual.signerName', manual.signerName || app.state.common.contractorSignerName, 'string', 'quarter')}
-          ${renderInput('Подписант XML — должность', 'xmlExtras.manual.signerPosition', manual.signerPosition || app.state.common.contractorSignerPosition, 'string', 'half')}
-          ${renderSelect('Подписант XML — статус', 'xmlExtras.manual.signerStatus', manual.signerStatus || '1', { '1': '1 — без доверенности', '2': '2 — доверенность в ЭФ', '3': '3 — доверенность на бумаге' }, 'quarter')}
-          ${renderSelect('Подписант XML — тип подписи', 'xmlExtras.manual.signatureType', manual.signatureType || '1', { '1': '1 — УКЭП', '2': '2 — ПЭП', '3': '3 — УНЭП' }, 'quarter')}
-          ${renderInput('ИнфПолФХЖ1 / customField', 'xmlExtras.manual.customInfoValue', manual.customInfoValue || 'sample', 'string', 'quarter')}
-          ${renderInput('Индекс подрядчика', 'xmlExtras.manual.contractorPostalIndex', manual.contractorPostalIndex, 'string', 'quarter')}
-          ${renderInput('Код региона подрядчика', 'xmlExtras.manual.contractorRegionCode', manual.contractorRegionCode, 'string', 'quarter')}
+          ${renderInput('Наименование экономического субъекта-составителя', 'xmlP.manual.economicSubjectName', contractorManual.economicSubjectName, 'string', 'half')}
+          ${renderSelect('Тип акта', 'xmlP.manual.isCorrectionAct', contractorManual.isCorrectionAct || '0', { '0': '0 — первичный акт', '1': '1 — исправленный акт' }, 'half')}
+          ${String(contractorManual.isCorrectionAct || '0') === '1' ? renderInput('Исправление №', 'xmlP.manual.correctionNumber', contractorManual.correctionNumber, 'string', 'quarter') : ''}
+          ${String(contractorManual.isCorrectionAct || '0') === '1' ? renderInput('Дата исправления', 'xmlP.manual.correctionDate', contractorManual.correctionDate, 'string', 'quarter') : ''}
+          ${renderSelect('Изменение сметы', 'xmlP.manual.hasEstimateChange', contractorManual.hasEstimateChange || '1', { '0': '0 — смета не менялась', '1': '1 — смета менялась' }, 'half')}
+          ${String(contractorManual.hasEstimateChange || '1') === '1' ? renderInput('Версия сметы (КодСмет)', 'xmlP.manual.estimateVersionCode', contractorManual.estimateVersionCode, 'string', 'quarter') : ''}
+          ${String(contractorManual.hasEstimateChange || '1') === '1' ? renderInput('Тип допсоглашения', 'xmlP.manual.supplementDocType', contractorManual.supplementDocType, 'string', 'quarter') : ''}
+          ${String(contractorManual.hasEstimateChange || '1') === '1' ? renderInput('Номер допсоглашения', 'xmlP.manual.supplementDocNumber', contractorManual.supplementDocNumber, 'string', 'quarter') : ''}
+          ${String(contractorManual.hasEstimateChange || '1') === '1' ? renderInput('Дата допсоглашения', 'xmlP.manual.supplementDocDate', contractorManual.supplementDocDate, 'string', 'quarter') : ''}
+          ${renderInput('ИНН подрядчика', 'xmlP.manual.contractorInn', contractorManual.contractorInn, 'string', 'quarter')}
+          ${renderInput('ИНН заказчика', 'xmlP.manual.customerInn', contractorManual.customerInn, 'string', 'quarter')}
+          ${renderInput('Индекс застройщика / адреса работ', 'xmlP.manual.developerPostalIndex', contractorManual.developerPostalIndex, 'string', 'quarter')}
+          ${renderInput('Код региона застройщика / адреса работ', 'xmlP.manual.developerRegionCode', contractorManual.developerRegionCode, 'string', 'quarter')}
+          ${renderInput('Подписант XML — ФИО', 'xmlP.manual.signerName', contractorManual.signerName || app.state.documentContext.contractorSignerName, 'string', 'quarter')}
+          ${renderInput('Подписант XML — должность', 'xmlP.manual.signerPosition', contractorManual.signerPosition || app.state.documentContext.contractorSignerPosition, 'string', 'half')}
+          ${renderSelect('Подписант XML — статус', 'xmlP.manual.signerStatus', contractorManual.signerStatus || '1', { '1': '1 — без доверенности', '2': '2 — доверенность в ЭФ', '3': '3 — доверенность на бумаге' }, 'quarter')}
+          ${renderSelect('Подписант XML — тип подписи', 'xmlP.manual.signatureType', contractorManual.signatureType || '1', { '1': '1 — УКЭП', '2': '2 — ПЭП', '3': '3 — УНЭП' }, 'quarter')}
+          ${renderInput('ИнфПолФХЖ1 / customField', 'xmlP.manual.customInfoValue', contractorManual.customInfoValue || 'sample', 'string', 'quarter')}
+          ${renderInput('Индекс подрядчика', 'xmlP.manual.contractorPostalIndex', contractorManual.contractorPostalIndex, 'string', 'quarter')}
+          ${renderInput('Код региона подрядчика', 'xmlP.manual.contractorRegionCode', contractorManual.contractorRegionCode, 'string', 'quarter')}
         </div>
       </div>
 
       <div class="section-block">
-        <h3>Заказчик / файл Z</h3>
-        <p class="kbd-note">Здесь только дополнительные поля схемы заказчика. Если оставить пустыми, генератор возьмёт данные из общих реквизитов, КС-3 и подписантов формы.</p>
+        <h3>xmlZ: заказчик / файл Z</h3>
+        <p class="kbd-note">Эти поля относятся только к customer XML. Если оставить пустыми, генератор возьмёт fallback из общих реквизитов и legacy-совместимости.</p>
         <div class="form-grid">
-          ${renderInput('Составитель файла Z', 'xmlExtras.manual.customerEconomicSubjectName', manual.customerEconomicSubjectName || app.state.common.techCustomerName || app.state.common.developerName, 'string', 'half')}
-          ${renderInput('Основание подписания заказчика', 'xmlExtras.manual.customerAuthorityDocName', manual.customerAuthorityDocName || 'Доверенность / основание подписания заказчика', 'string', 'half')}
-          ${renderInput('Номер основания заказчика', 'xmlExtras.manual.customerAuthorityDocNumber', manual.customerAuthorityDocNumber || app.state.common.contractNumber, 'string', 'quarter')}
-          ${renderInput('Дата основания заказчика', 'xmlExtras.manual.customerAuthorityDocDate', manual.customerAuthorityDocDate || app.state.common.contractDate, 'string', 'quarter')}
-          ${renderSelect('Статус подписанта Z', 'xmlExtras.manual.customerSignerStatus', manual.customerSignerStatus || manual.signerStatus || '1', { '1': '1 — без доверенности', '2': '2 — доверенность в ЭФ', '3': '3 — доверенность на бумаге' }, 'quarter')}
-          ${renderSelect('Тип подписи Z', 'xmlExtras.manual.customerSignatureType', manual.customerSignatureType || manual.signatureType || '1', { '1': '1 — УКЭП', '2': '2 — ПЭП', '3': '3 — УНЭП' }, 'quarter')}
-          ${renderInput('Идентификатор хранения подписи Z', 'xmlExtras.manual.customerSignatureStorageId', manual.customerSignatureStorageId, 'string', 'half')}
-          ${renderSelect('Приемка работ в Z', 'xmlExtras.manual.customerAcceptanceCode', manual.customerAcceptanceCode || '1', { '1': '1 — приняты без замечаний', '2': '2 — приняты с устранимыми недостатками', '4': '4 — приняты с уменьшением стоимости', '5': '5 — приняты с возмещением расходов', '0': '0 — отказ в приемке' }, 'half')}
-          ${renderTextarea('Текст приемки Z (если нужен вместо кода)', 'xmlExtras.manual.customerAcceptanceText', manual.customerAcceptanceText, 'half')}
-          ${renderSelect('Извещение по расчетам Z', 'xmlExtras.manual.customerSettlementNotice', manual.customerSettlementNotice || '', { '': '— не заполнять —', 'С представленными подрядчиком сведениями о расчетах согласен': 'С представленными подрядчиком сведениями о расчетах согласен', 'С представленными подрядчиком сведениями о расчетах согласен, есть информация о дополнительных удержаниях заказчиком в соответствии с законодательством о контрактной системе в сфере закупок товаров, работ, услуг для обеспечения государственных и муниципальных нужд': 'Согласен, есть доп. удержания по гос/мун контракту', 'С представленными подрядчиком сведениями о расчетах не согласен': 'С представленными подрядчиком сведениями о расчетах не согласен', 'Представленные подрядчиком сведения о расчетах по договору на момент приемки работ не сверялись': 'Сведения по расчетам на момент приемки не сверялись', 'Условиями договора строительного подряда сверка расчетов по договору непосредственно в акте о приемке выполненных работ не предусмотрена': 'Сверка расчетов в акте не предусмотрена' }, 'half')}
-          ${renderTextarea('Причина несогласия по расчетам Z', 'xmlExtras.manual.customerSettlementDisagreementReason', manual.customerSettlementDisagreementReason, 'half')}
+          ${renderInput('Составитель файла Z', 'xmlZ.manual.customerEconomicSubjectName', customerManual.customerEconomicSubjectName || app.state.documentContext.techCustomerName || app.state.documentContext.developerName, 'string', 'half')}
+          ${renderInput('Основание подписания заказчика', 'xmlZ.manual.customerAuthorityDocName', customerManual.customerAuthorityDocName || 'Доверенность / основание подписания заказчика', 'string', 'half')}
+          ${renderInput('Номер основания заказчика', 'xmlZ.manual.customerAuthorityDocNumber', customerManual.customerAuthorityDocNumber || app.state.documentContext.contractNumber, 'string', 'quarter')}
+          ${renderInput('Дата основания заказчика', 'xmlZ.manual.customerAuthorityDocDate', customerManual.customerAuthorityDocDate || app.state.documentContext.contractDate, 'string', 'quarter')}
+          ${renderSelect('Статус подписанта Z', 'xmlZ.manual.customerSignerStatus', customerManual.customerSignerStatus || contractorManual.signerStatus || '1', { '1': '1 — без доверенности', '2': '2 — доверенность в ЭФ', '3': '3 — доверенность на бумаге' }, 'quarter')}
+          ${renderSelect('Тип подписи Z', 'xmlZ.manual.customerSignatureType', customerManual.customerSignatureType || contractorManual.signatureType || '1', { '1': '1 — УКЭП', '2': '2 — ПЭП', '3': '3 — УНЭП' }, 'quarter')}
+          ${renderInput('Идентификатор хранения подписи Z', 'xmlZ.manual.customerSignatureStorageId', customerManual.customerSignatureStorageId, 'string', 'half')}
+          ${renderSelect('Приемка работ в Z', 'xmlZ.manual.customerAcceptanceCode', customerManual.customerAcceptanceCode || '1', { '1': '1 — приняты без замечаний', '2': '2 — приняты с устранимыми недостатками', '4': '4 — приняты с уменьшением стоимости', '5': '5 — приняты с возмещением расходов', '0': '0 — отказ в приемке' }, 'half')}
+          ${renderTextarea('Текст приемки Z (если нужен вместо кода)', 'xmlZ.manual.customerAcceptanceText', customerManual.customerAcceptanceText, 'half')}
+          ${renderSelect('Извещение по расчетам Z', 'xmlZ.manual.customerSettlementNotice', customerManual.customerSettlementNotice || '', { '': '— не заполнять —', 'С представленными подрядчиком сведениями о расчетах согласен': 'С представленными подрядчиком сведениями о расчетах согласен', 'С представленными подрядчиком сведениями о расчетах согласен, есть информация о дополнительных удержаниях заказчиком в соответствии с законодательством о контрактной системе в сфере закупок товаров, работ, услуг для обеспечения государственных и муниципальных нужд': 'Согласен, есть доп. удержания по гос/мун контракту', 'С представленными подрядчиком сведениями о расчетах не согласен': 'С представленными подрядчиком сведениями о расчетах не согласен', 'Представленные подрядчиком сведения о расчетах по договору на момент приемки работ не сверялись': 'Сведения по расчетам на момент приемки не сверялись', 'Условиями договора строительного подряда сверка расчетов по договору непосредственно в акте о приемке выполненных работ не предусмотрена': 'Сверка расчетов в акте не предусмотрена' }, 'half')}
+          ${renderTextarea('Причина несогласия по расчетам Z', 'xmlZ.manual.customerSettlementDisagreementReason', customerManual.customerSettlementDisagreementReason, 'half')}
         </div>
       </div>
 
@@ -2410,73 +1967,227 @@ function renderXmlPane() {
   `;
 }
 
-function normalizeKs3Row(row = {}) {
-  return {
-    order: row.order ?? '',
-    name: row.name || '',
-    code: row.code ?? '',
-    fromStart: numberOrNull(row.fromStart),
-    fromYearStart: numberOrNull(row.fromYearStart),
-    forPeriod: numberOrNull(row.forPeriod),
-    vat: numberOrNull(row.vat),
-  };
+function renderKs2ViewSwitcher(sheetIndex) {
+  const mode = app.state.ui.ks2ViewMode?.[sheetIndex] === 'xml' ? 'xml' : 'form';
+  return `
+    <div class="segmented-switcher" role="tablist" aria-label="Режим листа КС-2">
+      <button class="ghost mini ${mode === 'form' ? 'is-active' : ''}" type="button" data-action="set-ks2-view-mode" data-sheet-index="${sheetIndex}" data-mode="form">Форма</button>
+      <button class="ghost mini ${mode === 'xml' ? 'is-active' : ''}" type="button" data-action="set-ks2-view-mode" data-sheet-index="${sheetIndex}" data-mode="xml">XML</button>
+    </div>
+  `;
 }
 
-function createBlankKs3Row() {
-  return {
-    order: '',
-    name: '',
-    code: '',
-    fromStart: null,
-    fromYearStart: null,
-    forPeriod: null,
-    vat: null,
-  };
+function renderKs2Pane(sheetIndex) {
+  const sheet = app.state.ks2Sheets[sheetIndex];
+  if (!sheet) return '<div class="panel"><div class="empty-state">Лист КС-2 не найден.</div></div>';
+
+  const viewMode = app.state.ui.ks2ViewMode?.[sheetIndex] === 'xml' ? 'xml' : 'form';
+  return viewMode === 'xml' ? renderKs2XmlPane(sheetIndex, sheet) : renderKs2FormPane(sheetIndex, sheet);
 }
 
-function buildKs3Rows() {
-  return (app.state.ks3?.rows || [])
-    .map((row) => normalizeKs3Row(row))
-    .filter((row) => row.order || row.name || row.code || row.fromStart != null || row.fromYearStart != null || row.forPeriod != null || row.vat != null);
+function renderKs2FormPane(sheetIndex, sheet) {
+  const totals = computeSheetTotals(sheet);
+  const rowsHtml = sheet.rows.map((row, rowIndex) => {
+    const amount = row.type === 'item' ? computeRowDisplayAmount(row) : null;
+    const isDeletePending = app.state.ui.rowDeleteConfirm
+      && app.state.ui.rowDeleteConfirm.sheetIndex === sheetIndex
+      && app.state.ui.rowDeleteConfirm.rowIndex === rowIndex;
+
+    return `
+      <tr class="${row.type === 'section' ? 'section-row' : row.type === 'note' ? 'note-row' : ''}">
+        <td>${renderTableSelect(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.type`, row.type, { item: 'Строка', section: 'Раздел', note: 'Примечание' })}</td>
+        <td>${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.code`, row.code)}</td>
+        <td>${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.lineNo`, row.lineNo)}</td>
+        <td>${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.estimateNo`, row.estimateNo)}</td>
+        <td>${renderTableTextarea(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.name`, row.name)}</td>
+        <td>${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.unit`, row.unit)}</td>
+        <td class="number-cell">${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.quantity`, formatEditableNumber(row.quantity), 'number')}</td>
+        <td class="number-cell">${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.price`, formatEditableNumber(row.price), 'number')}</td>
+        <td class="amount-cell">${renderTableComputed(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.__displayAmount`, `<span>${formatMoney(amount)}</span>`)}</td>
+        <td class="number-cell">${renderTableInput(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.unitConsumption`, formatEditableNumber(row.unitConsumption), 'number')}</td>
+        <td>${renderTableSelect(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.category`, row.category, {
+          work: 'Работа',
+          metal: 'Металлопрокат',
+          frame: 'Каркас',
+          concrete: 'Бетон',
+          misc: 'Прочее',
+          material: 'Материал',
+        })}</td>
+        <td>${renderTableTextarea(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.note`, row.note)}</td>
+        <td class="actions-cell">
+          ${isDeletePending
+            ? `<div class="row-action-stack"><button class="mini danger" data-action="confirm-delete-row" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">Удалить</button><button class="mini ghost" data-action="cancel-delete-row" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">Отмена</button></div>`
+            : `<button class="mini danger" data-action="prompt-delete-row" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">Удалить</button>`}
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  return `
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">${escapeHtml(sheet.title || `КС-2 №${sheetIndex + 1}`)}</h2>
+          <p class="panel-subtitle">Single-sheet лист КС-2. Этот экран снова активен и редактирует текущий sheet напрямую.</p>
+        </div>
+      </div>
+
+      <div class="summary-grid">
+        <div class="summary-card"><span>Сумма с НДС</span><strong>${formatMoney(totals.gross)}</strong></div>
+        <div class="summary-card"><span>НДС (${sheet.vatRate}%)</span><strong>${formatMoney(totals.vat)}</strong></div>
+        <div class="summary-card"><span>Без НДС</span><strong>${formatMoney(totals.base)}</strong></div>
+        <div class="summary-card"><span>Строки работ</span><strong>${sheet.rows.filter((row) => row.type === 'item').length}</strong></div>
+      </div>
+
+      <div class="breakdown-list">
+        ${Object.entries(totals.breakdown).map(([label, amount]) => `<span class="breakdown-chip">${categoryLabel(label)}: ${formatMoney(amount)}</span>`).join('')}
+      </div>
+
+      <div class="section-block">
+        <h3>Шапка документа</h3>
+        <div class="form-grid">
+          ${renderInput('Название листа', `ks2Sheets.${sheetIndex}.title`, sheet.title, 'string', 'half')}
+          ${renderInput('Номер документа', `ks2Sheets.${sheetIndex}.documentNumber`, sheet.documentNumber, 'string', 'quarter')}
+          ${renderInput('Дата документа', `ks2Sheets.${sheetIndex}.documentDate`, sheet.documentDate, 'string', 'quarter')}
+          ${renderInput('Период с', `ks2Sheets.${sheetIndex}.periodFrom`, sheet.periodFrom, 'string', 'quarter')}
+          ${renderInput('Период по', `ks2Sheets.${sheetIndex}.periodTo`, sheet.periodTo, 'string', 'quarter')}
+          ${renderInput('Ставка НДС, %', `ks2Sheets.${sheetIndex}.vatRate`, sheet.vatRate, 'number', 'quarter')}
+          ${renderTextarea('Основание акта', `ks2Sheets.${sheetIndex}.basis`, sheet.basis, 'half')}
+        </div>
+      </div>
+
+      <div class="section-block">
+        <h3>Строки работ и затрат</h3>
+        <div class="table-wrapper">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Тип</th>
+                <th>Код</th>
+                <th>№ п/п</th>
+                <th>№ сметы</th>
+                <th>Наименование</th>
+                <th>Ед.</th>
+                <th>Объем</th>
+                <th>Цена</th>
+                <th>Сумма</th>
+                <th>Расход</th>
+                <th>Категория</th>
+                <th>Примечание</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>
+        <div class="inline-actions">
+          ${renderKs2SheetAddMenu(sheetIndex)}
+          <button class="mini secondary" data-action="add-section-row" data-sheet-index="${sheetIndex}">+ Раздел</button>
+          <button class="mini secondary" data-action="add-note-row" data-sheet-index="${sheetIndex}">+ Примечание</button>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
-function buildKs3Totals(rows = buildKs3Rows()) {
-  const explicit = app.state.ks3?.totals || {};
-  const hasExplicit = ['fromStart', 'fromYearStart', 'forPeriod', 'vat'].some((key) => explicit[key] != null && explicit[key] !== '');
-  if (hasExplicit) {
-    return {
-      fromStart: numberOrZero(explicit.fromStart),
-      fromYearStart: numberOrZero(explicit.fromYearStart),
-      forPeriod: numberOrZero(explicit.forPeriod),
-      vat: numberOrZero(explicit.vat),
-    };
+function renderKs2XmlPane(sheetIndex, sheet) {
+  const contractorPreview = app.state.ui.ks2XmlPreview?.[String(sheetIndex)] || null;
+  const customerPreview = app.state.ui.ks2CustomerXmlPreview?.[String(sheetIndex)] || null;
+  const contractorXml = prettyFormatXml(contractorPreview?.xmlText || '');
+  const customerXml = prettyFormatXml(customerPreview?.xmlText || '');
+
+  return `
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">XML preview · ${escapeHtml(sheet.title || `КС-2 №${sheetIndex + 1}`)}</h2>
+          <p class="panel-subtitle">Помесячный preview по текущему single-sheet листу КС-2.</p>
+        </div>
+        <div class="inline-actions">
+          <button class="ghost mini" data-action="refresh-ks2-xml-preview-pair" data-sheet-index="${sheetIndex}">Собрать заново</button>
+          <button class="ghost mini" data-action="copy-ks2-xml-preview" data-sheet-index="${sheetIndex}">Копировать P</button>
+          <button class="ghost mini" data-action="copy-customer-xml-preview" data-sheet-index="${sheetIndex}">Копировать Z</button>
+        </div>
+      </div>
+
+      <div class="section-block">
+        <h3>Подрядчик (P)</h3>
+        <p class="kbd-note">${contractorPreview ? `${contractorPreview.filename || 'preview.xml'} · ${contractorPreview.valid ? 'XSD OK' : 'есть ошибки'}` : 'Preview ещё не собирался.'}</p>
+        <pre class="xml-preview">${escapeHtml(contractorXml || 'Нажми «Собрать заново», чтобы получить preview XML подрядчика.')}</pre>
+      </div>
+
+      <div class="section-block">
+        <h3>Заказчик (Z)</h3>
+        <p class="kbd-note">${customerPreview ? `${customerPreview.filename || 'preview-z.xml'} · ${customerPreview.valid ? 'XSD OK' : 'есть ошибки'}` : 'Preview ещё не собирался.'}</p>
+        <pre class="xml-preview">${escapeHtml(customerXml || 'Нажми «Собрать заново», чтобы получить preview XML заказчика.')}</pre>
+      </div>
+    </div>
+  `;
+}
+
+async function loadKs2XmlPreview(sheetIndex, shouldFlash = false) {
+  try {
+    const response = await fetch('/api/preview-xml-sheet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sheetIndex, model: buildLogicBundle().model }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || `Ошибка ${response.status}`);
+    app.state.ui.ks2XmlPreview[String(sheetIndex)] = data;
+    render();
+    if (shouldFlash) flash(data.valid ? 'Preview XML подрядчика собран.' : 'Preview XML подрядчика собран с ошибками XSD.');
+    return data;
+  } catch (error) {
+    if (shouldFlash) flash(`Не удалось собрать preview P: ${error.message}`);
+    throw error;
   }
+}
 
-  const totalRow = rows.find((row) => /всего работ и затрат/i.test(row.name || ''));
-  if (totalRow) {
-    return {
-      fromStart: numberOrZero(totalRow.fromStart),
-      fromYearStart: numberOrZero(totalRow.fromYearStart),
-      forPeriod: numberOrZero(totalRow.forPeriod),
-      vat: numberOrZero(explicit.vat),
-    };
+async function loadCustomerXmlPreview(sheetIndex, shouldFlash = false) {
+  try {
+    const response = await fetch('/api/preview-customer-xml-sheet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sheetIndex, model: buildLogicBundle().model }),
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || `Ошибка ${response.status}`);
+    app.state.ui.ks2CustomerXmlPreview[String(sheetIndex)] = data;
+    render();
+    if (shouldFlash) flash(data.valid ? 'Preview XML заказчика собран.' : 'Preview XML заказчика собран с ошибками XSD.');
+    return data;
+  } catch (error) {
+    if (shouldFlash) flash(`Не удалось собрать preview Z: ${error.message}`);
+    throw error;
   }
+}
 
-  return {
-    fromStart: 0,
-    fromYearStart: 0,
-    forPeriod: 0,
-    vat: numberOrZero(explicit.vat),
-  };
+async function loadKs2XmlPreviewPair(sheetIndex, shouldFlash = false) {
+  const results = await Promise.allSettled([
+    loadKs2XmlPreview(sheetIndex, false),
+    loadCustomerXmlPreview(sheetIndex, false),
+  ]);
+  if (shouldFlash) {
+    const failed = results.find((item) => item.status === 'rejected');
+    if (failed) flash(`Не удалось собрать XML preview: ${failed.reason?.message || failed.reason}`);
+    else flash('Preview P + Z по листу КС-2 собран.');
+  }
+}
+
+function prettyFormatXml(xmlText = '') {
+  const xml = String(xmlText || '').trim();
+  if (!xml) return '';
+  return xml.replace(/></g, '>\n<');
 }
 
 function buildGeneratedXmlFields() {
-  const generated = app.state.xmlExtras.generated;
+  const generated = app.state.xmlP.generated;
   const now = new Date();
   const date = now.toISOString().slice(0, 10);
   const time = now.toTimeString().slice(0, 8);
   const documentNumber = app.state.ks2Sheets[0]?.documentNumber || '1';
-  const contractorInn = app.state.xmlExtras.manual.contractorInn || '0000000000000';
+  const contractorInn = app.state.xmlP.manual.contractorInn || '0000000000000';
   return {
     fileDate: generated.fileDate || date,
     fileTime: generated.fileTime || time,
@@ -2667,13 +2378,18 @@ function buildHoldbackGroupsFromRows(rows, sheetId = null) {
 function normalizeHoldbackRowsPerSheet(rows, ks2Sheets) {
   const groups = buildHoldbackGroupsFromRows(rows);
   const normalizedRows = [];
+  const matchedGroupIndexes = new Set();
 
   (ks2Sheets || []).forEach((sheet) => {
     const sheetId = sheet.id;
     const sheetTotals = computeSheetTotals(sheet);
-    const sheetGroups = groups.filter((group) => String(group.section.row.ks2SheetId || '') === String(sheetId));
-    const sourceSections = sheetGroups.map((group) => group.section.row);
-    const allSubitems = sheetGroups.flatMap((group) => group.subitems.map((item) => item.row));
+    const sheetGroupEntries = groups
+      .map((group, groupIndex) => ({ group, groupIndex }))
+      .filter(({ group }) => String(group.section.row.ks2SheetId || '') === String(sheetId));
+    const sourceSections = sheetGroupEntries.map(({ group }) => group.section.row);
+    const allSubitems = sheetGroupEntries.flatMap(({ group }) => group.subitems.map((item) => item.row));
+
+    sheetGroupEntries.forEach(({ groupIndex }) => matchedGroupIndexes.add(groupIndex));
 
     const baseSection = sourceSections[0] || {};
     const mergedSection = {
@@ -2707,11 +2423,32 @@ function normalizeHoldbackRowsPerSheet(rows, ks2Sheets) {
     });
   });
 
+  groups.forEach((group, groupIndex) => {
+    if (matchedGroupIndexes.has(groupIndex)) return;
+    const fallbackSheetId = String(group.section.row.ks2SheetId || '').trim();
+    normalizedRows.push({
+      ...group.section.row,
+      kind: 'section',
+      ks2SheetId: fallbackSheetId,
+    });
+    group.subitems.forEach(({ row }) => {
+      normalizedRows.push({
+        ...row,
+        kind: 'subitem',
+        ks2SheetId: String(row.ks2SheetId || fallbackSheetId || '').trim(),
+      });
+    });
+  });
+
   return normalizedRows;
 }
 
 function buildHoldbackGroups(sheetId = null) {
   return buildHoldbackGroupsFromRows(app.state.holdbacks.rows, sheetId);
+}
+
+function buildUnassignedHoldbackGroups() {
+  return buildHoldbackGroupsFromRows(app.state.holdbacks.rows).filter((group) => !isKnownKs2SheetId(group.section.row.ks2SheetId));
 }
 
 function getOrCreateHoldbackSectionIndexForSheet(sheetIndex) {
@@ -2782,6 +2519,17 @@ function renderHoldbackGroup(group) {
   return sectionRow + subitemRows;
 }
 
+function buildKs2SheetSelectOptions() {
+  const options = app.state.ks2Sheets.length > 1 ? { '': '— выбрать лист КС-2 —' } : {};
+  app.state.ks2Sheets.forEach((sheet, index) => {
+    const doc = sheet.document || {};
+    const docNumber = sheet.documentNumber || doc.number || String(index + 1);
+    const title = sheet.title || `Лист КС-2 #${index + 1}`;
+    options[sheet.id] = `КС-2 №${docNumber} — ${title}`;
+  });
+  return options;
+}
+
 function renderHoldbackSectionCells(rowIndex, row, computed) {
   return `
     <td class="holdback-section-cell holdback-section-title">
@@ -2849,8 +2597,8 @@ function computeHoldbackSectionComputed(group) {
   };
 }
 
-function buildAutoSettlementRowsFromHoldbacks() {
-  const groups = buildHoldbackGroups();
+function buildAutoSettlementRowsFromHoldbacks(targetSheetId = null) {
+  const groups = buildHoldbackGroups(targetSheetId);
   const rows = [];
 
   groups.forEach((group) => {
@@ -2863,24 +2611,36 @@ function buildAutoSettlementRowsFromHoldbacks() {
         kind: 'withhold',
         kindCode: '32',
         sectionName: section.name || '',
+        ks2SheetId: section.ks2SheetId || '',
         amount: computed.retentionAmount,
-        documentRef: '',
+        documentRef: section.retentionDocNumber || '',
+        documentName: section.retentionDocName || 'Дополнительное соглашение о гарантийном удержании',
+        documentNumber: section.retentionDocNumber || '',
+        documentDate: section.retentionDocDate || '',
+        documentExtra: section.retentionDocExtra || section.comment || '',
         customKindText: '',
         comment: section.comment || '',
       });
     }
 
-    group.subitems.forEach((item) => {
+    group.subitems.forEach((item, subIndex) => {
       const row = item.row;
       const closingAmount = numberOrZero(row.closingAmount);
       if (closingAmount > 0) {
+        const parsedDoc = parseSupportingDocumentRef(row.advanceDoc || '');
         rows.push({
           source: 'subitem-advance-closing',
           kind: 'withhold',
           kindCode: '31',
           sectionName: section.name || '',
+          ks2SheetId: section.ks2SheetId || row.ks2SheetId || '',
+          paymentNo: subIndex + 1,
           amount: closingAmount,
           documentRef: row.advanceDoc || '',
+          documentName: row.advanceDocName || 'Документ аванса',
+          documentNumber: row.advanceDocNumber || parsedDoc.documentNumber,
+          documentDate: row.advanceDocDate || parsedDoc.documentDate,
+          documentExtra: row.advanceDocExtra || parsedDoc.documentExtra || row.comment || '',
           customKindText: '',
           comment: row.comment || '',
         });
@@ -2891,13 +2651,18 @@ function buildAutoSettlementRowsFromHoldbacks() {
   return rows;
 }
 
-function buildHoldbacksXmlSettlementModel() {
-  const autoRows = buildAutoSettlementRowsFromHoldbacks();
+function buildHoldbacksXmlSettlementModel(targetSheetId = null, { includeUnassignedManualRows = false } = {}) {
+  const autoRows = buildAutoSettlementRowsFromHoldbacks(targetSheetId);
   const manualRows = (app.state.xmlExtras.settlementRows || []).map((row, rowIndex) => ({
     rowIndex,
     ...prepareSettlementRow(row),
     source: 'manual',
-  }));
+  })).filter((row) => {
+    if (!targetSheetId) return true;
+    const rowSheetId = getExplicitSettlementSheetId(row);
+    if (String(rowSheetId) === String(targetSheetId)) return true;
+    return includeUnassignedManualRows && !isKnownKs2SheetId(rowSheetId);
+  });
 
   const activeManualRows = manualRows.filter((row) => {
     const amount = numberOrZero(row.amount);
@@ -3088,6 +2853,10 @@ function createBlankHoldbackRow(kind = 'section', ks2SheetId = '') {
     materialsUsed: null,
     advanceReceived: null,
     advanceDoc: '',
+    advanceDocName: '',
+    advanceDocNumber: '',
+    advanceDocDate: '',
+    advanceDocExtra: '',
     previousBalance: null,
     closingAmount: null,
     nextBalance: null,
@@ -3135,15 +2904,47 @@ function isSettlementOtherCode(row) {
   return (kind === 'claim' && code === '05') || (kind === 'withhold' && code === '36');
 }
 
+function parseSupportingDocumentRef(value) {
+  const raw = String(value || '').trim();
+  const parsed = {
+    documentRef: raw,
+    documentNumber: '',
+    documentDate: '',
+    documentExtra: '',
+  };
+  if (!raw) return parsed;
+
+  const normalized = raw.replaceAll(' г.', '').replaceAll(' г', '');
+  const match = normalized.match(/^(.*?)\s+от\s+(\d{2}\.\d{2}\.\d{4})(.*)$/i);
+  if (!match) return parsed;
+
+  parsed.documentNumber = (match[1] || '').trim();
+  parsed.documentDate = match[2] || '';
+  parsed.documentExtra = (match[3] || '').trim();
+  return parsed;
+}
+
+function buildSettlementDocumentLabel(row = {}) {
+  if (row.documentRef) return String(row.documentRef).trim();
+  const numberDate = [row.documentNumber, row.documentDate].filter(Boolean).join(' от ');
+  return [row.documentName, numberDate, row.documentExtra].filter(Boolean).join(' · ');
+}
+
 function prepareSettlementRow(row = {}) {
   const kind = normalizeSettlementKind(row.kind ?? row.kindLabel ?? row.type ?? row.branch);
   const kindCode = normalizeSettlementCode(kind, row.kindCode ?? row.code);
+  const parsedDoc = parseSupportingDocumentRef(row.documentRef ?? row.advanceDoc ?? '');
   return {
     source: row.source || 'manual',
     kind,
     kindCode,
     amount: numberOrNull(row.amount),
+    ks2SheetId: getExplicitSettlementSheetId(row),
     documentRef: row.documentRef ?? row.advanceDoc ?? '',
+    documentName: row.documentName ?? '',
+    documentNumber: row.documentNumber ?? parsedDoc.documentNumber,
+    documentDate: row.documentDate ?? parsedDoc.documentDate,
+    documentExtra: row.documentExtra ?? parsedDoc.documentExtra,
     customKindText: row.customKindText ?? row.otherKindText ?? row.customLabel ?? '',
     comment: row.comment ?? '',
     isPrimary: Boolean(row.isPrimary),
@@ -3181,7 +2982,8 @@ function buildRepresentativeSettlementLabel(row) {
   if (!row) return 'Пока нет строки для XSD-ready выгрузки';
   const parts = [settlementCodeLabel(row.kind, row.kindCode)];
   if (row.amount != null) parts.push(formatMoney(numberOrZero(row.amount)));
-  if (row.documentRef) parts.push(row.documentRef);
+  const documentLabel = buildSettlementDocumentLabel(row);
+  if (documentLabel) parts.push(documentLabel);
   if (isSettlementOtherCode(row) && row.customKindText) parts.push(`Иной вид: ${row.customKindText}`);
   if (row.source === 'manual') parts.push('ручная');
   if (row.source === 'section-retention' || row.source === 'subitem-advance-closing') parts.push('авто из удержаний');
@@ -3335,55 +3137,38 @@ function buildTraceableGoodsSnippet(index) {
 
 function staticXmlBinding(path) {
   const bindings = {
-    'common.okudKs2': ['ИнфПолФХЖ1 → form.okudKs2'],
-    'common.okudKs3': { included: false, note: 'Форма КС-3 теперь передается отдельным Excel-документом и в P XML не используется.' },
-    'common.objectOkpo': ['ИнфПолФХЖ1 → form.objectOkpo'],
-    'common.okdpCode': ['ИнфПолФХЖ1 → form.okdpCode'],
-    'common.currencyCode': ['СвАктСдПр/@КодОКВДог', 'ДенИзм/@КодОКВ', 'ИнфПолФХЖ1 → form.currencyCode'],
-    'common.currencyName': ['ДенИзм/@НаимОКВ', 'ИнфПолФХЖ1 → form.currencyName'],
-    'common.contractNumber': ['СвАктСдПр/ИдДог/ТипИдДок/@НомерДок', 'ОснСдачи/ТипИдДок/@НомерДок'],
-    'common.contractDate': ['СвАктСдПр/ИдДог/ТипИдДок/@ДатаДок', 'ОснСдачи/ТипИдДок/@ДатаДок'],
-    'common.operationType': ['СвПродПер/СвПер/@СодОпер'],
-    'common.developerName': ['ИнфПолФХЖ1 → developer.name'],
-    'common.developerOkpo': ['ИнфПолФХЖ1 → developer.okpo'],
-    'common.techCustomerName': ['СвЗак/СвСторДог/ИдСв/СвЮЛУч/@НаимОрг', 'ИнфПолФХЖ1 → techCustomer.name'],
-    'common.techCustomerOkpo': ['СвЗак/СвСторДог/@ОКПО', 'ИнфПолФХЖ1 → techCustomer.okpo'],
-    'common.contractorName': ['СвПодр/СвСторДог/ИдСв/СвЮЛУч/@НаимОрг', 'Документ/@НаимЭкСубСост (fallback)'],
-    'common.contractorOkpo': ['СвПодр/СвСторДог/@ОКПО'],
-    'common.constructionObject': ['СвАктСдПр/@НаимОб (fallback от Стройка)'],
-    'common.objectName': ['СвАктСдПр/@НаимОб'],
-    'common.contractorSignerPosition': ['ПодписантПодр/Подписант/@Должн', 'ИнфПолФХЖ1 → contractor.signerPosition'],
-    'common.contractorSignerName': ['ПодписантПодр/Подписант/ФИО', 'ИнфПолФХЖ1 → contractor.signerName'],
-    'common.customerSignerPosition': ['ИнфПолФХЖ1 → customer.signerPosition'],
-    'common.customerSignerName': ['ИнфПолФХЖ1 → customer.signerName'],
-    'common.techCustomerSignerPosition': ['ИнфПолФХЖ1 → techCustomer.signerPosition'],
-    'common.techCustomerSignerName': ['ИнфПолФХЖ1 → techCustomer.signerName'],
-    'common.ks2DocLabel': { included: false, note: 'Используется только в визуальной форме КС-2, в XML не уходит.' },
-    'common.ks2DocSubtitle': { included: false, note: 'Используется только в визуальной форме КС-2, в XML не уходит.' },
-    'common.ks3DocLabel': { included: false, note: 'Используется только в визуальной форме КС-3, в XML не уходит.' },
-    'common.ks3DocSubtitle': { included: false, note: 'Используется только в визуальной форме КС-3, в XML не уходит.' },
-    'common.contractorSignLabel': { included: false, note: 'Только печатная подпись в web-форме.' },
-    'common.customerSignLabel': { included: false, note: 'Только печатная подпись в web-форме.' },
-    'common.ks2CheckedLabel': { included: false, note: 'Только печатная подпись в web-форме.' },
-    'common.ks2AcceptedPosition': { included: false, note: 'Только печатный блок формы КС-2.' },
-    'common.ks2AcceptedName': { included: false, note: 'Только печатный блок формы КС-2.' },
-    'common.ks2CheckedPosition': { included: false, note: 'Только печатный блок формы КС-2.' },
-    'common.ks2CheckedName': { included: false, note: 'Только печатный блок формы КС-2.' },
-    'common.ks3DeveloperPosition': { included: false, note: 'Только печатный блок формы КС-3 / удержаний.' },
-    'common.ks3DeveloperName': { included: false, note: 'Только печатный блок формы КС-3 / удержаний.' },
-    'common.ks3TechCustomerPosition': { included: false, note: 'Только печатный блок формы КС-3 / удержаний.' },
-    'common.ks3TechCustomerName': { included: false, note: 'Только печатный блок формы КС-3 / удержаний.' },
-    'common.ks3ContractorPosition': { included: false, note: 'Только печатный блок формы КС-3 / удержаний.' },
-    'common.ks3ContractorName': { included: false, note: 'Только печатный блок формы КС-3 / удержаний.' },
+    'documentContext.okudKs2': ['ИнфПолФХЖ1 → form.okudKs2'],
+    'documentContext.objectOkpo': ['ИнфПолФХЖ1 → form.objectOkpo'],
+    'documentContext.okdpCode': ['ИнфПолФХЖ1 → form.okdpCode'],
+    'documentContext.currencyCode': ['СвАктСдПр/@КодОКВДог', 'ДенИзм/@КодОКВ', 'ИнфПолФХЖ1 → form.currencyCode'],
+    'documentContext.currencyName': ['ДенИзм/@НаимОКВ', 'ИнфПолФХЖ1 → form.currencyName'],
+    'documentContext.contractNumber': ['СвАктСдПр/ИдДог/ТипИдДок/@НомерДок', 'ОснСдачи/ТипИдДок/@НомерДок'],
+    'documentContext.contractDate': ['СвАктСдПр/ИдДог/ТипИдДок/@ДатаДок', 'ОснСдачи/ТипИдДок/@ДатаДок'],
+    'documentContext.operationType': ['СвПродПер/СвПер/@СодОпер'],
+    'documentContext.developerName': ['ИнфПолФХЖ1 → developer.name'],
+    'documentContext.developerOkpo': ['ИнфПолФХЖ1 → developer.okpo'],
+    'documentContext.techCustomerName': ['СвЗак/СвСторДог/ИдСв/СвЮЛУч/@НаимОрг', 'ИнфПолФХЖ1 → techCustomer.name'],
+    'documentContext.techCustomerOkpo': ['СвЗак/СвСторДог/@ОКПО', 'ИнфПолФХЖ1 → techCustomer.okpo'],
+    'documentContext.contractorName': ['СвПодр/СвСторДог/ИдСв/СвЮЛУч/@НаимОрг', 'Документ/@НаимЭкСубСост (fallback)'],
+    'documentContext.contractorOkpo': ['СвПодр/СвСторДог/@ОКПО'],
+    'documentContext.constructionObject': ['СвАктСдПр/@НаимОб (fallback от Стройка)'],
+    'documentContext.objectName': ['СвАктСдПр/@НаимОб'],
+    'documentContext.contractorSignerPosition': ['ПодписантПодр/Подписант/@Должн', 'ИнфПолФХЖ1 → contractor.signerPosition'],
+    'documentContext.contractorSignerName': ['ПодписантПодр/Подписант/ФИО', 'ИнфПолФХЖ1 → contractor.signerName'],
+    'documentContext.customerSignerPosition': ['ИнфПолФХЖ1 → customer.signerPosition'],
+    'documentContext.customerSignerName': ['ИнфПолФХЖ1 → customer.signerName'],
+    'documentContext.techCustomerSignerPosition': ['ИнфПолФХЖ1 → techCustomer.signerPosition'],
+    'documentContext.techCustomerSignerName': ['ИнфПолФХЖ1 → techCustomer.signerName'],
+    'documentContext.ks2DocLabel': { included: false, note: 'Используется только в визуальной форме КС-2, в XML не уходит.' },
+    'documentContext.ks2DocSubtitle': { included: false, note: 'Используется только в визуальной форме КС-2, в XML не уходит.' },
+    'documentContext.contractorSignLabel': { included: false, note: 'Только печатная подпись в web-форме.' },
+    'documentContext.customerSignLabel': { included: false, note: 'Только печатная подпись в web-форме.' },
+    'documentContext.ks2CheckedLabel': { included: false, note: 'Только печатная подпись в web-форме.' },
+    'documentContext.ks2AcceptedPosition': { included: false, note: 'Только печатный блок формы КС-2.' },
+    'documentContext.ks2AcceptedName': { included: false, note: 'Только печатный блок формы КС-2.' },
+    'documentContext.ks2CheckedPosition': { included: false, note: 'Только печатный блок формы КС-2.' },
+    'documentContext.ks2CheckedName': { included: false, note: 'Только печатный блок формы КС-2.' },
 
-    'ks3.documentNumber': { included: false, note: 'Данные КС-3 больше не используются при формировании P XML по листу КС-2.' },
-    'ks3.documentDate': { included: false, note: 'Данные КС-3 больше не используются при формировании P XML по листу КС-2.' },
-    'ks3.periodFrom': { included: false, note: 'Данные КС-3 больше не используются при формировании P XML по листу КС-2.' },
-    'ks3.periodTo': { included: false, note: 'Данные КС-3 больше не используются при формировании P XML по листу КС-2.' },
-    'ks3.totals.fromStart': { included: false, note: 'Итоги КС-3 больше не участвуют в формировании P XML.' },
-    'ks3.totals.fromYearStart': { included: false, note: 'Итоги КС-3 больше не участвуют в формировании P XML.' },
-    'ks3.totals.forPeriod': { included: false, note: 'Итоги КС-3 больше не участвуют в формировании P XML.' },
-    'ks3.totals.vat': { included: false, note: 'Итоги КС-3 больше не участвуют в формировании P XML.' },
 
     'xml.generated.fileId': ['Файл/@ИдФайл'],
     'xml.generated.fileDate': ['Документ/@ДатаИнфПодр'],
@@ -3391,46 +3176,52 @@ function staticXmlBinding(path) {
     'xml.generated.knd': ['Документ/@КНД'],
     'xml.generated.formatVersion': ['Файл/@ВерсФорм'],
     'xml.generated.programVersion': ['Файл/@ВерсПрог'],
+    'xmlP.generated.fileId': ['Файл/@ИдФайл'],
+    'xmlP.generated.fileDate': ['Документ/@ДатаИнфПодр'],
+    'xmlP.generated.fileTime': ['Документ/@ВремИнфПодр'],
+    'xmlP.generated.knd': ['Документ/@КНД'],
+    'xmlP.generated.formatVersion': ['Файл/@ВерсФорм'],
+    'xmlP.generated.programVersion': ['Файл/@ВерсПрог'],
 
-    'xmlExtras.constants.isGovMunicipal': ['СвАктСдПр/ОсновСтроит/@ПрГосМун'],
-    'xmlExtras.constants.vatCalcInTotalOnly': ['СвПродПер/СвПер/@ПрНДСВИтог'],
-    'xmlExtras.constants.cumulativeMode': { status: 'derived', targets: ['Влияет на накопительные суммы строк и итогов XML'] },
-    'xmlExtras.constants.priceIndexYear': ['СвПродПер/СвПер/@ПрИндЦен'],
-    'xmlExtras.constants.requiresSettlementApproval': ['СвПродПер/СвПер/@ПрСведРасчСогл'],
-    'xmlExtras.constants.diadocCompactMode': { status: 'derived', targets: ['Влияет на структуру табличной части НаимИСт/Раздел/СвВидРаб'] },
+    'xmlP.constants.isGovMunicipal': ['СвАктСдПр/ОсновСтроит/@ПрГосМун'],
+    'xmlP.constants.vatCalcInTotalOnly': ['СвПродПер/СвПер/@ПрНДСВИтог'],
+    'xmlP.constants.cumulativeMode': { status: 'derived', targets: ['Влияет на накопительные суммы строк и итогов XML'] },
+    'xmlP.constants.priceIndexYear': ['СвПродПер/СвПер/@ПрИндЦен'],
+    'xmlP.constants.requiresSettlementApproval': ['СвПродПер/СвПер/@ПрСведРасчСогл'],
+    'xmlP.constants.diadocCompactMode': { status: 'derived', targets: ['Влияет на структуру табличной части НаимИСт/Раздел/СвВидРаб'] },
 
-    'xmlExtras.manual.economicSubjectName': ['Документ/@НаимЭкСубСост'],
-    'xmlExtras.manual.isCorrectionAct': ['СвАктСдПр/ИспрАктСдПр (наличие узла)'],
-    'xmlExtras.manual.correctionNumber': ['СвАктСдПр/ИспрАктСдПр/@НомИспр'],
-    'xmlExtras.manual.correctionDate': ['СвАктСдПр/ИспрАктСдПр/@ДатаИспр'],
-    'xmlExtras.manual.hasEstimateChange': ['СвАктСдПр/ИзмСмет (наличие узла)'],
-    'xmlExtras.manual.estimateVersionCode': ['СвАктСдПр/ИзмСмет/@КодСмет', 'СвАктСдПр/ИдСмет/ТипИдДок/@НомерДок'],
-    'xmlExtras.manual.supplementDocType': ['СвАктСдПр/ИзмСмет/ИдДопСогл/ТипИдДок/@НаимДок'],
-    'xmlExtras.manual.supplementDocNumber': ['СвАктСдПр/ИзмСмет/ИдДопСогл/ТипИдДок/@НомерДок'],
-    'xmlExtras.manual.supplementDocDate': ['СвАктСдПр/ИзмСмет/ИдДопСогл/ТипИдДок/@ДатаДок'],
-    'xmlExtras.manual.contractorInn': ['ОснДовОргСост/ИдРекСост/ИННЮЛ', 'СвПодр/СвСторДог/ИдСв/СвЮЛУч/@ИННЮЛ'],
-    'xmlExtras.manual.customerInn': ['СвЗак/СвСторДог/ИдСв/СвЮЛУч/@ИННЮЛ'],
-    'xmlExtras.manual.developerPostalIndex': ['СвАктСдПр/МестВыпРаб/АдрРФ/@Индекс'],
-    'xmlExtras.manual.developerRegionCode': ['СвАктСдПр/МестВыпРаб/АдрРФ/@КодРегион'],
-    'xmlExtras.manual.signerName': ['ПодписантПодр/Подписант/ФИО'],
-    'xmlExtras.manual.signerPosition': ['ПодписантПодр/Подписант/@Должн'],
-    'xmlExtras.manual.signerStatus': ['ПодписантПодр/Подписант/@СтатПодп'],
-    'xmlExtras.manual.signatureType': ['ПодписантПодр/Подписант/@ТипПодпис'],
-    'xmlExtras.manual.customInfoValue': ['ИнфПолФХЖ1 → customField'],
-    'xmlExtras.manual.contractorPostalIndex': ['СвПодр/СвСторДог/Адрес/АдрРФ/@Индекс'],
-    'xmlExtras.manual.contractorRegionCode': ['СвПодр/СвСторДог/Адрес/АдрРФ/@КодРегион'],
+    'xmlP.manual.economicSubjectName': ['Документ/@НаимЭкСубСост'],
+    'xmlP.manual.isCorrectionAct': ['СвАктСдПр/ИспрАктСдПр (наличие узла)'],
+    'xmlP.manual.correctionNumber': ['СвАктСдПр/ИспрАктСдПр/@НомИспр'],
+    'xmlP.manual.correctionDate': ['СвАктСдПр/ИспрАктСдПр/@ДатаИспр'],
+    'xmlP.manual.hasEstimateChange': ['СвАктСдПр/ИзмСмет (наличие узла)'],
+    'xmlP.manual.estimateVersionCode': ['СвАктСдПр/ИзмСмет/@КодСмет', 'СвАктСдПр/ИдСмет/ТипИдДок/@НомерДок'],
+    'xmlP.manual.supplementDocType': ['СвАктСдПр/ИзмСмет/ИдДопСогл/ТипИдДок/@НаимДок'],
+    'xmlP.manual.supplementDocNumber': ['СвАктСдПр/ИзмСмет/ИдДопСогл/ТипИдДок/@НомерДок'],
+    'xmlP.manual.supplementDocDate': ['СвАктСдПр/ИзмСмет/ИдДопСогл/ТипИдДок/@ДатаДок'],
+    'xmlP.manual.contractorInn': ['ОснДовОргСост/ИдРекСост/ИННЮЛ', 'СвПодр/СвСторДог/ИдСв/СвЮЛУч/@ИННЮЛ'],
+    'xmlP.manual.customerInn': ['СвЗак/СвСторДог/ИдСв/СвЮЛУч/@ИННЮЛ'],
+    'xmlP.manual.developerPostalIndex': ['СвАктСдПр/МестВыпРаб/АдрРФ/@Индекс'],
+    'xmlP.manual.developerRegionCode': ['СвАктСдПр/МестВыпРаб/АдрРФ/@КодРегион'],
+    'xmlP.manual.signerName': ['ПодписантПодр/Подписант/ФИО'],
+    'xmlP.manual.signerPosition': ['ПодписантПодр/Подписант/@Должн'],
+    'xmlP.manual.signerStatus': ['ПодписантПодр/Подписант/@СтатПодп'],
+    'xmlP.manual.signatureType': ['ПодписантПодр/Подписант/@ТипПодпис'],
+    'xmlP.manual.customInfoValue': ['ИнфПолФХЖ1 → customField'],
+    'xmlP.manual.contractorPostalIndex': ['СвПодр/СвСторДог/Адрес/АдрРФ/@Индекс'],
+    'xmlP.manual.contractorRegionCode': ['СвПодр/СвСторДог/Адрес/АдрРФ/@КодРегион'],
 
-    'xmlExtras.manual.customerEconomicSubjectName': ['Файл Z → Документ/@НаимЭкСубСост'],
-    'xmlExtras.manual.customerAuthorityDocName': ['Файл Z → ДокОснПолнПодпис/ТипИдДок/@НаимДок'],
-    'xmlExtras.manual.customerAuthorityDocNumber': ['Файл Z → ДокОснПолнПодпис/ТипИдДок/@НомерДок'],
-    'xmlExtras.manual.customerAuthorityDocDate': ['Файл Z → ДокОснПолнПодпис/ТипИдДок/@ДатаДок'],
-    'xmlExtras.manual.customerSignerStatus': ['Файл Z → Подписант/@СтатПодп'],
-    'xmlExtras.manual.customerSignatureType': ['Файл Z → Подписант/@ТипПодпис'],
-    'xmlExtras.manual.customerSignatureStorageId': ['Файл Z → идентификатор хранения подписи / доверенности'],
-    'xmlExtras.manual.customerAcceptanceCode': ['Файл Z → Приемка/КодПрин'],
-    'xmlExtras.manual.customerAcceptanceText': ['Файл Z → Приемка/ТекстПрин'],
-    'xmlExtras.manual.customerSettlementNotice': ['Файл Z → СвУведРасч/ТекстУвед'],
-    'xmlExtras.manual.customerSettlementDisagreementReason': ['Файл Z → СвУведРасч/ПричНесогл'],
+    'xmlZ.manual.customerEconomicSubjectName': ['Файл Z → Документ/@НаимЭкСубСост'],
+    'xmlZ.manual.customerAuthorityDocName': ['Файл Z → ДокОснПолнПодпис/ТипИдДок/@НаимДок'],
+    'xmlZ.manual.customerAuthorityDocNumber': ['Файл Z → ДокОснПолнПодпис/ТипИдДок/@НомерДок'],
+    'xmlZ.manual.customerAuthorityDocDate': ['Файл Z → ДокОснПолнПодпис/ТипИдДок/@ДатаДок'],
+    'xmlZ.manual.customerSignerStatus': ['Файл Z → Подписант/@СтатПодп'],
+    'xmlZ.manual.customerSignatureType': ['Файл Z → Подписант/@ТипПодпис'],
+    'xmlZ.manual.customerSignatureStorageId': ['Файл Z → идентификатор хранения подписи / доверенности'],
+    'xmlZ.manual.customerAcceptanceCode': ['Файл Z → Приемка/КодПрин'],
+    'xmlZ.manual.customerAcceptanceText': ['Файл Z → Приемка/ТекстПрин'],
+    'xmlZ.manual.customerSettlementNotice': ['Файл Z → СвУведРасч/ТекстУвед'],
+    'xmlZ.manual.customerSettlementDisagreementReason': ['Файл Z → СвУведРасч/ПричНесогл'],
   };
   const entry = bindings[path];
   if (!entry) return null;
@@ -3505,7 +3296,7 @@ function resolveXmlBinding(path) {
 
   match = path.match(/^ks3\.rows\.(\d+)\.(.+)$/);
   if (match) {
-    return xmlBinding('derived', [], 'Ручные строки КС-3 напрямую не выгружаются в P XML; используются для totals и сопоставления.');
+    return xmlBinding('derived', [], 'Legacy-данные вне active single-sheet P/Z workflow напрямую в P XML не выгружаются.');
   }
 
   match = path.match(/^holdbacks\.rows\.(\d+)\.(.+)$/);
@@ -3563,8 +3354,11 @@ function resolveXmlBinding(path) {
       customKindText: ['СвОРасч/УчетТребУдерж → ИнВидТреб / ИнВидУдерж'],
       comment: ['ИнфПолСвОРасч / служебная расшифровка'],
     };
+    if (field === 'ks2SheetId') {
+      return xmlBinding('derived', [], 'Служебная привязка ручной settlement-строки к листу КС-2: управляет тем, в какой per-sheet XML она попадет.');
+    }
     if (field === 'isPrimary') {
-      return xmlBinding('derived', [], 'Служебный флаг: выбирает, какая строка станет основной для XSD-ready XML.');
+      return xmlBinding('derived', [], 'Служебный флаг: выбирает, какая строка станет основной для XSD-ready XML в рамках текущего листа КС-2.');
     }
     if (field === 'comment') {
       return xmlBinding(false, [], 'Комментарий settlement-строки сейчас в XML не уходит.');

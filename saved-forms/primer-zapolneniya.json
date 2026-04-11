@@ -1588,5 +1588,11 @@
         "quantity": null
       }
     ]
+  },
+  "xmlP": {
+    "manual": {}
+  },
+  "xml": {
+    "manual": {}
   }
 }

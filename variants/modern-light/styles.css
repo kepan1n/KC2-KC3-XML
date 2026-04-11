@@ -83,6 +83,13 @@ h1 {
   flex-wrap: wrap;
   gap: 10px;
   justify-content: flex-end;
+  align-items: center;
+}
+
+.toolbar-note {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .view-controls {
@@ -302,10 +309,30 @@ button.secondary {
   color: var(--warning);
 }
 
+.issue-item.ok {
+  color: var(--success);
+}
+
 .logic-ok {
   margin-top: 12px;
   color: var(--success);
   font-weight: 700;
+}
+
+.inline-hint {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.inline-hint-warning {
+  border-color: color-mix(in srgb, var(--warning) 35%, var(--line));
+  background: color-mix(in srgb, var(--warning) 8%, var(--panel-soft));
+  color: var(--warning);
 }
 
 .form-grid {
@@ -1293,6 +1320,17 @@ body[data-scale="115"] {
   background: #f8fafc;
 }
 
+.xml-preview-pair-head {
+  margin-top: 18px;
+}
+
+.xml-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
 .xml-preview-block {
   margin-top: 18px;
 }
@@ -1348,6 +1386,17 @@ body[data-scale="115"] {
 
 .xml-preview-meta.invalid strong {
   color: #b45309;
+}
+
+.xml-preview-note {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #f8fafc;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .xml-preview-errors {
@@ -1464,6 +1513,30 @@ body[data-scale="115"] {
   background: #f8fafc;
   color: var(--text);
   font-size: 12px;
+}
+
+.settlement-auto-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.settlement-auto-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fafc;
+  font-size: 13px;
+}
+
+.settlement-auto-meta {
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .settlement-chip-muted {

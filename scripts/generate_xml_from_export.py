@@ -8,6 +8,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from lxml import etree as ET
+from single_sheet_state_helpers import strip_redundant_single_sheet_bindings
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_XML = ROOT / 'nalog docs' / 'пример xml 1110335.xml'
@@ -112,8 +113,59 @@ def calc_vat(base_amount, vat_rate):
     return max(round(base * rate / 100, 2), 0)
 
 
+def merge_xml_scopes(*scopes) -> dict:
+    merged = {}
+    for scope in scopes:
+        if isinstance(scope, dict):
+            merged.update({key: value for key, value in scope.items() if value is not None})
+    return merged
+
+
+def resolve_document_context(data: dict) -> dict:
+    document_context = data.setdefault('documentContext', {})
+    common = data.setdefault('common', {})
+    merged = {**common, **document_context}
+    data['documentContext'] = merged
+    data['common'] = merged
+    return merged
+
+
+def resolve_xml_p_payload(data: dict) -> dict:
+    legacy_xml = data.setdefault('xml', {})
+    xml_p = data.setdefault('xmlP', {})
+
+    xml_p['generated'] = merge_xml_scopes(legacy_xml.get('generated'), xml_p.get('generated'))
+    xml_p['constants'] = merge_xml_scopes(legacy_xml.get('constants'), xml_p.get('constants'))
+    xml_p['manual'] = merge_xml_scopes(legacy_xml.get('manual'), xml_p.get('manual'))
+
+    traceable_goods = xml_p.get('traceableGoods')
+    if traceable_goods is None:
+        traceable_goods = legacy_xml.get('traceableGoods', [])
+    xml_p['traceableGoods'] = copy.deepcopy(traceable_goods)
+    return xml_p
+
+
+def resolve_xml_z_payload(data: dict) -> dict:
+    legacy_xml = data.setdefault('xml', {})
+    xml_p = data.setdefault('xmlP', {})
+    xml_z = data.setdefault('xmlZ', {})
+    xml_z['manual'] = merge_xml_scopes(legacy_xml.get('manual'), xml_p.get('manual'), xml_z.get('manual'))
+    return xml_z
+
+
 def resolve_xml_payload(data: dict) -> dict:
-    return data.get('xml') or data.get('xmlExtras') or {}
+    legacy_xml = data.setdefault('xml', {})
+    xml_p = resolve_xml_p_payload(data)
+    xml_z = data.setdefault('xmlZ', {})
+
+    legacy_xml['generated'] = merge_xml_scopes(legacy_xml.get('generated'), xml_p.get('generated'))
+    legacy_xml['constants'] = merge_xml_scopes(legacy_xml.get('constants'), xml_p.get('constants'))
+    legacy_xml['manual'] = merge_xml_scopes(legacy_xml.get('manual'), xml_p.get('manual'), xml_z.get('manual'))
+    if 'traceableGoods' not in legacy_xml:
+        legacy_xml['traceableGoods'] = copy.deepcopy(xml_p.get('traceableGoods', []))
+    legacy_xml.setdefault('settlement', {})
+    legacy_xml['settlement'].setdefault('manualRows', [])
+    return legacy_xml
 
 
 def resolve_cumulative_mode(constants: dict) -> str:
@@ -361,7 +413,7 @@ def load_json(path: Path):
 
 
 def validate_export_payload(data: dict):
-    common = data.get('common', {})
+    common = resolve_document_context(data)
     xml = resolve_xml_payload(data)
     manual = xml.get('manual', {})
     ks2_sheets = data.get('ks2Sheets', [])
@@ -386,11 +438,7 @@ def validate_export_payload(data: dict):
         ('common.contractDate', common.get('contractDate'), 'Не заполнена дата договора'),
         ('ks2Sheets[0].document.number', first_doc.get('number'), 'Не заполнен номер акта КС-2'),
         ('ks2Sheets[0].document.date', first_doc.get('date'), 'Не заполнена дата акта КС-2'),
-        ('xml.manual.contractorInn', manual.get('contractorInn'), 'Не заполнен ИНН подрядчика'),
-        ('xml.manual.customerInn', manual.get('customerInn'), 'Не заполнен ИНН заказчика'),
         ('xml.manual.economicSubjectName', manual.get('economicSubjectName') or common.get('contractorName'), 'Не заполнено наименование составителя XML'),
-        ('xml.manual.developerPostalIndex', manual.get('developerPostalIndex'), 'Не заполнен индекс адреса'),
-        ('xml.manual.developerRegionCode', manual.get('developerRegionCode'), 'Не заполнен код региона'),
         ('signer', manual.get('signerName') or common.get('contractorSignerName') or common.get('contractorSigner') or common.get('contractorResponsible') or common.get('signerName'), 'Не заполнено ФИО подписанта'),
     ]
     if is_correction_act:
@@ -398,15 +446,22 @@ def validate_export_payload(data: dict):
             ('xml.manual.correctionNumber', manual.get('correctionNumber'), 'Не заполнен номер исправления'),
             ('xml.manual.correctionDate', manual.get('correctionDate'), 'Не заполнена дата исправления'),
         ])
-    if has_estimate_change:
-        required.extend([
-            ('xml.manual.estimateVersionCode', manual.get('estimateVersionCode'), 'Не заполнена версия сметы (КодСмет)'),
-            ('xml.manual.supplementDocType', manual.get('supplementDocType'), 'Не заполнен тип допсоглашения'),
-            ('xml.manual.supplementDocNumber', manual.get('supplementDocNumber'), 'Не заполнен номер допсоглашения'),
-            ('xml.manual.supplementDocDate', manual.get('supplementDocDate'), 'Не заполнена дата допсоглашения'),
-        ])
+    # In single-sheet mode these XML manual fields may legitimately come from
+    # generator/template fallbacks instead of explicit UI input, so they are not
+    # hard export blockers here. The frontend still surfaces them as warnings.
 
     errors = [{'path': path, 'message': message} for path, value, message in required if value in (None, '')]
+
+    normalized_sheet_ids = [str(first_non_empty(sheet.get('id'), default='')).strip() for sheet in ks2_sheets if first_non_empty(sheet.get('id'))]
+    duplicate_sheet_ids = sorted({sheet_id for sheet_id in normalized_sheet_ids if normalized_sheet_ids.count(sheet_id) > 1})
+    for sheet_id in duplicate_sheet_ids:
+        errors.append({
+            'path': 'ks2Sheets',
+            'message': f'Идентификатор листа КС-2 должен быть уникальным. Повторяется: {sheet_id}.',
+        })
+
+    errors.extend(collect_holdback_sheet_binding_errors(data))
+    errors.extend(collect_manual_settlement_sheet_binding_errors(data))
     return errors
 
 
@@ -479,6 +534,28 @@ def parse_input_date(value: str | None):
     return None
 
 
+def parse_supporting_document_ref(value: str | None) -> dict:
+    raw = str(first_non_empty(value, default='') or '').strip()
+    parsed = {
+        'documentRef': raw,
+        'documentNumber': None,
+        'documentDate': None,
+        'documentExtra': None,
+    }
+    if not raw:
+        return parsed
+
+    normalized = raw.replace(' г.', '').replace(' г', '')
+    match = re.match(r'^(.*?)\s+от\s+(\d{2}\.\d{2}\.\d{4})(.*)$', normalized, flags=re.IGNORECASE)
+    if not match:
+        return parsed
+
+    parsed['documentNumber'] = match.group(1).strip() or None
+    parsed['documentDate'] = match.group(2)
+    parsed['documentExtra'] = match.group(3).strip() or None
+    return parsed
+
+
 def collect_document_periods(ks2_sheets: list[dict]):
     starts = []
     ends = []
@@ -526,69 +603,185 @@ def build_ks2_xml_totals(ks2_sheets: list[dict]):
     return {key: round(value, 2) for key, value in totals.items()}
 
 
-def normalize_search_text(value: str | None) -> str:
-    return ' '.join(str(value or '').lower().replace('ё', 'е').split())
+def resolve_holdback_sheet_id(section: dict) -> str | None:
+    value = first_non_empty(section.get('ks2SheetId'), section.get('linkedKs2SheetId'), section.get('sheetId'))
+    return str(value).strip() if value not in (None, '') else None
 
 
-def tokenize_search_text(value: str | None) -> list[str]:
-    return [token for token in re.findall(r'[a-zа-я0-9]+', normalize_search_text(value)) if len(token) >= 6]
+def resolve_holdback_sheet_index(section: dict):
+    return first_non_empty(section.get('ks2SheetIndex'), section.get('linkedSheetIndex'))
 
 
-def build_holdback_sheet_match_score(section: dict, sheet: dict) -> int:
-    section_text = normalize_search_text(' '.join([
-        str(section.get('name') or ''),
-        str(section.get('comment') or ''),
-    ]))
-    if not section_text:
-        return 0
-
-    sheet_doc = sheet.get('document', {})
-    doc_number = str(first_non_empty(sheet_doc.get('number'), sheet.get('documentNumber'), default='')).strip()
+def holdback_section_matches_sheet(section: dict, sheet: dict) -> bool:
     sheet_id = first_non_empty(sheet.get('id'))
-    explicit_sheet_id = first_non_empty(section.get('ks2SheetId'), section.get('linkedKs2SheetId'), section.get('sheetId'))
-    explicit_sheet_index = first_non_empty(section.get('ks2SheetIndex'), section.get('linkedSheetIndex'))
+    explicit_sheet_id = resolve_holdback_sheet_id(section)
+    explicit_sheet_index = resolve_holdback_sheet_index(section)
     sheet_index = sheet.get('sheetIndex')
 
     if sheet_id and explicit_sheet_id and str(explicit_sheet_id) == str(sheet_id):
-        return 1000
+        return True
     if explicit_sheet_index not in (None, '') and sheet_index is not None:
         try:
-            if int(explicit_sheet_index) == int(sheet_index):
-                return 1000
+            return int(explicit_sheet_index) == int(sheet_index)
         except Exception:
-            pass
+            return False
+    return False
 
-    score = 0
-    if doc_number:
-        doc_patterns = [
-            f'кс-2 №{doc_number}',
-            f'кс2 №{doc_number}',
-            f'акт №{doc_number}',
-            f'акт n{doc_number}',
-        ]
-        if any(pattern in section_text for pattern in doc_patterns):
-            score += 200
 
-    sheet_title = first_non_empty(sheet.get('title'))
-    sheet_basis = first_non_empty(sheet_doc.get('basis'), sheet.get('basis'))
-    for source in (sheet_title, sheet_basis):
-        for token in tokenize_search_text(source):
-            if token in section_text:
-                score += 10
+def collect_holdback_sheet_binding_errors(data: dict) -> list[dict]:
+    ks2_sheets = data.get('ks2Sheets', []) or []
+    if len(ks2_sheets) <= 1:
+        return []
 
-    if sheet_title and normalize_search_text(sheet_title) in section_text:
-        score += 50
-    if sheet_basis and normalize_search_text(sheet_basis) in section_text:
-        score += 50
+    sections = ((data.get('holdbacks', {}) or {}).get('sections') or [])
+    if not sections:
+        return []
 
-    return score
+    valid_sheet_ids = {str(first_non_empty(sheet.get('id'), default='')).strip() for sheet in ks2_sheets if first_non_empty(sheet.get('id'))}
+    max_sheet_index = len(ks2_sheets) - 1
+    errors = []
+
+    for index, section in enumerate(sections):
+        explicit_sheet_id = resolve_holdback_sheet_id(section)
+        explicit_sheet_index = resolve_holdback_sheet_index(section)
+        label = first_non_empty(section.get('name'), default=f'строка {index + 1}')
+        path = f'holdbacks.sections.{index}.ks2SheetId'
+
+        if not explicit_sheet_id and explicit_sheet_index in (None, ''):
+            errors.append({
+                'path': path,
+                'message': f'Для multi-KS2 строка удержаний «{label}» должна быть явно привязана к листу КС-2 (ks2SheetId).',
+            })
+            continue
+
+        if explicit_sheet_id and explicit_sheet_id not in valid_sheet_ids:
+            errors.append({
+                'path': path,
+                'message': f'Для строки удержаний «{label}» указан неизвестный ks2SheetId: {explicit_sheet_id}.',
+            })
+            continue
+
+        if explicit_sheet_index not in (None, ''):
+            try:
+                numeric_index = int(explicit_sheet_index)
+            except Exception:
+                errors.append({
+                    'path': path,
+                    'message': f'Для строки удержаний «{label}» указан некорректный индекс листа КС-2: {explicit_sheet_index}.',
+                })
+                continue
+            if numeric_index < 0 or numeric_index > max_sheet_index:
+                errors.append({
+                    'path': path,
+                    'message': f'Для строки удержаний «{label}» индекс листа КС-2 вне диапазона: {numeric_index}.',
+                })
+
+    return errors
+
+
+def resolve_settlement_sheet_id(row: dict) -> str | None:
+    value = first_non_empty(row.get('ks2SheetId'), row.get('linkedKs2SheetId'), row.get('sheetId'))
+    return str(value).strip() if value not in (None, '') else None
+
+
+def resolve_settlement_sheet_index(row: dict):
+    return first_non_empty(row.get('ks2SheetIndex'), row.get('linkedSheetIndex'))
+
+
+def manual_settlement_row_matches_sheet(row: dict, sheet: dict) -> bool:
+    sheet_id = first_non_empty(sheet.get('id'))
+    explicit_sheet_id = resolve_settlement_sheet_id(row)
+    explicit_sheet_index = resolve_settlement_sheet_index(row)
+    sheet_index = sheet.get('sheetIndex')
+
+    if sheet_id and explicit_sheet_id and str(explicit_sheet_id) == str(sheet_id):
+        return True
+    if explicit_sheet_index not in (None, '') and sheet_index is not None:
+        try:
+            return int(explicit_sheet_index) == int(sheet_index)
+        except Exception:
+            return False
+    return False
+
+
+def is_active_manual_settlement_row(row: dict) -> bool:
+    amount = safe_float(row.get('amount'), 0.0)
+    return any([
+        amount > 0,
+        first_non_empty(row.get('documentRef')),
+        first_non_empty(row.get('comment')),
+        first_non_empty(row.get('customKindText'), row.get('otherKindText')),
+    ])
+
+
+def collect_manual_settlement_sheet_binding_errors(data: dict) -> list[dict]:
+    ks2_sheets = data.get('ks2Sheets', []) or []
+    if len(ks2_sheets) <= 1:
+        return []
+
+    settlement = resolve_xml_payload(data).get('settlement', {})
+    manual_rows = settlement.get('manualRows', []) or []
+    if not manual_rows:
+        return []
+
+    valid_sheet_ids = {str(first_non_empty(sheet.get('id'), default='')).strip() for sheet in ks2_sheets if first_non_empty(sheet.get('id'))}
+    max_sheet_index = len(ks2_sheets) - 1
+    errors = []
+
+    for index, row in enumerate(manual_rows):
+        if not is_active_manual_settlement_row(row):
+            continue
+
+        explicit_sheet_id = resolve_settlement_sheet_id(row)
+        explicit_sheet_index = resolve_settlement_sheet_index(row)
+        label = first_non_empty(row.get('comment'), row.get('documentRef'), default=f'строка {index + 1}')
+        path = f'xml.settlement.manualRows.{index}.ks2SheetId'
+
+        if not explicit_sheet_id and explicit_sheet_index in (None, ''):
+            errors.append({
+                'path': path,
+                'message': f'Для multi-KS2 ручная строка расчётов «{label}» должна быть явно привязана к листу КС-2 (ks2SheetId).',
+            })
+            continue
+
+        if explicit_sheet_id and explicit_sheet_id not in valid_sheet_ids:
+            errors.append({
+                'path': path,
+                'message': f'Для ручной строки расчётов «{label}» указан неизвестный ks2SheetId: {explicit_sheet_id}.',
+            })
+            continue
+
+        if explicit_sheet_index not in (None, ''):
+            try:
+                numeric_index = int(explicit_sheet_index)
+            except Exception:
+                errors.append({
+                    'path': path,
+                    'message': f'Для ручной строки расчётов «{label}» указан некорректный индекс листа КС-2: {explicit_sheet_index}.',
+                })
+                continue
+            if numeric_index < 0 or numeric_index > max_sheet_index:
+                errors.append({
+                    'path': path,
+                    'message': f'Для ручной строки расчётов «{label}» индекс листа КС-2 вне диапазона: {numeric_index}.',
+                })
+
+    return errors
 
 
 def select_holdback_sections_for_sheet(sections: list[dict], sheet: dict) -> list[dict]:
     matched = []
     for section in sections or []:
-        if build_holdback_sheet_match_score(section, sheet) > 0:
+        if holdback_section_matches_sheet(section, sheet):
             matched.append(copy.deepcopy(section))
+    return matched
+
+
+def select_manual_settlement_rows_for_sheet(rows: list[dict], sheet: dict) -> list[dict]:
+    matched = []
+    for row in rows or []:
+        if manual_settlement_row_matches_sheet(row, sheet):
+            matched.append(copy.deepcopy(row))
     return matched
 
 
@@ -609,7 +802,7 @@ def summarize_holdback_sections(sections: list[dict]) -> dict:
     return totals
 
 
-def build_sheet_settlement_from_holdback_sections(sections: list[dict]) -> dict:
+def build_sheet_settlement_from_holdback_sections(sections: list[dict], manual_rows: list[dict] | None = None) -> dict:
     guarantee_total = 0.0
     advance_received_total = 0.0
     advance_previous_total = 0.0
@@ -623,11 +816,11 @@ def build_sheet_settlement_from_holdback_sections(sections: list[dict]) -> dict:
         'extra': 'Гарантийное удержание 3% от стоимости работ',
     }
     payment_rows = []
+    auto_rows = []
 
     for section_index, section in enumerate(sections or [], start=1):
         section_name = first_non_empty(section.get('name'), default=f'Раздел {section_index}')
         retention_amount = safe_float(section.get('retentionAmount'), 0.0)
-        retention_rate = safe_float(section.get('retentionRate'), 0.0)
         section_amount = safe_float(section.get('ks2Amount'), 0.0)
         section_comment = first_non_empty(section.get('comment'), default='')
         closing_sum = 0.0
@@ -640,13 +833,18 @@ def build_sheet_settlement_from_holdback_sections(sections: list[dict]) -> dict:
                 guarantee_doc['date'] = first_non_empty(section.get('retentionDocDate'))
                 guarantee_doc['extra'] = first_non_empty(section.get('retentionDocExtra'), section_comment, guarantee_doc['extra'])
 
-        for payment_index, subitem in enumerate(section.get('subitems', []) or [], start=1):
+        for subitem in section.get('subitems', []) or []:
             advance_received = safe_float(subitem.get('advanceReceived'), 0.0)
             previous_balance = safe_float(subitem.get('previousBalance'), 0.0)
             closing_amount = safe_float(subitem.get('closingAmount'), 0.0)
             next_balance = safe_float(subitem.get('nextBalance'), 0.0)
             doc_ref = first_non_empty(subitem.get('advanceDoc'), default='')
             note = first_non_empty(subitem.get('comment'), default='')
+            parsed_doc = parse_supporting_document_ref(doc_ref)
+            doc_name = first_non_empty(subitem.get('advanceDocName'), default='Документ аванса')
+            doc_number = first_non_empty(subitem.get('advanceDocNumber'), parsed_doc.get('documentNumber'))
+            doc_date = first_non_empty(subitem.get('advanceDocDate'), parsed_doc.get('documentDate'))
+            doc_extra = first_non_empty(subitem.get('advanceDocExtra'), parsed_doc.get('documentExtra'), note)
             has_payload = any([
                 advance_received > 0,
                 previous_balance > 0,
@@ -663,41 +861,82 @@ def build_sheet_settlement_from_holdback_sections(sections: list[dict]) -> dict:
             advance_close_total += closing_amount
             advance_next_total += next_balance
             closing_sum += closing_amount
-            payment_rows.append({
+            payment_row = {
                 'sectionNo': section_index,
                 'paymentNo': len(payment_rows) + 1,
                 'sectionName': section_name,
                 'documentRef': doc_ref,
+                'documentName': doc_name,
+                'documentNumber': doc_number,
+                'documentDate': doc_date,
+                'documentExtra': doc_extra,
                 'advanceReceived': advance_received,
                 'previousBalance': previous_balance,
                 'closingAmount': closing_amount,
                 'nextBalance': next_balance,
                 'comment': note,
-            })
+            }
+            payment_rows.append(payment_row)
+
+            if closing_amount > 0:
+                auto_rows.append({
+                    'source': 'advance-close',
+                    'kind': 'withhold',
+                    'kindCode': '31',
+                    'amount': round(closing_amount, 2),
+                    'sectionName': section_name,
+                    'paymentNo': payment_row['paymentNo'],
+                    'documentRef': doc_ref,
+                    'documentName': doc_name,
+                    'documentNumber': doc_number,
+                    'documentDate': doc_date,
+                    'documentExtra': doc_extra,
+                    'customKindText': '',
+                    'comment': note,
+                })
 
         section_payable = safe_float(section.get('payableAmount'), section_amount - retention_amount - closing_sum)
         payable_total += max(round(section_payable, 2), 0.0)
 
-    settlement_rows = []
-    representative_row = None
     if guarantee_total > 0:
-        representative_row = {
+        auto_rows.insert(0, {
             'source': 'guarantee-retention',
             'kind': 'withhold',
             'kindCode': '32',
             'amount': round(guarantee_total, 2),
             'documentRef': first_non_empty(guarantee_doc.get('number'), default=''),
             'documentName': guarantee_doc.get('name'),
+            'documentNumber': first_non_empty(guarantee_doc.get('number')),
             'documentDate': guarantee_doc.get('date'),
             'documentExtra': guarantee_doc.get('extra'),
             'customKindText': '',
             'comment': guarantee_doc.get('extra') or '',
-        }
-        settlement_rows.append(representative_row)
+        })
+
+    prepared_manual_rows = [copy.deepcopy(row) for row in (manual_rows or [])]
+    active_manual_rows = [row for row in prepared_manual_rows if is_active_manual_settlement_row(row)]
+    export_manual_rows = [row for row in active_manual_rows if safe_float(row.get('amount'), 0.0) > 0]
+
+    settlement_rows = [
+        *export_manual_rows,
+        *auto_rows,
+    ]
+    total_retention = sum(
+        safe_float(row.get('amount'), 0.0)
+        for row in settlement_rows
+        if normalize_settlement_kind(row.get('kind'), row.get('kindCode')) == 'withhold'
+    )
+    total_claims = sum(
+        safe_float(row.get('amount'), 0.0)
+        for row in settlement_rows
+        if normalize_settlement_kind(row.get('kind'), row.get('kindCode')) == 'claim'
+    )
+    representative_manual_row = next((row for row in export_manual_rows if row.get('isPrimary')), None)
+    representative_row = representative_manual_row or choose_preferred_settlement_row(settlement_rows, total_claims, total_retention)
 
     return {
-        'totalRetention': round(guarantee_total + advance_close_total, 2),
-        'totalClaims': 0.0,
+        'totalRetention': round(total_retention, 2),
+        'totalClaims': round(total_claims, 2),
         'totalGuaranteeRetention': round(guarantee_total, 2),
         'totalAdvanceClose': round(advance_close_total, 2),
         'totalAdvanceReceived': round(advance_received_total, 2),
@@ -706,8 +945,8 @@ def build_sheet_settlement_from_holdback_sections(sections: list[dict]) -> dict:
         'totalPayable': round(payable_total, 2),
         'paymentRows': payment_rows,
         'settlementRows': settlement_rows,
-        'autoRows': settlement_rows,
-        'manualRows': [],
+        'autoRows': auto_rows,
+        'manualRows': prepared_manual_rows,
         'representativeRow': representative_row,
     }
 
@@ -730,6 +969,7 @@ def build_settlement_info_blocks(holdback_sections: list[dict], sheet: dict | No
     summary = build_sheet_settlement_from_holdback_sections(holdback_sections)
 
     blocks.append([
+        ('AVANS_ROW_COUNT', str(len(summary.get('paymentRows', [])))),
         ('AVANS_TOTAL_RECEIVED_RUB', fmt_money(summary.get('totalAdvanceReceived'))),
         ('AVANS_TOTAL_PREVIOUS_BALANCE_RUB', fmt_money(summary.get('totalAdvancePrevious'))),
         ('AVANS_TOTAL_CLOSING_RUB', fmt_money(summary.get('totalAdvanceClose'))),
@@ -741,6 +981,10 @@ def build_settlement_info_blocks(holdback_sections: list[dict], sheet: dict | No
             ('AVANS_ROW_NO', str(row.get('paymentNo') or '')),
             ('AVANS_SECTION', first_non_empty(row.get('sectionName'))),
             ('AVANS_DOC_REF', first_non_empty(row.get('documentRef'))),
+            ('AVANS_DOC_NAME', first_non_empty(row.get('documentName'))),
+            ('AVANS_DOC_NO', first_non_empty(row.get('documentNumber'))),
+            ('AVANS_DOC_DATE', fmt_date(first_non_empty(row.get('documentDate'))) if first_non_empty(row.get('documentDate')) else None),
+            ('AVANS_DOC_EXTRA', first_non_empty(row.get('documentExtra'))),
             ('AVANS_RECEIVED_RUB', fmt_money(row.get('advanceReceived'))),
             ('AVANS_PREVIOUS_BALANCE_RUB', fmt_money(row.get('previousBalance'))),
             ('AVANS_CLOSING_RUB', fmt_money(row.get('closingAmount'))),
@@ -776,6 +1020,13 @@ def build_generated_file_id_for_sheet(generated: dict, manual: dict, sheet: dict
 
 
 def project_payload_to_single_ks2_sheet(data: dict, sheet_index: int) -> dict:
+    binding_errors = [
+        *collect_holdback_sheet_binding_errors(data),
+        *collect_manual_settlement_sheet_binding_errors(data),
+    ]
+    if binding_errors:
+        raise ValueError(json.dumps({'validationErrors': binding_errors}, ensure_ascii=False))
+
     ks2_sheets = data.get('ks2Sheets', []) or []
     if not (0 <= sheet_index < len(ks2_sheets)):
         raise IndexError(f'KS2 sheet index out of range: {sheet_index}')
@@ -786,6 +1037,18 @@ def project_payload_to_single_ks2_sheet(data: dict, sheet_index: int) -> dict:
     projected['ks2Sheets'] = [target_sheet]
 
     ks3 = projected.setdefault('ks3', {})
+    target_sheet_doc = target_sheet.get('document', {}) or {}
+    ks3['document'] = {
+        **(ks3.get('document') or {}),
+        'number': first_non_empty(target_sheet_doc.get('number'), target_sheet.get('documentNumber'), ks3.get('documentNumber')),
+        'date': first_non_empty(target_sheet_doc.get('date'), target_sheet.get('documentDate'), ks3.get('documentDate')),
+        'periodFrom': first_non_empty(target_sheet_doc.get('periodFrom'), target_sheet.get('periodFrom')),
+        'periodTo': first_non_empty(target_sheet_doc.get('periodTo'), target_sheet.get('periodTo'), target_sheet_doc.get('date'), target_sheet.get('documentDate')),
+    }
+    ks3['documentNumber'] = first_non_empty(ks3['document'].get('number'), ks3.get('documentNumber'))
+    ks3['documentDate'] = first_non_empty(ks3['document'].get('date'), ks3.get('documentDate'))
+    ks3['periodFrom'] = first_non_empty(ks3['document'].get('periodFrom'), ks3.get('periodFrom'))
+    ks3['periodTo'] = first_non_empty(ks3['document'].get('periodTo'), ks3.get('periodTo'))
     ks3['rows'] = []
     ks3['totals'] = {}
 
@@ -798,13 +1061,16 @@ def project_payload_to_single_ks2_sheet(data: dict, sheet_index: int) -> dict:
     xml = resolve_xml_payload(projected)
     generated = xml.setdefault('generated', {})
     manual = xml.setdefault('manual', {})
-    xml['settlement'] = build_sheet_settlement_from_holdback_sections(filtered_sections)
+    original_manual_rows = ((resolve_xml_payload(data).get('settlement', {}) or {}).get('manualRows') or [])
+    filtered_manual_rows = select_manual_settlement_rows_for_sheet(original_manual_rows, ks2_sheets[sheet_index])
+    xml['settlement'] = build_sheet_settlement_from_holdback_sections(filtered_sections, filtered_manual_rows)
     generated['fileId'] = build_generated_file_id_for_sheet(generated, manual, ks2_sheets[sheet_index])
 
     return projected
 
 
 def build_xml_exports_by_ks2_sheet(data: dict):
+    data = strip_redundant_single_sheet_bindings(data)
     ks2_sheets = data.get('ks2Sheets', []) or []
     if len(ks2_sheets) <= 1:
         tree = build_xml(copy.deepcopy(data))
@@ -930,7 +1196,7 @@ def build_xml(data: dict) -> ET._ElementTree:
     tree = ET.parse(str(TEMPLATE_XML), parser)
     root = tree.getroot()
     doc = root.find('Документ')
-    common = data.get('common', {})
+    common = resolve_document_context(data)
     xml = resolve_xml_payload(data)
     generated = xml.get('generated', {})
     manual = xml.get('manual', {})
@@ -1376,8 +1642,13 @@ def build_xml(data: dict) -> ET._ElementTree:
                 ET.SubElement(item, 'ИнВидТреб').text = str(other_text)
 
     # Для текущего XSD-профиля УчетТребУдерж оставляем агрегированным,
-    # но передаем подтверждающий документ из первой релевантной строки удержания/требования.
+    # но стараемся подставить самый информативный подтверждающий документ.
     supporting_row = preferred_row or next((row for row in settlement_rows if row), None)
+    if supporting_row and not first_non_empty(supporting_row.get('documentRef'), supporting_row.get('documentNumber'), supporting_row.get('documentDate')):
+        supporting_row = next((
+            row for row in settlement_rows
+            if first_non_empty(row.get('documentRef'), row.get('documentNumber'), row.get('documentDate'))
+        ), supporting_row)
     if supporting_row:
         document_ref = str(first_non_empty(supporting_row.get('documentRef'), supporting_row.get('documentNumber')) or '').strip()
         doc_name = first_non_empty(supporting_row.get('documentName')) or ('Документ-основание удержания' if normalize_settlement_kind(supporting_row.get('kind'), supporting_row.get('kindCode')) == 'withhold' else 'Документ-основание требования')
