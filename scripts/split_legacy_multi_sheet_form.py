@@ -193,6 +193,8 @@ def build_single_sheet_state(base_state: dict, target_sheet: dict, source_sheets
     target_sheet_id = target_sheet['id']
 
     state['ks2Sheets'] = [copy.deepcopy({k: v for k, v in target_sheet.items() if not k.startswith('_')})]
+    state.setdefault('ks3', {})
+    state['ks3']['rows'] = []
     state.setdefault('legacy', {})
     state['legacy']['extraKs2Sheets'] = []
     state['legacy']['splitSourceSheetCount'] = len(source_sheets)
@@ -224,7 +226,7 @@ def build_single_sheet_state(base_state: dict, target_sheet: dict, source_sheets
     return state
 
 
-def split_state_into_single_sheet_forms(payload: dict) -> list[dict]:
+def build_split_form_items(payload: dict) -> list[dict]:
     state = extract_state(payload)
     source_sheets = build_source_sheets(state)
     if not source_sheets:
@@ -286,7 +288,7 @@ def main():
 
     input_path = Path(args.input_json).resolve()
     payload = json.loads(input_path.read_text(encoding='utf-8'))
-    forms = split_state_into_single_sheet_forms(payload)
+    forms = build_split_form_items(payload)
     base_name = args.base_name or input_path.stem
     saved = save_split_forms(forms, Path(args.output_dir).resolve(), base_name)
     print(json.dumps({'ok': True, 'count': len(saved), 'items': saved}, ensure_ascii=False, indent=2))
@@ -308,11 +310,9 @@ def _strip_redundant_single_sheet_bindings(forms):
     return cleaned
 
 
-_original_split_state_into_single_sheet_forms = split_state_into_single_sheet_forms
-
-
 def split_state_into_single_sheet_forms(state):
-    return _strip_redundant_single_sheet_bindings(_original_split_state_into_single_sheet_forms(state))
+    items = build_split_form_items(state)
+    return _strip_redundant_single_sheet_bindings([item['state'] for item in items])
 
 
 if __name__ == '__main__':

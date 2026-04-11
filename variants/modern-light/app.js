@@ -355,10 +355,6 @@ function bindGlobalEvents() {
     }
   });
 
-  refs.addSheet?.addEventListener('click', () => {
-    flash('Редактор работает только с одним листом КС-2 за раз.');
-  });
-
   refs.toggleHeaders?.addEventListener('click', () => {
     app.state.documentContext.showDocumentHeaders = !app.state.documentContext.showDocumentHeaders;
     render();
@@ -571,54 +567,6 @@ function handleContentClick(event) {
   if (action === 'duplicate-sheet' || action === 'delete-sheet') {
     clearTransientRowUi();
     flash('Редактор работает только с одним листом КС-2 за раз.');
-    return;
-  }
-
-  if (action === 'add-ks3-row') {
-    clearTransientRowUi();
-    app.state.ks3.rows.push(createBlankKs3Row());
-    render();
-    return;
-  }
-
-  if (action === 'toggle-ks3-row-menu') {
-    const idx = Number(actionButton.dataset.ks3Index);
-    const sameRow = app.state.ui.ks3RowActionMenu === idx;
-    app.state.ui.ks3RowActionMenu = sameRow ? null : idx;
-    app.state.ui.ks3RowDeleteConfirm = null;
-    render();
-    return;
-  }
-
-  if (action === 'insert-ks3-row-after') {
-    clearTransientRowUi();
-    const idx = Number(actionButton.dataset.ks3Index);
-    app.state.ks3.rows.splice(idx + 1, 0, createBlankKs3Row());
-    render();
-    flash('Строка КС-3 добавлена.');
-    return;
-  }
-
-  if (action === 'prompt-delete-ks3-row') {
-    const idx = Number(actionButton.dataset.ks3Index);
-    app.state.ui.ks3RowActionMenu = null;
-    app.state.ui.ks3RowDeleteConfirm = idx;
-    render();
-    return;
-  }
-
-  if (action === 'cancel-delete-ks3-row') {
-    app.state.ui.ks3RowDeleteConfirm = null;
-    render();
-    return;
-  }
-
-  if (action === 'confirm-delete-ks3-row') {
-    const idx = Number(actionButton.dataset.ks3Index);
-    app.state.ks3.rows.splice(idx, 1);
-    clearTransientRowUi();
-    render();
-    flash('Строка КС-3 удалена.');
     return;
   }
 
@@ -1058,18 +1006,16 @@ function prepareState(raw) {
   data.common.customerSignLabel ||= 'Принял';
   data.common.customerSignerPosition ||= 'ООО «СЗ «АСПЕЙС Хорошевская» в лице Генерального директора управляющей организации ООО «АСПЕЙС Девелопмент»';
   data.common.customerSignerName ||= 'О.В. Смирнов';
-  data.common.techCustomerSignerPosition ||= data.common.ks3TechCustomerPosition || '';
-  data.common.techCustomerSignerName ||= data.common.ks3TechCustomerName || '';
+  data.common.techCustomerSignerPosition ||= '';
+  data.common.techCustomerSignerName ||= '';
   data.common.objectOkpo ||= '';
   data.common.okdpCode ||= '';
   data.common.ks2DocLabel ||= 'АКТ';
   data.common.ks2DocSubtitle ||= 'О ПРИЕМКЕ ВЫПОЛНЕННЫХ РАБОТ';
   data.common.ks3DocLabel ||= 'СПРАВКА';
   data.common.ks3DocSubtitle ||= 'О СТОИМОСТИ ВЫПОЛНЕННЫХ РАБОТ И ЗАТРАТ';
-  data.common.ks3DeveloperPosition ||= data.common.customerSignerPosition || '';
-  data.common.ks3DeveloperName ||= data.common.customerSignerName || '';
-  data.common.ks3TechCustomerPosition ||= data.common.techCustomerSignerPosition || '';
-  data.common.ks3TechCustomerName ||= data.common.techCustomerSignerName || '';
+  data.common.customerSignerPosition ||= '';
+  data.common.customerSignerName ||= '';
   data.common.ks3ContractorPosition ||= data.common.contractorSignerPosition || 'Генеральный директор ООО «ЛегендаЭлит»';
   data.common.ks3ContractorName ||= data.common.contractorSignerName || 'А. Дылюк';
 
@@ -1504,9 +1450,8 @@ function getSheetDocumentForCustomerReadiness(sheet = {}) {
 
 function buildResolvedCustomerSigners(common = {}) {
   const candidates = [
-    { name: common.ks3DeveloperName, position: common.ks3DeveloperPosition },
     { name: common.customerSignerName, position: common.customerSignerPosition },
-    { name: common.ks3TechCustomerName, position: common.ks3TechCustomerPosition },
+    { name: common.techCustomerSignerName, position: common.techCustomerSignerPosition },
     { name: common.techCustomerSignerName, position: common.techCustomerSignerPosition },
   ];
 
@@ -1549,9 +1494,7 @@ function buildCustomerXmlReadiness(source, sheetIndex = 0, preview = null, optio
 
   const customerSubjectName = firstFilledValue(
     manual.customerEconomicSubjectName,
-    common.ks3TechCustomerOrgName,
     common.techCustomerName,
-    common.ks3DeveloperOrgName,
     common.developerName,
     manual.economicSubjectName,
   );
@@ -2236,66 +2179,6 @@ function prettyFormatXml(xmlText = '') {
   const xml = String(xmlText || '').trim();
   if (!xml) return '';
   return xml.replace(/></g, '>\n<');
-}
-
-function normalizeKs3Row(row = {}) {
-  return {
-    order: row.order ?? '',
-    name: row.name || '',
-    code: row.code ?? '',
-    fromStart: numberOrNull(row.fromStart),
-    fromYearStart: numberOrNull(row.fromYearStart),
-    forPeriod: numberOrNull(row.forPeriod),
-    vat: numberOrNull(row.vat),
-  };
-}
-
-function createBlankKs3Row() {
-  return {
-    order: '',
-    name: '',
-    code: '',
-    fromStart: null,
-    fromYearStart: null,
-    forPeriod: null,
-    vat: null,
-  };
-}
-
-function buildKs3Rows() {
-  return (app.state.ks3?.rows || [])
-    .map((row) => normalizeKs3Row(row))
-    .filter((row) => row.order || row.name || row.code || row.fromStart != null || row.fromYearStart != null || row.forPeriod != null || row.vat != null);
-}
-
-function buildKs3Totals(rows = buildKs3Rows()) {
-  const explicit = app.state.ks3?.totals || {};
-  const hasExplicit = ['fromStart', 'fromYearStart', 'forPeriod', 'vat'].some((key) => explicit[key] != null && explicit[key] !== '');
-  if (hasExplicit) {
-    return {
-      fromStart: numberOrZero(explicit.fromStart),
-      fromYearStart: numberOrZero(explicit.fromYearStart),
-      forPeriod: numberOrZero(explicit.forPeriod),
-      vat: numberOrZero(explicit.vat),
-    };
-  }
-
-  const totalRow = rows.find((row) => /всего работ и затрат/i.test(row.name || ''));
-  if (totalRow) {
-    return {
-      fromStart: numberOrZero(totalRow.fromStart),
-      fromYearStart: numberOrZero(totalRow.fromYearStart),
-      forPeriod: numberOrZero(totalRow.forPeriod),
-      vat: numberOrZero(explicit.vat),
-    };
-  }
-
-  return {
-    fromStart: 0,
-    fromYearStart: 0,
-    forPeriod: 0,
-    vat: numberOrZero(explicit.vat),
-  };
 }
 
 function buildGeneratedXmlFields() {

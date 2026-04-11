@@ -32,7 +32,7 @@ def main():
     # Top-level UI wording should stay aligned with the current product contract.
     require_contains(index_html, '<title>KC2 XML — Modern Light</title>', 'index.html')
     require_contains(index_html, '<h1>KC2 XML — современная светлая форма</h1>', 'index.html')
-    require_contains(index_html, 'single-sheet интерфейс', 'index.html')
+    require_contains(index_html, 'Single-sheet интерфейс', 'index.html')
     require_contains(index_html, 'P + Z', 'index.html')
     require_absent(index_html, 'KC2 / KC3 / XML', 'index.html')
 
