@@ -59,10 +59,18 @@ function hasLabel(issues, label) {
 {
   const model = makeBaseModel();
   const readiness = buildCustomerXmlReadiness(model, 0, null);
-  assert.equal(readiness.ready, true, 'fallback-based readiness should stay non-blocking');
+  assert.equal(readiness.ready, true, 'fallback-based advisory readiness should stay non-blocking');
   assert.ok(hasLabel(readiness.warnings, 'Составитель файла Z'), 'must highlight fallback subject name');
   assert.ok(hasLabel(readiness.warnings, 'Основание подписания заказчика'), 'must highlight fallback authority document');
   assert.ok(hasLabel(readiness.warnings, 'Приёмка работ в Z'), 'must highlight fallback acceptance date');
+}
+
+{
+  const model = makeBaseModel();
+  const strictReadiness = buildCustomerXmlReadiness(model, 0, null, { strictMode: true });
+  assert.equal(strictReadiness.ready, false, 'strict readiness must turn core fallback business rules into blockers');
+  assert.ok(hasLabel(strictReadiness.errors, 'Основание подписания заказчика'), 'strict readiness must block on fallback authority document');
+  assert.ok(hasLabel(strictReadiness.errors, 'Приёмка работ в Z'), 'strict readiness must block on fallback acceptance date');
 }
 
 {
@@ -79,7 +87,9 @@ function hasLabel(issues, label) {
     customerAcceptanceDate: '2026-04-12',
   };
   const readiness = buildCustomerXmlReadiness(model, 0, null);
-  assert.ok(hasLabel(readiness.warnings, 'МЧД / доверенность в ЭФ'), 'must warn when customerSignerPowerId is not a GUID');
+  const strictReadiness = buildCustomerXmlReadiness(model, 0, null, { strictMode: true });
+  assert.ok(hasLabel(readiness.warnings, 'МЧД / доверенность в ЭФ'), 'advisory mode must warn when customerSignerPowerId is not a GUID');
+  assert.ok(hasLabel(strictReadiness.errors, 'МЧД / доверенность в ЭФ'), 'strict mode must block when customerSignerPowerId is not a GUID');
 }
 
 {
@@ -94,7 +104,7 @@ function hasLabel(issues, label) {
     customerSettlementNotice: DISAGREE_NOTICE,
   };
   const readiness = buildCustomerXmlReadiness(model, 0, null);
-  assert.equal(readiness.ready, false, 'disagreement without reason should block readiness');
+  assert.equal(readiness.ready, false, 'disagreement without reason should block even in advisory mode');
   assert.ok(hasLabel(readiness.errors, 'Извещение по расчётам Z'), 'must raise error for disagreement without reason');
 }
 
@@ -111,7 +121,9 @@ function hasLabel(issues, label) {
   };
   model.xml.settlement.settlementRows = [];
   const readiness = buildCustomerXmlReadiness(model, 0, null);
-  assert.ok(hasLabel(readiness.warnings, 'Извещение по расчётам Z'), 'must warn when gov extra notice has no settlement rows');
+  const strictReadiness = buildCustomerXmlReadiness(model, 0, null, { strictMode: true });
+  assert.ok(hasLabel(readiness.warnings, 'Извещение по расчётам Z'), 'advisory mode must warn when gov extra notice has no settlement rows');
+  assert.ok(hasLabel(strictReadiness.errors, 'Извещение по расчётам Z'), 'strict mode must block when gov extra notice has no settlement rows');
 }
 
 console.log('OK: customer readiness regression passed');

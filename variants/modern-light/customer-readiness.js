@@ -109,7 +109,7 @@ function countSettlementRows(source = {}) {
 }
 
 export function buildCustomerXmlReadiness(source, sheetIndex = 0, preview = null, options = {}) {
-  const { includeSheetSpecific = true } = options;
+  const { includeSheetSpecific = true, strictMode = false } = options;
   const common = source.documentContext || source.common || {};
   const manual = getCustomerManualState(source);
   const constants = getCustomerConstantsState(source);
@@ -122,10 +122,23 @@ export function buildCustomerXmlReadiness(source, sheetIndex = 0, preview = null
   const warnings = [];
   const checks = [];
   const contractorFileId = firstFilledValue(preview?.contractorFileId, generated.fileId);
-  const pushCheck = (status, path, label, value, message = '') => {
-    checks.push({ status, path, label, value, message });
-    if (status === 'error') errors.push({ severity: 'error', path, label, message });
-    if (status === 'warning') warnings.push({ severity: 'warning', path, label, message });
+
+  const pushCheck = (status, path, label, value, message = '', config = {}) => {
+    const strictStatus = config.strictStatus || status;
+    const effectiveStatus = strictMode && status !== 'error' ? strictStatus : status;
+    const check = {
+      status: effectiveStatus,
+      baseStatus: status,
+      strictStatus,
+      blockingCandidate: strictStatus === 'error' && status !== 'error',
+      path,
+      label,
+      value,
+      message,
+    };
+    checks.push(check);
+    if (effectiveStatus === 'error') errors.push({ severity: 'error', path, label, message });
+    if (effectiveStatus === 'warning') warnings.push({ severity: 'warning', path, label, message });
   };
 
   const customerSubjectSource = hasFilled(manual.customerEconomicSubjectName)
@@ -178,7 +191,14 @@ export function buildCustomerXmlReadiness(source, sheetIndex = 0, preview = null
     if (!hasFilled(explicitAuthority.number) && hasFilled(common.contractNumber)) fallbackParts.push('номер договора');
     if (!hasFilled(explicitAuthority.date) && hasFilled(common.contractDate)) fallbackParts.push('дату договора');
     const fallbackMessage = fallbackParts.length ? ` Сейчас генератор берёт ${fallbackParts.join(' и ')} как fallback.` : ' Сейчас генератор подставит дефолтные реквизиты для недостающих частей.';
-    pushCheck('warning', !hasFilled(explicitAuthority.name) ? 'xmlZ.manual.customerAuthorityDocName' : !hasFilled(explicitAuthority.number) ? 'xmlZ.manual.customerAuthorityDocNumber' : 'xmlZ.manual.customerAuthorityDocDate', 'Основание подписания заказчика', authorityValue, `Основание подписания заполнено не полностью или неявно.${fallbackMessage}`);
+    pushCheck(
+      'warning',
+      !hasFilled(explicitAuthority.name) ? 'xmlZ.manual.customerAuthorityDocName' : !hasFilled(explicitAuthority.number) ? 'xmlZ.manual.customerAuthorityDocNumber' : 'xmlZ.manual.customerAuthorityDocDate',
+      'Основание подписания заказчика',
+      authorityValue,
+      `Основание подписания заполнено не полностью или неявно.${fallbackMessage}`,
+      { strictStatus: 'error' },
+    );
   } else {
     pushCheck('ok', 'xmlZ.manual.customerAuthorityDocName', 'Основание подписания заказчика', authorityValue, 'Документ основания для Z заполнен явно.');
   }
@@ -191,7 +211,7 @@ export function buildCustomerXmlReadiness(source, sheetIndex = 0, preview = null
   if (!signers.length) {
     pushCheck('error', 'documentContext.customerSignerName', 'Подписант(ы) заказчика', signerValue, 'Для Z не найден ни один осмысленный подписант заказчика. Иначе генератор подставит fallback «Иванов Иван».');
   } else if (!signers.some((signer) => signer.source === 'customer')) {
-    pushCheck('warning', 'documentContext.customerSignerName', 'Подписант(ы) заказчика', signerValue, `Явные поля заказчика пустые — для Z используются fallback-подписанты из блока техзаказчика. Статус подписанта: ${signerStatus}.`);
+    pushCheck('warning', 'documentContext.customerSignerName', 'Подписант(ы) заказчика', signerValue, `Явные поля заказчика пустые — для Z используются fallback-подписанты из блока техзаказчика. Статус подписанта: ${signerStatus}.`, { strictStatus: 'error' });
   } else {
     pushCheck('ok', 'documentContext.customerSignerName', 'Подписант(ы) заказчика', signerValue, `Подписанты для Z определены. Статус подписанта: ${signerStatus}.`);
   }
@@ -204,6 +224,7 @@ export function buildCustomerXmlReadiness(source, sheetIndex = 0, preview = null
       internalNumber: firstFilledValue(manual.customerSignerPowerInternalNumber),
       registrationDate: firstFilledValue(manual.customerSignerPowerRegistrationDate),
       systemMark: firstFilledValue(manual.customerSignerPowerSystemMark),
+      storageId: firstFilledValue(manual.customerSignatureStorageId),
     };
     const resolvedMchd = {
       powerId: firstFilledValue(explicitMchd.powerId, explicitMchd.number),
@@ -211,6 +232,7 @@ export function buildCustomerXmlReadiness(source, sheetIndex = 0, preview = null
       internalNumber: firstFilledValue(explicitMchd.internalNumber, resolvedAuthority.number),
       registrationDate: explicitMchd.registrationDate,
       systemMark: explicitMchd.systemMark,
+      storageId: explicitMchd.storageId,
     };
     const mchdValue = [resolvedMchd.powerId || 'без GUID/номера', resolvedMchd.internalNumber || 'без вн. номера', resolvedMchd.date || 'без даты'].join(' · ');
     const hasAnyResolved = hasFilled(resolvedMchd.powerId) || hasFilled(resolvedMchd.internalNumber) || hasFilled(resolvedMchd.date) || hasFilled(resolvedMchd.registrationDate) || hasFilled(resolvedMchd.systemMark);
@@ -218,11 +240,17 @@ export function buildCustomerXmlReadiness(source, sheetIndex = 0, preview = null
     if (!hasAnyResolved) {
       pushCheck('error', 'xmlZ.manual.customerSignerPowerId', 'МЧД / доверенность в ЭФ', mchdValue, 'Для статуса 2 не хватает реквизитов доверенности / МЧД. Генератор не сможет собрать осмысленный блок СвДовер.');
     } else if (hasFilled(explicitMchd.powerId) && !isUuidLike(explicitMchd.powerId)) {
-      pushCheck('warning', 'xmlZ.manual.customerSignerPowerId', 'МЧД / доверенность в ЭФ', mchdValue, 'Значение customerSignerPowerId задано, но не похоже на GUID МЧД. Генератор не положит его в НомДовер как UUID.');
+      pushCheck('warning', 'xmlZ.manual.customerSignerPowerId', 'МЧД / доверенность в ЭФ', mchdValue, 'Значение customerSignerPowerId задано, но не похоже на GUID МЧД. Генератор не положит его в НомДовер как UUID.', { strictStatus: 'error' });
     } else if (!hasExplicitSpecific) {
-      pushCheck('warning', 'xmlZ.manual.customerSignerPowerId', 'МЧД / доверенность в ЭФ', mchdValue, 'Для статуса 2 сейчас используются только fallback-данные из общего основания подписания. Лучше заполнить customerSignerPower* явно.');
+      pushCheck('warning', 'xmlZ.manual.customerSignerPowerId', 'МЧД / доверенность в ЭФ', mchdValue, 'Для статуса 2 сейчас используются только fallback-данные из общего основания подписания. Лучше заполнить customerSignerPower* явно.', { strictStatus: 'error' });
     } else {
       pushCheck('ok', 'xmlZ.manual.customerSignerPowerId', 'МЧД / доверенность в ЭФ', mchdValue, 'Для статуса 2 есть явные реквизиты МЧД / доверенности в ЭФ.');
+    }
+
+    if (!hasFilled(explicitMchd.storageId)) {
+      pushCheck('warning', 'xmlZ.manual.customerSignatureStorageId', 'Идентификатор хранения подписи Z', 'не задан', 'Для статуса 2 лучше явно заполнить customerSignatureStorageId, чтобы связка подписи / доверенности в Z не выглядела пустой.');
+    } else {
+      pushCheck('ok', 'xmlZ.manual.customerSignatureStorageId', 'Идентификатор хранения подписи Z', explicitMchd.storageId, 'Идентификатор хранения подписи / доверенности заполнен.');
     }
   }
 
@@ -232,12 +260,14 @@ export function buildCustomerXmlReadiness(source, sheetIndex = 0, preview = null
       internalNumber: firstFilledValue(manual.customerSignerPaperPowerInternalNumber),
       identity: firstFilledValue(manual.customerSignerPaperPowerIdentity),
       fio: firstFilledValue(manual.customerSignerPaperPowerFio),
+      storageId: firstFilledValue(manual.customerSignatureStorageId),
     };
     const resolvedPaper = {
       date: firstFilledValue(explicitPaper.date, resolvedAuthority.date),
       internalNumber: firstFilledValue(explicitPaper.internalNumber, resolvedAuthority.number),
       identity: firstFilledValue(explicitPaper.identity, resolvedAuthority.id),
       fio: explicitPaper.fio,
+      storageId: explicitPaper.storageId,
     };
     const paperValue = [resolvedPaper.internalNumber || 'без номера', resolvedPaper.date || 'без даты', resolvedPaper.fio || 'без ФИО доверенного лица'].join(' · ');
     const hasAnyResolved = hasFilled(resolvedPaper.date) || hasFilled(resolvedPaper.internalNumber) || hasFilled(resolvedPaper.identity) || hasFilled(resolvedPaper.fio);
@@ -246,11 +276,17 @@ export function buildCustomerXmlReadiness(source, sheetIndex = 0, preview = null
     if (!hasAnyResolved) {
       pushCheck('error', 'xmlZ.manual.customerSignerPaperPowerDate', 'Бумажная доверенность Z', paperValue, 'Для статуса 3 не хватает реквизитов бумажной доверенности.');
     } else if (!hasMinimumPaper) {
-      pushCheck('warning', 'xmlZ.manual.customerSignerPaperPowerDate', 'Бумажная доверенность Z', paperValue, 'Для бумажной доверенности лучше указать дату и хотя бы внутренний номер / идентификатор / ФИО доверенного лица.');
+      pushCheck('warning', 'xmlZ.manual.customerSignerPaperPowerDate', 'Бумажная доверенность Z', paperValue, 'Для бумажной доверенности лучше указать дату и хотя бы внутренний номер / идентификатор / ФИО доверенного лица.', { strictStatus: 'error' });
     } else if (!hasExplicitSpecific) {
-      pushCheck('warning', 'xmlZ.manual.customerSignerPaperPowerDate', 'Бумажная доверенность Z', paperValue, 'Для статуса 3 сейчас используются fallback-данные из общего основания подписания. Лучше заполнить customerSignerPaperPower* явно.');
+      pushCheck('warning', 'xmlZ.manual.customerSignerPaperPowerDate', 'Бумажная доверенность Z', paperValue, 'Для статуса 3 сейчас используются fallback-данные из общего основания подписания. Лучше заполнить customerSignerPaperPower* явно.', { strictStatus: 'error' });
     } else {
       pushCheck('ok', 'xmlZ.manual.customerSignerPaperPowerDate', 'Бумажная доверенность Z', paperValue, 'Для статуса 3 есть явные реквизиты бумажной доверенности.');
+    }
+
+    if (!hasFilled(explicitPaper.storageId)) {
+      pushCheck('warning', 'xmlZ.manual.customerSignatureStorageId', 'Идентификатор хранения подписи Z', 'не задан', 'Для статуса 3 лучше явно заполнить customerSignatureStorageId, если подпись / доверенность хранятся в системе.');
+    } else {
+      pushCheck('ok', 'xmlZ.manual.customerSignatureStorageId', 'Идентификатор хранения подписи Z', explicitPaper.storageId, 'Идентификатор хранения подписи / доверенности заполнен.');
     }
   }
 
@@ -278,15 +314,15 @@ export function buildCustomerXmlReadiness(source, sheetIndex = 0, preview = null
   } else if (acceptanceCode === '4' && !hasFilled(manual.customerReductionTaxAmount) && !hasFilled(manual.customerReductionTotalAmount) && !hasFilled(manual.customerReductionToBePaidAmount) && !hasFilled(manual.customerReductionToBePaidFromStartAmount)) {
     pushCheck('warning', 'xmlZ.manual.customerReductionTaxAmount', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Для кода 4 желательно дополнительно заполнить НДС и/или итоговые суммы уменьшения, иначе Z будет собран только с базовой суммой.');
   } else if (acceptanceCode === '0' && !firstFilledValue(manual.customerAcceptanceRefusalInfo) && !hasAnyDocumentValue(refusalDoc)) {
-    pushCheck('warning', 'xmlZ.manual.customerAcceptanceRefusalInfo', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Для отказа в приемке лучше указать причину и/или документ отказа.');
+    pushCheck('warning', 'xmlZ.manual.customerAcceptanceRefusalInfo', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Для отказа в приемке лучше указать причину и/или документ отказа.', { strictStatus: 'error' });
   } else if (acceptanceCode === '0' && hasAnyDocumentValue(refusalDoc) && !isCompleteDocument(refusalDoc)) {
-    pushCheck('warning', 'xmlZ.manual.customerAcceptanceRefusalDocName', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Документ отказа заполнен не полностью: лучше дать полное наименование, номер и дату или идентификатор документа.');
+    pushCheck('warning', 'xmlZ.manual.customerAcceptanceRefusalDocName', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Документ отказа заполнен не полностью: лучше дать полное наименование, номер и дату или идентификатор документа.', { strictStatus: 'error' });
   } else if (['2', '4', '5'].includes(acceptanceCode) && !firstFilledValue(manual.customerAcceptanceDefectInfo) && !hasAnyDocumentValue(defectDoc)) {
-    pushCheck('warning', 'xmlZ.manual.customerAcceptanceDefectInfo', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Для этого кода приемки лучше указать сведения о недостатках и/или подтверждающий документ.');
+    pushCheck('warning', 'xmlZ.manual.customerAcceptanceDefectInfo', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Для этого кода приемки лучше указать сведения о недостатках и/или подтверждающий документ.', { strictStatus: 'error' });
   } else if (['2', '4', '5'].includes(acceptanceCode) && hasAnyDocumentValue(defectDoc) && !isCompleteDocument(defectDoc)) {
-    pushCheck('warning', 'xmlZ.manual.customerAcceptanceDefectDocName', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Документ о недостатках заполнен не полностью: лучше дать полное наименование, номер и дату или идентификатор документа.');
+    pushCheck('warning', 'xmlZ.manual.customerAcceptanceDefectDocName', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Документ о недостатках заполнен не полностью: лучше дать полное наименование, номер и дату или идентификатор документа.', { strictStatus: 'error' });
   } else if (!explicitAcceptanceDate && hasFilled(document.date)) {
-    pushCheck('warning', 'xmlZ.manual.customerAcceptanceDate', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Дата приемки для Z не заполнена явно — используется дата текущего листа КС-2 как fallback.');
+    pushCheck('warning', 'xmlZ.manual.customerAcceptanceDate', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Дата приемки для Z не заполнена явно — используется дата текущего листа КС-2 как fallback.', { strictStatus: 'error' });
   } else {
     pushCheck('ok', 'xmlZ.manual.customerAcceptanceCode', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Реквизиты приемки для Z выглядят заполненными.');
   }
@@ -308,17 +344,17 @@ export function buildCustomerXmlReadiness(source, sheetIndex = 0, preview = null
   if (settlementNotice && !SETTLEMENT_NOTICE_ALLOWED.has(settlementNotice)) {
     pushCheck('error', 'xmlZ.manual.customerSettlementNotice', 'Извещение по расчётам Z', settlementNotice, 'Задан текст извещения, который не поддерживается схемой customer XML Z.');
   } else if (String(constants.requiresSettlementApproval || '0') === '1' && !settlementNotice) {
-    pushCheck('warning', 'xmlZ.manual.customerSettlementNotice', 'Извещение по расчётам Z', 'не выбрано', 'В XML включен режим согласования расчетов, но текст извещения заказчика пока не выбран.');
+    pushCheck('warning', 'xmlZ.manual.customerSettlementNotice', 'Извещение по расчётам Z', 'не выбрано', 'В XML включен режим согласования расчетов, но текст извещения заказчика пока не выбран.', { strictStatus: 'error' });
   } else if (settlementNotice === SETTLEMENT_NOTICE_DISAGREE && !firstFilledValue(manual.customerSettlementDisagreementReason)) {
     pushCheck('error', 'xmlZ.manual.customerSettlementDisagreementReason', 'Извещение по расчётам Z', settlementNotice, 'Для несогласия по расчетам нужно заполнить причину несогласия.');
   } else if (settlementNotice === SETTLEMENT_NOTICE_GOV_EXTRA && String(constants.isGovMunicipal || '0') !== '1') {
-    pushCheck('warning', 'xmlP.constants.isGovMunicipal', 'Извещение по расчётам Z', settlementNotice, 'Текст извещения говорит о дополнительных удержаниях по гос/мун контракту, но признак ПрГосМун сейчас выключен.');
+    pushCheck('warning', 'xmlP.constants.isGovMunicipal', 'Извещение по расчётам Z', settlementNotice, 'Текст извещения говорит о дополнительных удержаниях по гос/мун контракту, но признак ПрГосМун сейчас выключен.', { strictStatus: 'error' });
   } else if (settlementNotice === SETTLEMENT_NOTICE_GOV_EXTRA && settlementRowsCount === 0) {
-    pushCheck('warning', 'xmlZ.manual.customerSettlementNotice', 'Извещение по расчётам Z', settlementNotice, 'Выбрано извещение про дополнительные удержания заказчика, но в текущем payload не видно ни одной суммы требований / удержаний.');
+    pushCheck('warning', 'xmlZ.manual.customerSettlementNotice', 'Извещение по расчётам Z', settlementNotice, 'Выбрано извещение про дополнительные удержания заказчика, но в текущем payload не видно ни одной суммы требований / удержаний.', { strictStatus: 'error' });
   } else if (hasAnyDocumentValue(ignoredDoc) && !isCompleteDocument(ignoredDoc)) {
-    pushCheck('warning', 'xmlZ.manual.customerSettlementIgnoredDocName', 'Извещение по расчётам Z', settlementNotice || 'документ неучтённых расчётов', 'ИдНеучтенДок заполнен не полностью: лучше дать полное наименование, номер и дату или идентификатор документа.');
+    pushCheck('warning', 'xmlZ.manual.customerSettlementIgnoredDocName', 'Извещение по расчётам Z', settlementNotice || 'документ неучтённых расчётов', 'ИдНеучтенДок заполнен не полностью: лучше дать полное наименование, номер и дату или идентификатор документа.', { strictStatus: 'error' });
   } else if (hasAnyDocumentValue(extraDoc) && !isCompleteDocument(extraDoc)) {
-    pushCheck('warning', 'xmlZ.manual.customerSettlementExtraDocName', 'Извещение по расчётам Z', settlementNotice || 'документ лишних расчётов', 'ИдЛишнДок заполнен не полностью: лучше дать полное наименование, номер и дату или идентификатор документа.');
+    pushCheck('warning', 'xmlZ.manual.customerSettlementExtraDocName', 'Извещение по расчётам Z', settlementNotice || 'документ лишних расчётов', 'ИдЛишнДок заполнен не полностью: лучше дать полное наименование, номер и дату или идентификатор документа.', { strictStatus: 'error' });
   } else {
     pushCheck('ok', 'xmlZ.manual.customerSettlementNotice', 'Извещение по расчётам Z', settlementNotice || 'не требуется / не выбрано', settlementNotice ? 'Текст извещения заказчика выглядит консистентным.' : 'Извещение по расчетам не требуется или не используется в текущем профиле.');
   }
@@ -345,6 +381,7 @@ export function buildCustomerXmlReadiness(source, sheetIndex = 0, preview = null
 
   return {
     ready: errors.length === 0,
+    strictMode,
     errors,
     warnings,
     issues: [...errors, ...warnings],
@@ -354,6 +391,7 @@ export function buildCustomerXmlReadiness(source, sheetIndex = 0, preview = null
       ok: checks.filter((item) => item.status === 'ok').length,
       warnings: warnings.length,
       errors: errors.length,
+      blockingCandidates: checks.filter((item) => item.blockingCandidate).length,
     },
   };
 }

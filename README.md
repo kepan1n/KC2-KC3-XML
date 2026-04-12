@@ -19,6 +19,7 @@
 - per-sheet backend-модель по `31` теперь сохраняет автостроки зачета аванса, парсит документ `№ / дата / допсведения` и прокидывает richer-расшифровку в `ИнфПолСвОРасч`
 - ручные строки `ВидТреб / ВидУдерж` теперь тоже можно привязывать к конкретному листу КС-2; per-sheet projection и UI работают по этой привязке
 - Z readiness-check снова виден в UI: отдельный checklist в вкладке `XML` и в per-sheet preview показывает fallback-поля, риски по доверенностям и более строгие правила по извещениям / приемке заказчика
+- в UI появился optional **blocking mode** для `P + Z`: advisory-предупреждения по ключевым Z-бизнес-правилам можно превратить в реальные стоп-факторы перед экспортом комплекта
 
 Активный пользовательский сценарий сейчас такой:
 - заполнить один текущий лист КС-2;
@@ -77,7 +78,7 @@ Legacy multi-KS2 и старые КС-3 данные сохраняются то
 - `scripts/check_single_sheet_ui_contract_regression.py` — регрессия по active UI-контракту single-sheet режима (`modern-light`)
 - `scripts/check_single_sheet_docs_contract_regression.py` — регрессия по README / `nalog docs/Прогресс`, чтобы проектные документы не откатывались к старому KS-3 / multi-sheet описанию
 - `scripts/check_single_sheet_fallback_validation_regression.py` — регрессия по backend fallback-логике обязательных XML manual-полей в single-sheet `P` экспорте
-- `scripts/check_customer_readiness_regression.mjs` — регрессия по `Z readiness-check`: fallback-подсветка, доверенности / МЧД и извещения по расчётам
+- `scripts/check_customer_readiness_regression.mjs` — регрессия по `Z readiness-check`: fallback-подсветка, доверенности / МЧД, strict blocking mode и извещения по расчётам
 - `scripts/check_single_sheet_autobind_regression.py` — регрессия по auto-binding: active single-sheet state и split single-sheet формы должны собирать `P + Z` без явных `ks2SheetId`
 - `scripts/check_single_sheet_fixture_minimality_regression.py` — регрессия по curated single-sheet fixtures: в активных sample/fixtures не должно оставаться legacy extra sheets, KS-3 rows и redundant `ks2SheetId`
 - `scripts/single_sheet_state_helpers.py` — общие helper-функции для очистки redundant single-sheet bindings / legacy sheet-мусора
@@ -205,7 +206,7 @@ python3 scripts/check_split_legacy_compat_sources_regression.py
 В UI добавлены:
 - **Экспорт P + Z (ZIP)**
 - XML preview для пары файлов **P + Z** прямо во вкладке `XML`
-- readiness-check для customer XML `Z`: checklist во вкладке `XML` и в per-sheet preview, подсветка fallback-значений и более строгие проверки доверенностей / извещений / приемки заказчика
+- readiness-check для customer XML `Z`: checklist во вкладке `XML` и в per-sheet preview, подсветка fallback-значений, strict blocking mode для экспорта `P + Z` и более строгие проверки доверенностей / извещений / приемки заказчика
 - внутренняя модель XML делится на `xmlP` и `xmlZ`; backend уже умеет читать их напрямую, а legacy `xml.*` остаётся fallback-слоем совместимости
 - верхний слой реквизитов начинает мигрировать из `common.*` в `documentContext.*`; `common` пока остаётся alias/fallback для совместимости
 - форма реквизитов и блок удержаний дальше упрощаются под новый single-sheet workbook: без выбора листа КС-2 у удержаний и без активного КС-3 UX
@@ -215,7 +216,7 @@ python3 scripts/check_split_legacy_compat_sources_regression.py
 ## Дальше
 
 Следующие практические шаги:
-- при необходимости ввести отдельный «blocking mode» для readiness-check по `Z`, чтобы спорные бизнес-правила можно было не только подсвечивать, но и жёстко стопорить перед экспортом `P + Z`;
+- при необходимости донастроить, какие именно `Z`-предупреждения должны эскалироваться в blocking mode, а какие лучше оставлять advisory-only под конкретный профиль заказчика;
 - при необходимости ужесточить splitter для совсем старых форм с ещё более слабой привязкой удержаний / settlement-строк к листу;
 - сохранить регрессионные проверки для `small sample`, `primer-zapolneniya` и legacy multi-KS2 backend-экспортов как обязательный smoke-check перед изменениями backend-а;
 - если понадобится, расширить ручные settlement-строки отдельными полями `documentName / documentNumber / documentDate / documentExtra`, а не только `documentRef`.

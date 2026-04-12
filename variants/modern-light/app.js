@@ -311,6 +311,13 @@ function bindGlobalEvents() {
 
   refs.exportPair?.addEventListener('click', async () => {
     const payload = buildLogicBundle().model;
+    const blockingReadiness = buildCustomerXmlReadiness(payload, 0, null, { strictMode: Boolean(app.state.ui.customerReadinessBlockingMode) });
+    if (app.state.ui.customerReadinessBlockingMode && !blockingReadiness.ready) {
+      app.state.ui.activePane = 'xml';
+      render();
+      flash(`Экспорт P + Z остановлен: strict Z readiness-check нашёл ${blockingReadiness.errors.length} критичных пункт(ов).`);
+      return;
+    }
     refs.exportPair.disabled = true;
     refs.exportPair.textContent = 'Сборка P + Z…';
     try {
@@ -420,6 +427,15 @@ function handleContentClick(event) {
     const idx = Number(sheetIndex);
     app.state.ui.sheetAddMenu = app.state.ui.sheetAddMenu === idx ? null : idx;
     render();
+    return;
+  }
+
+  if (action === 'toggle-customer-readiness-blocking') {
+    app.state.ui.customerReadinessBlockingMode = !app.state.ui.customerReadinessBlockingMode;
+    render();
+    flash(app.state.ui.customerReadinessBlockingMode
+      ? 'Strict Z readiness-check включён: экспорт P + Z будет блокироваться на бизнес-ошибках заказчика.'
+      : 'Strict Z readiness-check выключён: checklist остаётся advisory-проверкой.');
     return;
   }
 
@@ -967,6 +983,7 @@ function prepareState(raw) {
   data.ui.ks2XmlPreview ??= {};
   data.ui.ks2CustomerXmlPreview ??= {};
   data.ui.columnWidths ??= {};
+  data.ui.customerReadinessBlockingMode ??= false;
   data.common ??= {};
   data.documentContext ??= {};
   migrateLegacyDocumentContext(data);
@@ -1555,19 +1572,31 @@ function renderValidationIssue(issue) {
 
 function renderReadinessCheck(check) {
   const renderedValue = String(check.value || '—').trim() || '—';
-  const suffix = check.message ? ` — ${escapeHtml(check.message)}` : '';
+  const modeSuffix = check.blockingCandidate && check.status !== 'error'
+    ? ' — в strict mode этот пункт станет блокирующим'
+    : check.baseStatus === 'warning' && check.status === 'error'
+      ? ' — escalated to blocking by strict mode'
+      : '';
+  const suffix = `${check.message ? ` — ${escapeHtml(check.message)}` : ''}${escapeHtml(modeSuffix)}`;
   return `<li class="issue-item ${check.status}"><strong>${escapeHtml(check.label)}:</strong> ${escapeHtml(renderedValue)}${suffix}</li>`;
 }
 
-function summarizeCustomerReadiness(readiness) {
+function summarizeCustomerReadiness(readiness, options = {}) {
+  const { blockingMode = false, advisoryEscalationCount = 0 } = options;
   if (!readiness) return 'Чеклист готовности Z пока не собран.';
   if (readiness.errors.length) {
-    return `Z пока не готов: ${readiness.errors.length} критич. пункт(ов) и ${readiness.warnings.length} предупрежд. Проверь обязательные реквизиты и бизнес-правила заказчика.`;
+    return blockingMode
+      ? `Strict Z readiness-check блокирует экспорт: ${readiness.errors.length} критич. пункт(ов) и ${readiness.warnings.length} предупрежд.`
+      : `Z пока не готов: ${readiness.errors.length} критич. пункт(ов) и ${readiness.warnings.length} предупрежд. Проверь обязательные реквизиты и бизнес-правила заказчика.`;
   }
   if (readiness.warnings.length) {
-    return `Z собирается, но с оговорками: ${readiness.warnings.length} пункт(ов) сейчас опираются на fallback или выглядят неполными.`;
+    return blockingMode
+      ? `Strict Z readiness-check сейчас зелёный по критичным ошибкам, но оставляет ${readiness.warnings.length} неблокирующих предупреждени(й).`
+      : `Z собирается, но с оговорками: ${readiness.warnings.length} пункт(ов) сейчас опираются на fallback или выглядят неполными.${advisoryEscalationCount ? ` Если включить blocking mode, ещё ${advisoryEscalationCount} из них станут блокирующими.` : ''}`;
   }
-  return 'Z выглядит готовым: критичных проблем и fallback-предупреждений не найдено.';
+  return blockingMode
+    ? 'Strict Z readiness-check зелёный: экспорт P + Z не должен стопориться по customer-бизнес-правилам.'
+    : 'Z выглядит готовым: критичных проблем и fallback-предупреждений не найдено.';
 }
 
 function renderCustomerReadinessPanel(readiness, options = {}) {
@@ -1575,6 +1604,8 @@ function renderCustomerReadinessPanel(readiness, options = {}) {
   const {
     title = 'Z readiness-check',
     subtitle = 'Показываем, где customer XML уже готов, а где генератор пока живёт на fallback-значениях.',
+    blockingMode = false,
+    advisoryEscalationCount = 0,
   } = options;
   const summaryClass = readiness.errors.length || readiness.warnings.length ? 'inline-hint inline-hint-warning' : 'inline-hint';
 
@@ -1582,7 +1613,7 @@ function renderCustomerReadinessPanel(readiness, options = {}) {
     <div class="section-block">
       <h3>${escapeHtml(title)}</h3>
       <p class="kbd-note">${escapeHtml(subtitle)}</p>
-      <div class="${summaryClass}">${escapeHtml(summarizeCustomerReadiness(readiness))}</div>
+      <div class="${summaryClass}">${escapeHtml(summarizeCustomerReadiness(readiness, { blockingMode, advisoryEscalationCount }))}</div>
       <ul class="issue-list">
         ${readiness.checks.map((check) => renderReadinessCheck(check)).join('')}
       </ul>
@@ -1724,6 +1755,10 @@ function renderXmlPane() {
   const validation = logicBundle.validation;
   const customerPreview = app.state.ui.ks2CustomerXmlPreview?.['0'] || null;
   const customerReadiness = buildCustomerXmlReadiness(logicBundle.model, 0, customerPreview);
+  const strictCustomerReadiness = buildCustomerXmlReadiness(logicBundle.model, 0, customerPreview, { strictMode: true });
+  const blockingMode = Boolean(app.state.ui.customerReadinessBlockingMode);
+  const activeCustomerReadiness = blockingMode ? strictCustomerReadiness : customerReadiness;
+  const advisoryEscalationCount = Math.max((strictCustomerReadiness.summary?.errors || 0) - (customerReadiness.summary?.errors || 0), 0);
   const generated = buildGeneratedXmlFields();
   const constants = app.state.xmlP.constants;
   const contractorManual = app.state.xmlP.manual;
@@ -1741,12 +1776,24 @@ function renderXmlPane() {
       <div class="summary-grid">
         <div class="summary-card"><span>Ошибки логики</span><strong>${validation.errors.length}</strong></div>
         <div class="summary-card"><span>Предупреждения логики</span><strong>${validation.warnings.length}</strong></div>
-        <div class="summary-card"><span>Z readiness</span><strong>${customerReadiness.ready ? (customerReadiness.warnings.length ? 'готов с оговорками' : 'готов') : 'не готов'}</strong></div>
-        <div class="summary-card"><span>Проверенных пунктов Z</span><strong>${customerReadiness.checks.length}</strong></div>
+        <div class="summary-card"><span>Z readiness</span><strong>${activeCustomerReadiness.ready ? (activeCustomerReadiness.warnings.length ? 'готов с оговорками' : 'готов') : 'не готов'}</strong></div>
+        <div class="summary-card"><span>Blocking mode</span><strong>${blockingMode ? 'вкл' : 'выкл'}</strong></div>
+      </div>
+
+      <div class="inline-actions section-block">
+        <button class="ghost mini toggle-chip ${blockingMode ? 'is-active' : ''}" data-action="toggle-customer-readiness-blocking">${blockingMode ? 'Blocking mode Z: вкл' : 'Blocking mode Z: выкл'}</button>
+        <span class="kbd-note">${blockingMode
+          ? 'Экспорт P + Z сейчас реально блокируется, если strict Z readiness-check видит критичные customer-бизнес-ошибки.'
+          : advisoryEscalationCount
+            ? `Сейчас checklist advisory-only. Если включить blocking mode, ещё ${advisoryEscalationCount} пункт(ов) станут блокирующими для экспорта P + Z.`
+            : 'Сейчас checklist advisory-only. Blocking mode можно включить, если захочешь жёстко стопорить экспорт P + Z по Z-бизнес-правилам.'}</span>
       </div>
 
       ${renderValidationSummary(validation)}
-      ${renderCustomerReadinessPanel(customerReadiness)}
+      ${renderCustomerReadinessPanel(activeCustomerReadiness, {
+        blockingMode,
+        advisoryEscalationCount,
+      })}
 
       <div class="section-block">
         <h3>xmlP: автогенерируемые поля</h3>
@@ -1979,6 +2026,10 @@ function renderKs2XmlPane(sheetIndex, sheet) {
   const contractorPreview = app.state.ui.ks2XmlPreview?.[String(sheetIndex)] || null;
   const customerPreview = app.state.ui.ks2CustomerXmlPreview?.[String(sheetIndex)] || null;
   const customerReadiness = buildCustomerXmlReadiness(logicBundle.model, sheetIndex, customerPreview);
+  const strictCustomerReadiness = buildCustomerXmlReadiness(logicBundle.model, sheetIndex, customerPreview, { strictMode: true });
+  const blockingMode = Boolean(app.state.ui.customerReadinessBlockingMode);
+  const activeCustomerReadiness = blockingMode ? strictCustomerReadiness : customerReadiness;
+  const advisoryEscalationCount = Math.max((strictCustomerReadiness.summary?.errors || 0) - (customerReadiness.summary?.errors || 0), 0);
   const contractorXml = prettyFormatXml(contractorPreview?.xmlText || '');
   const customerXml = prettyFormatXml(customerPreview?.xmlText || '');
 
@@ -1996,9 +2047,13 @@ function renderKs2XmlPane(sheetIndex, sheet) {
         </div>
       </div>
 
-      ${renderCustomerReadinessPanel(customerReadiness, {
+      ${renderCustomerReadinessPanel(activeCustomerReadiness, {
         title: 'Z readiness-check по текущему листу',
-        subtitle: 'Чеклист смотрит именно на текущий single-sheet экспорт и показывает, где customer XML ещё живёт на fallback-значениях.',
+        subtitle: blockingMode
+          ? 'Strict checklist смотрит именно на текущий single-sheet экспорт и показывает, что реально блокирует сборку P + Z.'
+          : 'Чеклист смотрит именно на текущий single-sheet экспорт и показывает, где customer XML ещё живёт на fallback-значениях.',
+        blockingMode,
+        advisoryEscalationCount,
       })}
 
       <div class="section-block">
