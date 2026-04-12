@@ -87,6 +87,9 @@ def main():
     require_contains(app_js, 'Редактор работает только с одним листом КС-2', 'variants/modern-light/app.js')
     require_contains(app_js, 'legacy.extraKs2Sheets', 'variants/modern-light/app.js')
     require_contains(app_js, 'Разложить legacy-листы в отдельные single-sheet JSON', 'variants/modern-light/app.js')
+    require_contains(app_js, "import { buildCustomerXmlReadiness } from './customer-readiness.js';", 'variants/modern-light/app.js')
+    require_contains(app_js, 'Z readiness-check', 'variants/modern-light/app.js')
+    require_contains(app_js, 'fallback-значениях', 'variants/modern-light/app.js')
 
     require_contains(description, 'Single-sheet sample', 'sample-data.json')
     require_contains(description, 'P + Z', 'sample-data.json')

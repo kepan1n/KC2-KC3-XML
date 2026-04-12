@@ -1,3 +1,5 @@
+import { buildCustomerXmlReadiness } from './customer-readiness.js';
+
 const STORAGE_KEY = 'kc2kc3-web-form-v1';
 
 const refs = {
@@ -1421,208 +1423,6 @@ function firstFilledValue(...values) {
   return '';
 }
 
-function getContractorManualState(source = {}) {
-  return source.xmlP?.manual || source.xml?.p?.manual || scopeXmlManual(source.xml?.manual || source.xmlExtras?.manual || {}, 'p');
-}
-
-function getCustomerManualState(source = {}) {
-  return source.xmlZ?.manual || source.xml?.z?.manual || scopeXmlManual(source.xml?.manual || source.xmlExtras?.manual || {}, 'z');
-}
-
-function getCustomerConstantsState(source = {}) {
-  return source.xmlP?.constants || source.xml?.p?.constants || source.xml?.constants || source.xmlExtras?.constants || {};
-}
-
-function getGeneratedXmlState(source = {}) {
-  return source.xmlP?.generated || source.xml?.p?.generated || source.xml?.generated || source.xmlExtras?.generated || {};
-}
-
-function getSheetDocumentForCustomerReadiness(sheet = {}) {
-  return sheet.document || {
-    number: sheet.documentNumber,
-    date: sheet.documentDate,
-    periodFrom: sheet.periodFrom,
-    periodTo: sheet.periodTo,
-    basis: sheet.basis,
-    vatRate: sheet.vatRate,
-  };
-}
-
-function buildResolvedCustomerSigners(common = {}) {
-  const candidates = [
-    { name: common.customerSignerName, position: common.customerSignerPosition },
-    { name: common.techCustomerSignerName, position: common.techCustomerSignerPosition },
-    { name: common.techCustomerSignerName, position: common.techCustomerSignerPosition },
-  ];
-
-  const unique = [];
-  const seen = new Set();
-  candidates.forEach((candidate) => {
-    const name = firstFilledValue(candidate.name);
-    const position = firstFilledValue(candidate.position);
-    if (!name && !position) return;
-    const key = `${name || ''}::${position || ''}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    unique.push({
-      name: name || 'Иванов Иван',
-      position: position || 'Уполномоченное лицо заказчика',
-    });
-  });
-  return unique;
-}
-
-function buildCustomerXmlReadiness(source, sheetIndex = 0, preview = null, options = {}) {
-  const { includeSheetSpecific = true } = options;
-  const common = source.documentContext || source.common || {};
-  const manual = getCustomerManualState(source);
-  const constants = getCustomerConstantsState(source);
-  const generated = getGeneratedXmlState(source);
-  const sheets = source.ks2Sheets || [];
-  const sheet = sheets[sheetIndex] || sheets[0] || {};
-  const document = getSheetDocumentForCustomerReadiness(sheet);
-  const sheetLabel = sheet.title || `КС-2 #${sheetIndex + 1}`;
-  const errors = [];
-  const warnings = [];
-  const checks = [];
-  const contractorFileId = firstFilledValue(preview?.contractorFileId, generated.fileId);
-  const pushCheck = (status, path, label, value, message = '') => {
-    checks.push({ status, path, label, value, message });
-    if (status === 'error') errors.push({ severity: 'error', path, label, message });
-    if (status === 'warning') warnings.push({ severity: 'warning', path, label, message });
-  };
-
-  const customerSubjectName = firstFilledValue(
-    manual.customerEconomicSubjectName,
-    common.techCustomerName,
-    common.developerName,
-    manual.economicSubjectName,
-  );
-  pushCheck(
-    customerSubjectName ? 'ok' : 'error',
-    'xmlZ.manual.customerEconomicSubjectName',
-    'Составитель файла Z',
-    customerSubjectName || 'не задан',
-    customerSubjectName ? 'Используется в НаимЭконСубСост.' : 'Для файла Z не определён составитель. Иначе генератор подставит слишком общий fallback «Заказчик».',
-  );
-
-  const authorityDocName = firstFilledValue(manual.customerAuthorityDocName, manual.customerSignerAuthorityDocName);
-  const authorityDocNumber = firstFilledValue(manual.customerAuthorityDocNumber, manual.customerSignerAuthorityDocNumber, common.contractNumber);
-  const authorityDocDate = firstFilledValue(manual.customerAuthorityDocDate, manual.customerSignerAuthorityDocDate, common.contractDate);
-  const authorityValue = [authorityDocName || 'без названия', authorityDocNumber || 'без номера', authorityDocDate || 'без даты'].join(' · ');
-  if (!authorityDocDate) {
-    pushCheck('error', 'xmlZ.manual.customerAuthorityDocDate', 'Основание подписания заказчика', authorityValue, 'Не указана дата основания подписания заказчика. Иначе Z уйдет с дефолтной датой 01.01.2026.');
-  } else if (!authorityDocName || !authorityDocNumber) {
-    pushCheck('warning', !authorityDocName ? 'xmlZ.manual.customerAuthorityDocName' : 'xmlZ.manual.customerAuthorityDocNumber', 'Основание подписания заказчика', authorityValue, !authorityDocName ? 'Нет наименования основания подписания — генератор подставит дефолтный текст.' : 'Нет номера основания подписания — генератор подставит «без номера».');
-  } else {
-    pushCheck('ok', 'xmlZ.manual.customerAuthorityDocName', 'Основание подписания заказчика', authorityValue, 'Документ основания для Z заполнен.');
-  }
-
-  const signers = buildResolvedCustomerSigners(common);
-  const signerStatus = String(firstFilledValue(manual.customerSignerStatus, manual.signerStatus, '1'));
-  const signerValue = signers.length
-    ? `${signers.length} шт. · ${signers.map((signer) => `${signer.name} (${signer.position})`).join('; ')}`
-    : 'нет реальных подписантов';
-  pushCheck(
-    signers.length ? 'ok' : 'error',
-    'documentContext.customerSignerName',
-    'Подписант(ы) заказчика',
-    signerValue,
-    signers.length ? `Статус подписанта Z: ${signerStatus}.` : 'Для Z не найден ни один осмысленный подписант заказчика. Иначе генератор подставит fallback «Иванов Иван».',
-  );
-
-  if (signerStatus === '2') {
-    const hasMchdDetails = Boolean(firstFilledValue(
-      manual.customerSignerPowerId,
-      manual.customerSignerPowerNumber,
-      manual.customerSignerPowerDate,
-      manual.customerSignerPowerInternalNumber,
-      manual.customerSignerPowerRegistrationDate,
-      manual.customerSignerPowerSystemMark,
-      authorityDocNumber,
-      authorityDocDate,
-    ));
-    pushCheck(
-      hasMchdDetails ? 'ok' : 'warning',
-      'xmlZ.manual.customerSignerPowerId',
-      'МЧД / доверенность в ЭФ',
-      hasMchdDetails ? 'реквизиты найдены' : 'реквизиты не заданы',
-      hasMchdDetails ? 'Для статуса 2 есть данные доверенности / МЧД.' : 'Для статуса 2 лучше явно заполнить реквизиты МЧД / доверенности в ЭФ.',
-    );
-  }
-  if (signerStatus === '3') {
-    const hasPaperPowerDetails = Boolean(firstFilledValue(
-      manual.customerSignerPaperPowerDate,
-      manual.customerSignerPaperPowerInternalNumber,
-      manual.customerSignerPaperPowerIdentity,
-      manual.customerSignerPaperPowerFio,
-      authorityDocNumber,
-      authorityDocDate,
-    ));
-    pushCheck(
-      hasPaperPowerDetails ? 'ok' : 'warning',
-      'xmlZ.manual.customerSignerPaperPowerDate',
-      'Бумажная доверенность Z',
-      hasPaperPowerDetails ? 'реквизиты найдены' : 'реквизиты не заданы',
-      hasPaperPowerDetails ? 'Для статуса 3 есть данные бумажной доверенности.' : 'Для статуса 3 лучше явно заполнить реквизиты бумажной доверенности.',
-    );
-  }
-
-  const acceptanceCode = String(firstFilledValue(manual.customerAcceptanceCode, '1'));
-  const acceptanceText = firstFilledValue(manual.customerAcceptanceText);
-  const acceptanceDate = firstFilledValue(manual.customerAcceptanceDate, document.date);
-  const acceptanceLabel = acceptanceText || acceptanceCode;
-  if (!acceptanceDate) {
-    pushCheck('error', 'xmlZ.manual.customerAcceptanceDate', 'Приёмка работ в Z', `${acceptanceLabel || 'не задано'} · дата не определена`, 'Не определена дата приемки / отказа для Z.');
-  } else if (acceptanceCode === '4' && numberOrNull(manual.customerReductionBaseAmount) == null) {
-    pushCheck('error', 'xmlZ.manual.customerReductionBaseAmount', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Для кода 4 нужно заполнить базовую сумму уменьшения стоимости договора.');
-  } else if (acceptanceCode === '0' && !firstFilledValue(manual.customerAcceptanceRefusalInfo, manual.customerAcceptanceRefusalDocName, manual.customerAcceptanceRefusalDocNumber, manual.customerAcceptanceRefusalDocDate)) {
-    pushCheck('warning', 'xmlZ.manual.customerAcceptanceRefusalInfo', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Для отказа в приемке лучше указать причину и/или документ отказа.');
-  } else if (['2', '4', '5'].includes(acceptanceCode) && !firstFilledValue(manual.customerAcceptanceDefectInfo, manual.customerAcceptanceDefectDocName, manual.customerAcceptanceDefectDocNumber, manual.customerAcceptanceDefectDocDate)) {
-    pushCheck('warning', 'xmlZ.manual.customerAcceptanceDefectInfo', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Для этого кода приемки лучше указать сведения о недостатках и/или подтверждающий документ.');
-  } else {
-    pushCheck('ok', 'xmlZ.manual.customerAcceptanceCode', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Реквизиты приемки для Z выглядят заполненными.');
-  }
-
-  const settlementNotice = firstFilledValue(manual.customerSettlementNotice);
-  if (String(constants.requiresSettlementApproval || '0') === '1' && !settlementNotice) {
-    pushCheck('warning', 'xmlZ.manual.customerSettlementNotice', 'Извещение по расчётам Z', 'не выбрано', 'В XML включен режим согласования расчетов, но текст извещения заказчика пока не выбран.');
-  } else if (settlementNotice === 'С представленными подрядчиком сведениями о расчетах не согласен' && !firstFilledValue(manual.customerSettlementDisagreementReason)) {
-    pushCheck('warning', 'xmlZ.manual.customerSettlementDisagreementReason', 'Извещение по расчётам Z', settlementNotice, 'Для несогласия по расчетам лучше заполнить причину несогласия.');
-  } else {
-    pushCheck('ok', 'xmlZ.manual.customerSettlementNotice', 'Извещение по расчётам Z', settlementNotice || 'не требуется / не выбрано', settlementNotice ? 'Текст извещения заказчика задан.' : 'Извещение по расчетам не требуется или не используется в текущем профиле.');
-  }
-
-  if (includeSheetSpecific) {
-    const postingNumber = firstFilledValue(document.number);
-    const postingDate = firstFilledValue(document.date);
-    pushCheck(
-      postingNumber && postingDate ? 'ok' : 'error',
-      postingNumber ? `ks2Sheets.${sheetIndex}.document.date` : `ks2Sheets.${sheetIndex}.document.number`,
-      'Постановочный документ Z',
-      [postingNumber || 'без номера', postingDate || 'без даты'].join(' · '),
-      postingNumber && postingDate ? 'Номер и дата постановочного документа для текущего листа определены.' : 'Для Z по текущему листу не хватает номера или даты постановочного документа.',
-    );
-
-    pushCheck(
-      contractorFileId ? 'ok' : 'error',
-      'xmlP.generated.fileId',
-      'Связка с P-файлом',
-      contractorFileId || 'не определена',
-      contractorFileId ? 'Customer XML будет ссылаться на соответствующий файл подрядчика.' : 'Не удалось определить идентификатор связанного P-файла.',
-    );
-  }
-
-  return {
-    ready: errors.length === 0,
-    errors,
-    warnings,
-    issues: [...errors, ...warnings],
-    checks,
-    sheetLabel,
-  };
-}
-
 function buildValidationReport(model) {
   const errors = [];
   const warnings = [];
@@ -1753,6 +1553,76 @@ function renderValidationIssue(issue) {
   return `<li class="issue-item ${issue.severity}"><strong>${escapeHtml(issue.label)}:</strong> ${escapeHtml(issue.message)}</li>`;
 }
 
+function renderReadinessCheck(check) {
+  const renderedValue = String(check.value || '—').trim() || '—';
+  const suffix = check.message ? ` — ${escapeHtml(check.message)}` : '';
+  return `<li class="issue-item ${check.status}"><strong>${escapeHtml(check.label)}:</strong> ${escapeHtml(renderedValue)}${suffix}</li>`;
+}
+
+function summarizeCustomerReadiness(readiness) {
+  if (!readiness) return 'Чеклист готовности Z пока не собран.';
+  if (readiness.errors.length) {
+    return `Z пока не готов: ${readiness.errors.length} критич. пункт(ов) и ${readiness.warnings.length} предупрежд. Проверь обязательные реквизиты и бизнес-правила заказчика.`;
+  }
+  if (readiness.warnings.length) {
+    return `Z собирается, но с оговорками: ${readiness.warnings.length} пункт(ов) сейчас опираются на fallback или выглядят неполными.`;
+  }
+  return 'Z выглядит готовым: критичных проблем и fallback-предупреждений не найдено.';
+}
+
+function renderCustomerReadinessPanel(readiness, options = {}) {
+  if (!readiness) return '';
+  const {
+    title = 'Z readiness-check',
+    subtitle = 'Показываем, где customer XML уже готов, а где генератор пока живёт на fallback-значениях.',
+  } = options;
+  const summaryClass = readiness.errors.length || readiness.warnings.length ? 'inline-hint inline-hint-warning' : 'inline-hint';
+
+  return `
+    <div class="section-block">
+      <h3>${escapeHtml(title)}</h3>
+      <p class="kbd-note">${escapeHtml(subtitle)}</p>
+      <div class="${summaryClass}">${escapeHtml(summarizeCustomerReadiness(readiness))}</div>
+      <ul class="issue-list">
+        ${readiness.checks.map((check) => renderReadinessCheck(check)).join('')}
+      </ul>
+    </div>
+  `;
+}
+
+function renderValidationSummary(validation) {
+  const issues = [...(validation?.errors || []), ...(validation?.warnings || [])];
+  if (!issues.length) {
+    return `
+      <div class="section-block">
+        <h3>Логика single-sheet export</h3>
+        <div class="logic-ok">Общая валидация active single-sheet формы сейчас зелёная.</div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="section-block">
+      <h3>Логика single-sheet export</h3>
+      <div class="inline-hint inline-hint-warning">Сводная проверка active single-sheet формы нашла ${validation.errors.length} ошибк(и) и ${validation.warnings.length} предупреждени(я). Это отдельный слой над XSD: он ловит продуктовые и миграционные риски до выгрузки.</div>
+      <ul class="issue-list">
+        ${issues.slice(0, 12).map((issue) => renderValidationIssue(issue)).join('')}
+        ${issues.length > 12 ? `<li class="issue-item warning">Показаны первые 12 пунктов из ${issues.length}.</li>` : ''}
+      </ul>
+    </div>
+  `;
+}
+
+function renderXmlPreviewErrorList(preview) {
+  if (!Array.isArray(preview?.errors) || !preview.errors.length) return '';
+  return `
+    <div class="xml-preview-errors">
+      ${preview.errors.slice(0, 5).map((error) => `<div>${escapeHtml(`строка ${error.line}: ${error.message}`)}</div>`).join('')}
+      ${preview.errors.length > 5 ? `<div>${escapeHtml(`… и ещё ${preview.errors.length - 5} ошибк(и)`)}.</div>` : ''}
+    </div>
+  `;
+}
+
 function renderRequisitesPane() {
   const c = app.state.documentContext;
   const sheet = app.state.ks2Sheets[0] || createBlankSheet(1);
@@ -1850,6 +1720,10 @@ function renderRequisitesPane() {
 }
 
 function renderXmlPane() {
+  const logicBundle = buildLogicBundle();
+  const validation = logicBundle.validation;
+  const customerPreview = app.state.ui.ks2CustomerXmlPreview?.['0'] || null;
+  const customerReadiness = buildCustomerXmlReadiness(logicBundle.model, 0, customerPreview);
   const generated = buildGeneratedXmlFields();
   const constants = app.state.xmlP.constants;
   const contractorManual = app.state.xmlP.manual;
@@ -1863,6 +1737,16 @@ function renderXmlPane() {
           <p class="panel-subtitle">Внутренняя модель уже разделена на подрядческий слой <code>xmlP</code> и customer-слой <code>xmlZ</code>. На экспорт пока дополнительно собирается совместимый legacy payload.</p>
         </div>
       </div>
+
+      <div class="summary-grid">
+        <div class="summary-card"><span>Ошибки логики</span><strong>${validation.errors.length}</strong></div>
+        <div class="summary-card"><span>Предупреждения логики</span><strong>${validation.warnings.length}</strong></div>
+        <div class="summary-card"><span>Z readiness</span><strong>${customerReadiness.ready ? (customerReadiness.warnings.length ? 'готов с оговорками' : 'готов') : 'не готов'}</strong></div>
+        <div class="summary-card"><span>Проверенных пунктов Z</span><strong>${customerReadiness.checks.length}</strong></div>
+      </div>
+
+      ${renderValidationSummary(validation)}
+      ${renderCustomerReadinessPanel(customerReadiness)}
 
       <div class="section-block">
         <h3>xmlP: автогенерируемые поля</h3>
@@ -2091,8 +1975,10 @@ function renderKs2FormPane(sheetIndex, sheet) {
 }
 
 function renderKs2XmlPane(sheetIndex, sheet) {
+  const logicBundle = buildLogicBundle();
   const contractorPreview = app.state.ui.ks2XmlPreview?.[String(sheetIndex)] || null;
   const customerPreview = app.state.ui.ks2CustomerXmlPreview?.[String(sheetIndex)] || null;
+  const customerReadiness = buildCustomerXmlReadiness(logicBundle.model, sheetIndex, customerPreview);
   const contractorXml = prettyFormatXml(contractorPreview?.xmlText || '');
   const customerXml = prettyFormatXml(customerPreview?.xmlText || '');
 
@@ -2110,15 +1996,22 @@ function renderKs2XmlPane(sheetIndex, sheet) {
         </div>
       </div>
 
+      ${renderCustomerReadinessPanel(customerReadiness, {
+        title: 'Z readiness-check по текущему листу',
+        subtitle: 'Чеклист смотрит именно на текущий single-sheet экспорт и показывает, где customer XML ещё живёт на fallback-значениях.',
+      })}
+
       <div class="section-block">
         <h3>Подрядчик (P)</h3>
         <p class="kbd-note">${contractorPreview ? `${contractorPreview.filename || 'preview.xml'} · ${contractorPreview.valid ? 'XSD OK' : 'есть ошибки'}` : 'Preview ещё не собирался.'}</p>
+        ${renderXmlPreviewErrorList(contractorPreview)}
         <pre class="xml-preview">${escapeHtml(contractorXml || 'Нажми «Собрать заново», чтобы получить preview XML подрядчика.')}</pre>
       </div>
 
       <div class="section-block">
         <h3>Заказчик (Z)</h3>
         <p class="kbd-note">${customerPreview ? `${customerPreview.filename || 'preview-z.xml'} · ${customerPreview.valid ? 'XSD OK' : 'есть ошибки'}` : 'Preview ещё не собирался.'}</p>
+        ${renderXmlPreviewErrorList(customerPreview)}
         <pre class="xml-preview">${escapeHtml(customerXml || 'Нажми «Собрать заново», чтобы получить preview XML заказчика.')}</pre>
       </div>
     </div>
