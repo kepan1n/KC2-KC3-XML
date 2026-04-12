@@ -1658,6 +1658,7 @@ function renderRequisitesPane() {
   const totalGross = sheetTotals.gross;
   const totalVat = sheetTotals.vat;
   const totalBase = Math.max(totalGross - totalVat, 0);
+  const holdbackGroups = buildHoldbackGroups(sheet.id);
 
   return `
     <div class="panel">
@@ -1743,6 +1744,43 @@ function renderRequisitesPane() {
           ${renderInput('Печатный блок «Принял»: ФИО', 'documentContext.ks2AcceptedName', c.ks2AcceptedName, 'string', 'quarter')}
         </div>
       </details>
+
+      <div class="section-block">
+        <h3>Удержания текущего листа КС-2</h3>
+        <p class="kbd-note">В active single-sheet режиме удержания редактируются прямо здесь: один блок 3% на текущий лист КС-2 и подпункты по документам аванса ниже.</p>
+        ${holdbackGroups.length ? `
+          <div class="table-wrapper">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Раздел / документ</th>
+                  <th>Сумма КС-2</th>
+                  <th>Материалы</th>
+                  <th>Получено аванса</th>
+                  <th>Подпункты</th>
+                  <th>Остаток прошл. периода</th>
+                  <th>Закрыто сейчас</th>
+                  <th>Остаток след. периода</th>
+                  <th>% удержания</th>
+                  <th>Сумма удержания</th>
+                  <th>К оплате</th>
+                  <th>Комментарий</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                ${holdbackGroups.map((group) => renderHoldbackGroup(group)).join('')}
+              </tbody>
+            </table>
+          </div>
+        ` : `
+          <div class="empty-state">Для текущего листа КС-2 пока нет блока удержаний. Добавь его кнопкой ниже.</div>
+        `}
+        <div class="inline-actions">
+          <button class="mini secondary" data-action="add-holdback-row" data-sheet-index="0">+ Добавить блок удержаний 3%</button>
+          <button class="mini ghost" data-action="add-holdback-advance-doc" data-sheet-index="0">+ Добавить документ аванса</button>
+        </div>
+      </div>
     </div>
   `;
 }
