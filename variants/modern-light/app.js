@@ -1081,7 +1081,7 @@ function prepareState(raw) {
   data.ks3.periodFrom ||= data.ks2Sheets[0]?.periodFrom || new Date().toISOString().slice(0, 10);
   data.ks3.periodTo ||= data.ks2Sheets[0]?.periodTo || new Date().toISOString().slice(0, 10);
   const legacyKs3Totals = data.ks3.totals || {};
-  data.ks3.rows = (data.ks3.rows || []).map((row) => normalizeKs3Row(row));
+  data.ks3.rows = [];
   data.ks3.totals = {
     fromStart: numberOrNull(legacyKs3Totals.fromStart),
     fromYearStart: numberOrNull(legacyKs3Totals.fromYearStart ?? legacyKs3Totals.subtotal),
@@ -1348,9 +1348,6 @@ function buildDocumentModel() {
       totals,
     };
   });
-
-  const ks3Rows = buildKs3Rows();
-  const ks3Totals = buildKs3Totals(ks3Rows);
 
   const holdbackGroups = buildHoldbackGroups();
   const holdbacksRows = app.state.holdbacks.rows.map((row, rowIndex) => {
