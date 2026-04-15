@@ -218,7 +218,7 @@ python3 scripts/check_xml_extras_settlement_backend_regression.py
 
 В UI добавлены:
 - **Экспорт P + Z (ZIP)**
-- XML preview для пары файлов **P + Z** прямо во вкладке `XML`
+- XML preview для пары файлов **P + Z** прямо во вкладке `XML`, с короткими пояснениями по ключевым узлам и цветовой подсветкой шапки / табличной части / расчётов
 - readiness-check для customer XML `Z`: checklist во вкладке `XML` и в per-sheet preview, подсветка fallback-значений, strict blocking mode для экспорта `P + Z` и более строгие проверки доверенностей / извещений / приемки заказчика
 - внутренняя модель XML делится на `xmlP` и `xmlZ`; backend уже умеет читать их напрямую, а legacy `xml.*` остаётся fallback-слоем совместимости
 - верхний слой реквизитов начинает мигрировать из `common.*` в `documentContext.*`; `common` пока остаётся alias/fallback для совместимости

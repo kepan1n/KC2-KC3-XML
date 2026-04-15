@@ -1656,6 +1656,500 @@ function renderXmlPreviewErrorList(preview) {
   `;
 }
 
+function decodeXmlPreviewText(value) {
+  return String(value ?? '')
+    .replaceAll('&quot;', '"')
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&amp;', '&');
+}
+
+function truncateXmlPreviewText(value, max = 120) {
+  const prepared = decodeXmlPreviewText(value).replace(/\s+/g, ' ').trim();
+  if (prepared.length <= max) return prepared;
+  return `${prepared.slice(0, Math.max(max - 1, 1))}…`;
+}
+
+function buildXmlPreviewSummary(parts) {
+  return parts.filter(Boolean).join(' · ');
+}
+
+function parseXmlPreviewAttrs(line) {
+  const attrs = {};
+  const regex = /([^\s=]+)="([^"]*)"/g;
+  let match = regex.exec(line);
+  while (match) {
+    attrs[match[1]] = decodeXmlPreviewText(match[2]);
+    match = regex.exec(line);
+  }
+  return attrs;
+}
+
+function extractXmlPreviewTag(line) {
+  return String(line || '').trim().match(/^<\/?([^\s>/]+)/)?.[1] || '';
+}
+
+function extractXmlPreviewInnerText(line) {
+  return decodeXmlPreviewText(String(line || '').replace(/^<[^>]+>/, '').replace(/<\/[^>]+>$/, '').trim());
+}
+
+function buildXmlPreviewLineMeta(line, scope = 'p') {
+  const trimmed = String(line || '').trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('<?xml')) {
+    return {
+      kind: 'sheet',
+      title: 'XML-декларация',
+      note: 'Версия XML и кодировка выгрузки.',
+    };
+  }
+  if (trimmed.startsWith('</')) return null;
+
+  const tag = extractXmlPreviewTag(trimmed);
+  if (!tag) return null;
+  const attrs = parseXmlPreviewAttrs(trimmed);
+  const value = extractXmlPreviewInnerText(trimmed);
+  const signerName = [attrs.Фамилия, attrs.Имя, attrs.Отчество].filter(Boolean).join(' ').trim();
+  const acceptanceLabels = {
+    '0': 'отказ в приемке',
+    '1': 'принято без замечаний',
+    '2': 'принято с устранимыми недостатками',
+    '4': 'принято с уменьшением стоимости',
+    '5': 'принято с возмещением расходов',
+  };
+
+  switch (tag) {
+    case 'Файл':
+      return {
+        kind: 'sheet',
+        title: 'Контейнер файла',
+        note: buildXmlPreviewSummary([
+          attrs.ИдФайл ? `ИдФайл: ${truncateXmlPreviewText(attrs.ИдФайл, 72)}` : '',
+          attrs.ВерсПрог ? `программа: ${truncateXmlPreviewText(attrs.ВерсПрог, 42)}` : '',
+          attrs.ВерсФорм ? `формат: ${attrs.ВерсФорм}` : '',
+        ]),
+      };
+    case 'Документ':
+      return {
+        kind: 'sheet',
+        title: scope === 'z' ? 'Корневой узел customer XML' : 'Корневой узел подрядческого XML',
+        note: buildXmlPreviewSummary([
+          attrs.КНД ? `КНД ${attrs.КНД}` : '',
+          (attrs.НаимЭконСубСост || attrs.НаимЭкСубСост) ? `составитель: ${truncateXmlPreviewText(attrs.НаимЭконСубСост || attrs.НаимЭкСубСост, 88)}` : '',
+        ]),
+      };
+    case 'ОснДовОргСост':
+    case 'ОснДоверОргСост':
+      return {
+        kind: 'sheet',
+        title: 'Основание полномочий составителя',
+        note: scope === 'z'
+          ? 'В файле Z здесь живёт основание подписания заказчика.'
+          : 'В файле P здесь живут реквизиты составителя подрядческого XML.',
+      };
+    case 'ИдРекСост':
+      return {
+        kind: 'sheet',
+        title: 'Реквизиты составителя',
+        note: 'Технический вложенный блок с идентификаторами юрлица.',
+      };
+    case 'ИННЮЛ':
+      return {
+        kind: 'sheet',
+        title: 'ИНН юрлица',
+        note: value ? `Значение: ${value}` : 'ИНН организации.',
+      };
+    case 'СвАктСдПр':
+      return {
+        kind: 'sheet',
+        title: 'Шапка акта КС-2',
+        note: buildXmlPreviewSummary([
+          attrs.НомерДок ? `документ № ${attrs.НомерДок}` : '',
+          attrs.ДатаДок ? `от ${attrs.ДатаДок}` : '',
+          attrs.НаимОб ? `объект: ${truncateXmlPreviewText(attrs.НаимОб, 78)}` : '',
+        ]),
+      };
+    case 'ИдДог':
+      return {
+        kind: 'sheet',
+        title: 'Основание договора',
+        note: 'Вложенный блок договора / основания для акта.',
+      };
+    case 'ТипИдДок':
+      return {
+        kind: 'sheet',
+        title: 'Реквизиты документа-основания',
+        note: buildXmlPreviewSummary([
+          attrs.НаимДок ? truncateXmlPreviewText(attrs.НаимДок, 58) : '',
+          attrs.НомерДок ? `№ ${attrs.НомерДок}` : '',
+          attrs.ДатаДок ? `от ${attrs.ДатаДок}` : '',
+        ]),
+      };
+    case 'СвПодр':
+      return {
+        kind: 'sheet',
+        title: 'Сведения о подрядчике',
+        note: 'Организация-исполнитель по файлу P.',
+      };
+    case 'СвЗак':
+      return {
+        kind: 'sheet',
+        title: 'Сведения о заказчике',
+        note: 'Заказчик / застройщик / техзаказчик для текущего акта.',
+      };
+    case 'СвСторДог':
+    case 'ИдСв':
+      return {
+        kind: 'sheet',
+        title: 'Идентификация стороны договора',
+        note: 'Технический контейнер стороны договора.',
+      };
+    case 'СвЮЛУч':
+      return {
+        kind: 'sheet',
+        title: 'Юрлицо-участник',
+        note: buildXmlPreviewSummary([
+          attrs.НаимОрг ? truncateXmlPreviewText(attrs.НаимОрг, 78) : '',
+          attrs.ИННЮЛ ? `ИНН ${attrs.ИННЮЛ}` : '',
+        ]),
+      };
+    case 'ОсновСтроит':
+      return {
+        kind: 'sheet',
+        title: 'Признак гос/мун строительства',
+        note: attrs.ПрГосМун === '1' ? 'Гос/мун нужды включены.' : 'Обычный сценарий, без гос/мун признака.',
+      };
+    case 'МестВыпРаб':
+      return {
+        kind: 'sheet',
+        title: 'Место выполнения работ',
+        note: 'Адресный блок стройки / места работ.',
+      };
+    case 'АдрРФ':
+      return {
+        kind: 'sheet',
+        title: 'Адресный фрагмент',
+        note: buildXmlPreviewSummary([
+          attrs.КодРегион ? `регион ${attrs.КодРегион}` : '',
+          attrs.Индекс ? `индекс ${attrs.Индекс}` : '',
+        ]),
+      };
+    case 'ИзмСмет':
+      return {
+        kind: 'sheet',
+        title: 'Изменение сметы',
+        note: attrs.КодСмет ? `Версия сметы / код ${attrs.КодСмет}.` : 'Блок изменений сметы / допсоглашения.',
+      };
+    case 'ИдДопСогл':
+      return {
+        kind: 'sheet',
+        title: 'Допсоглашение',
+        note: 'Реквизиты допсоглашения к смете / договору.',
+      };
+    case 'ДенИзм':
+      return {
+        kind: 'sheet',
+        title: 'Валюта расчёта',
+        note: buildXmlPreviewSummary([
+          attrs.КодОКВ ? `код ${attrs.КодОКВ}` : '',
+          attrs.НаимОКВ ? truncateXmlPreviewText(attrs.НаимОКВ, 42) : '',
+        ]),
+      };
+    case 'ИнфПолФХЖ1':
+      return {
+        kind: 'sheet',
+        title: 'Служебные доп. сведения формы',
+        note: 'Здесь лежат дополнительные поля, которые не помещаются в базовые XSD-атрибуты.',
+      };
+    case 'ТекстИнф': {
+      const ident = String(attrs.Идентиф || '').trim();
+      const textValue = truncateXmlPreviewText(attrs.Значение || value, 78);
+      if (/^ADV/.test(ident)) {
+        return {
+          kind: 'advance',
+          title: 'Расшифровка зачёта аванса',
+          note: buildXmlPreviewSummary([
+            ident || 'ADV-поле',
+            textValue ? `значение: ${textValue}` : '',
+          ]),
+        };
+      }
+      if (/^RET/.test(ident)) {
+        return {
+          kind: 'retention',
+          title: 'Расшифровка удержания',
+          note: buildXmlPreviewSummary([
+            ident || 'RET-поле',
+            textValue ? `значение: ${textValue}` : '',
+          ]),
+        };
+      }
+      return {
+        kind: 'sheet',
+        title: 'Дополнительный реквизит',
+        note: buildXmlPreviewSummary([
+          ident ? `ключ: ${ident}` : '',
+          textValue ? `значение: ${textValue}` : '',
+        ]),
+      };
+    }
+    case 'НаимИСт':
+      return {
+        kind: 'section',
+        title: 'Табличная часть акта',
+        note: 'Здесь собираются строки работ, разделы и вложенные строки для XML.',
+      };
+    case 'Раздел':
+      return {
+        kind: 'section',
+        title: 'Раздел табличной части',
+        note: buildXmlPreviewSummary([
+          attrs.НаимРаздел ? truncateXmlPreviewText(attrs.НаимРаздел, 68) : '',
+          attrs.ПозРаздСмет ? `смета ${attrs.ПозРаздСмет}` : '',
+          attrs.СтБезНДСРаздОтч ? `без НДС: ${attrs.СтБезНДСРаздОтч}` : '',
+        ]),
+      };
+    case 'ВидРаб':
+      return {
+        kind: 'work',
+        title: 'Работа из листа КС-2',
+        note: buildXmlPreviewSummary([
+          attrs.НаимТов ? truncateXmlPreviewText(attrs.НаимТов, 72) : '',
+          attrs.НомПоз ? `№ ${attrs.НомПоз}` : '',
+          attrs.СтТовБезНДС ? `без НДС: ${attrs.СтТовБезНДС}` : '',
+        ]),
+      };
+    case 'СвВидРаб':
+      return {
+        kind: 'work',
+        title: 'Вложенная строка XML',
+        note: buildXmlPreviewSummary([
+          attrs.НаимТов ? truncateXmlPreviewText(attrs.НаимТов, 72) : '',
+          attrs.ЦенаТов ? `цена: ${attrs.ЦенаТов}` : '',
+          attrs.СтТовБезНДС ? `без НДС: ${attrs.СтТовБезНДС}` : '',
+        ]),
+      };
+    case 'СвПродПер':
+      return {
+        kind: 'section',
+        title: 'Период и операция',
+        note: 'Блок периода выполнения работ и вида операции.',
+      };
+    case 'СвПер':
+      return {
+        kind: 'section',
+        title: 'Текущий период акта',
+        note: buildXmlPreviewSummary([
+          attrs.НачПерВДок ? `с ${attrs.НачПерВДок}` : '',
+          attrs.ОконПерВДок ? `по ${attrs.ОконПерВДок}` : '',
+          attrs.СодОпер ? `операция: ${truncateXmlPreviewText(attrs.СодОпер, 72)}` : '',
+        ]),
+      };
+    case 'СвОРасч':
+      return {
+        kind: 'settlement',
+        title: 'Свод расчётов / удержаний',
+        note: buildXmlPreviewSummary([
+          attrs.СумУдержВсегоОтч ? `удержания: ${attrs.СумУдержВсегоОтч}` : '',
+          attrs.СумТребВсегоОтч ? `требования: ${attrs.СумТребВсегоОтч}` : '',
+          attrs.ВсегоКОплатОтч ? `к оплате: ${attrs.ВсегоКОплатОтч}` : '',
+        ]),
+      };
+    case 'УчетТребУдерж':
+      return {
+        kind: 'settlement',
+        title: 'XSD-ready строка расчётов',
+        note: attrs.СумТребУдерж ? `Эта строка войдёт в итоговый XML на сумму ${attrs.СумТребУдерж}.` : 'Одна агрегированная строка требований / удержаний.',
+      };
+    case 'ВидУдерж':
+      return {
+        kind: 'settlement',
+        title: 'Код удержания',
+        note: value ? settlementCodeLabel('withhold', value) : 'Тип удержания для строки расчётов.',
+      };
+    case 'ВидТреб':
+      return {
+        kind: 'settlement',
+        title: 'Код требования',
+        note: value ? settlementCodeLabel('claim', value) : 'Тип требования для строки расчётов.',
+      };
+    case 'ИнВидУдерж':
+    case 'ИнВидТреб':
+      return {
+        kind: 'settlement',
+        title: 'Расшифровка «иной вид»',
+        note: value ? truncateXmlPreviewText(value, 92) : 'Свободный текст для нестандартного кода вида.',
+      };
+    case 'ДокПодтСумУд':
+      return {
+        kind: 'settlement',
+        title: 'Подтверждающий документ по сумме',
+        note: 'Основание для требования / удержания по строке расчётов.',
+      };
+    case 'ВсегоАктОтч':
+      return {
+        kind: 'sheet',
+        title: 'Итог по акту за период',
+        note: buildXmlPreviewSummary([
+          attrs.СтТовБезНДСВсего ? `без НДС: ${attrs.СтТовБезНДСВсего}` : '',
+          attrs.СтТовУчНалВсего ? `с НДС: ${attrs.СтТовУчНалВсего}` : '',
+        ]),
+      };
+    case 'ВсегоАктСНач':
+      return {
+        kind: 'sheet',
+        title: 'Накопительный итог',
+        note: 'Итоги с начала выполнения работ по объекту.',
+      };
+    case 'СумНалВсего':
+      return {
+        kind: 'sheet',
+        title: 'Общий НДС',
+        note: value ? `Сумма НДС: ${value}` : 'Итоговый НДС по акту.',
+      };
+    case 'СумПоСтавке':
+      return {
+        kind: 'sheet',
+        title: 'НДС по ставке',
+        note: buildXmlPreviewSummary([
+          attrs.НалСт ? `ставка ${attrs.НалСт}` : '',
+          attrs.НалБаза ? `база ${attrs.НалБаза}` : '',
+        ]),
+      };
+    case 'НастрФормДок':
+      return {
+        kind: 'sheet',
+        title: 'Флаги формата XML',
+        note: buildXmlPreviewSummary([
+          attrs.ПрНДСВИтог ? `НДС-в-итоге: ${attrs.ПрНДСВИтог}` : '',
+          attrs.ПрНакИтог ? `накопление: ${attrs.ПрНакИтог}` : '',
+          attrs.ПрИндЦен ? `индекс цен: ${attrs.ПрИндЦен}` : '',
+          attrs.ПрСведРасчСогл ? `сведения о расчётах: ${attrs.ПрСведРасчСогл}` : '',
+        ]),
+      };
+    case 'ПодписантПодр':
+      return {
+        kind: 'sheet',
+        title: 'Подписант подрядчика',
+        note: 'Блок подписи файла P.',
+      };
+    case 'ПодписантЗак':
+      return {
+        kind: 'sheet',
+        title: 'Подписант заказчика',
+        note: 'Один из подписантов customer XML Z.',
+      };
+    case 'Подписант':
+      return {
+        kind: 'sheet',
+        title: 'Реквизиты подписанта',
+        note: buildXmlPreviewSummary([
+          attrs.Должн ? truncateXmlPreviewText(attrs.Должн, 74) : '',
+          attrs.СтатПодп ? `статус ${attrs.СтатПодп}` : '',
+          attrs.ТипПодпис ? `тип подписи ${attrs.ТипПодпис}` : '',
+        ]),
+      };
+    case 'ФИО':
+      return {
+        kind: 'sheet',
+        title: 'ФИО подписанта',
+        note: signerName || 'ФИО подписанта.',
+      };
+    case 'ИдИнфПодр':
+      return {
+        kind: 'sheet',
+        title: 'Ссылка на подрядческий файл P',
+        note: buildXmlPreviewSummary([
+          attrs.ИдФайлИнфПодр ? `файл P: ${truncateXmlPreviewText(attrs.ИдФайлИнфПодр, 72)}` : '',
+          attrs.ДатаФайлИнфПодр ? `дата: ${attrs.ДатаФайлИнфПодр}` : '',
+          attrs.ВремяФайлИнфПодр ? `время: ${attrs.ВремяФайлИнфПодр}` : '',
+        ]),
+      };
+    case 'ЭП':
+      return {
+        kind: 'sheet',
+        title: 'Подпись / контейнер ЭП',
+        note: value ? `Сейчас в preview здесь заглушка: ${truncateXmlPreviewText(value, 56)}` : 'Блок электронной подписи.',
+      };
+    case 'СодФХЖ4':
+      return {
+        kind: 'sheet',
+        title: 'Контекст customer XML Z',
+        note: buildXmlPreviewSummary([
+          attrs.НомПостДок ? `пост. документ № ${attrs.НомПостДок}` : '',
+          attrs.ДатаПостДок ? `от ${attrs.ДатаПостДок}` : '',
+          attrs.ВидОпер ? `операция: ${truncateXmlPreviewText(attrs.ВидОпер, 72)}` : '',
+        ]),
+      };
+    case 'СвПрием':
+      return {
+        kind: 'sheet',
+        title: 'Результат приемки',
+        note: acceptanceLabels[String(attrs.КодСодОпер || '')] || 'Код приемки / отказа заказчика.',
+      };
+    case 'ДатаПрин':
+      return {
+        kind: 'sheet',
+        title: 'Дата приемки',
+        note: value ? `Дата: ${value}` : 'Дата приемки / отказа заказчика.',
+      };
+    default:
+      return null;
+  }
+}
+
+function renderXmlPreviewLegend() {
+  const items = [
+    { kind: 'sheet', label: 'шапка и реквизиты' },
+    { kind: 'section', label: 'табличная часть' },
+    { kind: 'work', label: 'строки работ' },
+    { kind: 'settlement', label: 'расчёты / удержания' },
+    { kind: 'retention', label: 'служебные поля удержаний' },
+    { kind: 'advance', label: 'служебные поля аванса' },
+  ];
+  return `
+    <div class="xml-preview-legend">
+      ${items.map((item) => `
+        <span class="xml-preview-legend-item">
+          <span class="xml-preview-legend-swatch xml-line-${item.kind}"></span>
+          <span>${escapeHtml(item.label)}</span>
+        </span>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderXmlPreviewCode(xmlText = '', scope = 'p', sheetIndex = 0, emptyMessage = 'Preview ещё не собран.') {
+  const formatted = prettyFormatXml(xmlText);
+  if (!formatted) {
+    return `<div class="xml-preview-status">${escapeHtml(emptyMessage)}</div>`;
+  }
+  const lines = formatted.split('\n');
+  return `
+    <div class="xml-preview-code annotated" data-scope="${escapeAttr(scope)}" data-sheet-index="${escapeAttr(String(sheetIndex))}">
+      ${lines.map((line, index) => {
+        const meta = buildXmlPreviewLineMeta(line, scope, sheetIndex);
+        const rowClass = meta ? `has-note is-${meta.kind}` : 'no-note';
+        const lineClass = meta ? `xml-line-${meta.kind}` : '';
+        return `
+          <div class="xml-preview-code-row ${rowClass}">
+            <div class="xml-line ${lineClass}">
+              <span class="xml-line-no">${index + 1}</span>
+              <span class="xml-line-text">${escapeHtml(line)}</span>
+            </div>
+            ${meta ? `
+              <div class="xml-line-note">
+                <strong class="xml-line-note-title">${escapeHtml(meta.title)}</strong>
+                <span>${escapeHtml(meta.note)}</span>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
 function renderRequisitesPane() {
   const c = app.state.documentContext;
   const sheet = app.state.ks2Sheets[0] || createBlankSheet(1);
@@ -2090,8 +2584,6 @@ function renderKs2XmlPane(sheetIndex, sheet) {
   const blockingMode = Boolean(app.state.ui.customerReadinessBlockingMode);
   const activeCustomerReadiness = blockingMode ? strictCustomerReadiness : customerReadiness;
   const advisoryEscalationCount = Math.max((strictCustomerReadiness.summary?.errors || 0) - (customerReadiness.summary?.errors || 0), 0);
-  const contractorXml = prettyFormatXml(contractorPreview?.xmlText || '');
-  const customerXml = prettyFormatXml(customerPreview?.xmlText || '');
 
   return `
     <div class="panel">
@@ -2116,18 +2608,21 @@ function renderKs2XmlPane(sheetIndex, sheet) {
         advisoryEscalationCount,
       })}
 
+      <div class="xml-preview-note">Подсказки справа коротко объясняют, зачем нужен узел XML и из какого куска формы он собран. Цвет строки помогает быстро отличить шапку, табличную часть, расчёты / удержания и служебные расшифровки.</div>
+      ${renderXmlPreviewLegend()}
+
       <div class="section-block">
         <h3>Подрядчик (P)</h3>
         <p class="kbd-note">${contractorPreview ? `${contractorPreview.filename || 'preview.xml'} · ${contractorPreview.valid ? 'XSD OK' : 'есть ошибки'}` : 'Preview ещё не собирался.'}</p>
         ${renderXmlPreviewErrorList(contractorPreview)}
-        <pre class="xml-preview">${escapeHtml(contractorXml || 'Нажми «Собрать заново», чтобы получить preview XML подрядчика.')}</pre>
+        ${renderXmlPreviewCode(contractorPreview?.xmlText || '', 'p', sheetIndex, 'Нажми «Собрать заново», чтобы получить preview XML подрядчика.')}
       </div>
 
       <div class="section-block">
         <h3>Заказчик (Z)</h3>
         <p class="kbd-note">${customerPreview ? `${customerPreview.filename || 'preview-z.xml'} · ${customerPreview.valid ? 'XSD OK' : 'есть ошибки'}` : 'Preview ещё не собирался.'}</p>
         ${renderXmlPreviewErrorList(customerPreview)}
-        <pre class="xml-preview">${escapeHtml(customerXml || 'Нажми «Собрать заново», чтобы получить preview XML заказчика.')}</pre>
+        ${renderXmlPreviewCode(customerPreview?.xmlText || '', 'z', sheetIndex, 'Нажми «Собрать заново», чтобы получить preview XML заказчика.')}
       </div>
     </div>
   `;
