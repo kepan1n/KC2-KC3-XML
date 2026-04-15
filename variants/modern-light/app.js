@@ -1391,7 +1391,6 @@ function buildDocumentModel() {
   return {
     generatedAt: new Date().toISOString(),
     documentContext: clone(app.state.documentContext),
-    common: clone(app.state.documentContext),
     ks2Sheets,
     ks3: {
       document: {},
