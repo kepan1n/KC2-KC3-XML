@@ -130,9 +130,21 @@ def resolve_document_context(data: dict) -> dict:
     return merged
 
 
+def resolve_xml_extras_payload(data: dict) -> dict:
+    xml_extras = data.setdefault('xmlExtras', {})
+    traceable_goods = xml_extras.get('traceableGoods')
+    if traceable_goods is None:
+        xml_extras['traceableGoods'] = []
+    settlement_rows = xml_extras.get('settlementRows')
+    if settlement_rows is None:
+        xml_extras['settlementRows'] = []
+    return xml_extras
+
+
 def resolve_xml_p_payload(data: dict) -> dict:
     legacy_xml = data.setdefault('xml', {})
     xml_p = data.setdefault('xmlP', {})
+    xml_extras = resolve_xml_extras_payload(data)
 
     xml_p['generated'] = merge_xml_scopes(legacy_xml.get('generated'), xml_p.get('generated'))
     xml_p['constants'] = merge_xml_scopes(legacy_xml.get('constants'), xml_p.get('constants'))
@@ -140,7 +152,9 @@ def resolve_xml_p_payload(data: dict) -> dict:
 
     traceable_goods = xml_p.get('traceableGoods')
     if traceable_goods is None:
-        traceable_goods = legacy_xml.get('traceableGoods', [])
+        traceable_goods = legacy_xml.get('traceableGoods')
+    if traceable_goods is None:
+        traceable_goods = xml_extras.get('traceableGoods', [])
     xml_p['traceableGoods'] = copy.deepcopy(traceable_goods)
     return xml_p
 
@@ -157,6 +171,7 @@ def resolve_xml_payload(data: dict) -> dict:
     legacy_xml = data.setdefault('xml', {})
     xml_p = resolve_xml_p_payload(data)
     xml_z = data.setdefault('xmlZ', {})
+    xml_extras = resolve_xml_extras_payload(data)
 
     legacy_xml['generated'] = merge_xml_scopes(legacy_xml.get('generated'), xml_p.get('generated'))
     legacy_xml['constants'] = merge_xml_scopes(legacy_xml.get('constants'), xml_p.get('constants'))
@@ -164,7 +179,11 @@ def resolve_xml_payload(data: dict) -> dict:
     if 'traceableGoods' not in legacy_xml:
         legacy_xml['traceableGoods'] = copy.deepcopy(xml_p.get('traceableGoods', []))
     legacy_xml.setdefault('settlement', {})
-    legacy_xml['settlement'].setdefault('manualRows', [])
+    manual_rows = legacy_xml['settlement'].get('manualRows')
+    if not isinstance(manual_rows, list) or not manual_rows:
+        legacy_xml['settlement']['manualRows'] = copy.deepcopy(xml_extras.get('settlementRows', []))
+    else:
+        legacy_xml['settlement']['manualRows'] = manual_rows
     return legacy_xml
 
 

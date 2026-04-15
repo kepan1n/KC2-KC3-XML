@@ -74,6 +74,7 @@ Legacy multi-KS2 и старые КС-3 данные сохраняются то
 - `scripts/check_advance_31_regression.py` — регрессия по richer per-sheet модели зачета аванса / кода `31`
 - `scripts/check_manual_settlement_per_sheet_regression.py` — регрессия по ручным per-sheet строкам `ВидТреб / ВидУдерж`
 - `scripts/check_customer_per_sheet_pair_regression.py` — регрессия по связанной per-sheet паре `P + Z`
+- `scripts/check_xml_extras_settlement_backend_regression.py` — регрессия по active backend path без legacy `common/xml`: per-sheet settlement-строки должны читаться из `xmlExtras`
 - `scripts/check_modern_light_sample_pair_regression.py` — smoke/regression по стартовому sample `modern-light`: одна single-sheet пара `P + Z` должна собираться и проходить XSD
 - `scripts/check_single_sheet_ui_contract_regression.py` — регрессия по active UI-контракту single-sheet режима (`modern-light`)
 - `scripts/check_single_sheet_docs_contract_regression.py` — регрессия по README / `nalog docs/Прогресс`, чтобы проектные документы не откатывались к старому KS-3 / multi-sheet описанию
@@ -148,6 +149,7 @@ python3 scripts/check_single_sheet_fixture_minimality_regression.py
 python3 scripts/check_split_single_sheet_pair_regression.py
 python3 scripts/check_split_legacy_compat_sources_regression.py
 python3 scripts/check_customer_single_sheet_shared_requisites_regression.py
+python3 scripts/check_xml_extras_settlement_backend_regression.py
 ```
 
 Скрипт по sample pair regression дополнительно проверяет, что:
@@ -191,6 +193,11 @@ python3 scripts/check_customer_single_sheet_shared_requisites_regression.py
 - customer XML `Z` в active single-sheet сценарии предпочитает текущие общие реквизиты / подписи заказчика вместо старых `ks3*` fallback-полей;
 - `СодФХЖ4` берёт номер/дату именно из текущего листа КС-2, а не из legacy КС-3 документа;
 - `ВидОпер` берётся из `operationType` или из `ks2DocLabel + ks2DocSubtitle` раньше, чем из старых `ks3*` заголовков.
+
+Скрипт по xmlExtras settlement backend regression дополнительно проверяет, что:
+- active backend path умеет собирать per-sheet settlement-строки из `xmlExtras.settlementRows`, даже если legacy `xml.settlement.manualRows` вообще отсутствует;
+- подрядческий XML `P` сохраняет корректную per-sheet фильтрацию `ВидТреб / ВидУдерж` и подтверждающих документов;
+- customer XML `Z` продолжает собираться из scoped payload без legacy `common/xml` блока.
 
 Скрипт по manual settlement дополнительно проверяет, что:
 - ручные settlement-строки фильтруются по `ks2SheetId` при per-sheet projection;

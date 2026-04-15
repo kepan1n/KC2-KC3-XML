@@ -1406,6 +1406,10 @@ function buildDocumentModel() {
     legacy: {
       extraKs2Sheets: clone(app.state.legacy?.extraKs2Sheets || []),
     },
+    xmlExtras: {
+      traceableGoods: clone(app.state.xmlExtras.traceableGoods),
+      settlementRows: clone(holdbacksXml.manualRows || []),
+    },
     xmlP: {
       generated: buildGeneratedXmlFields(),
       constants: clone(app.state.xmlP.constants),
