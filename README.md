@@ -147,6 +147,7 @@ python3 scripts/check_single_sheet_autobind_regression.py
 python3 scripts/check_single_sheet_fixture_minimality_regression.py
 python3 scripts/check_split_single_sheet_pair_regression.py
 python3 scripts/check_split_legacy_compat_sources_regression.py
+python3 scripts/check_customer_single_sheet_shared_requisites_regression.py
 ```
 
 Скрипт по sample pair regression дополнительно проверяет, что:
@@ -185,6 +186,11 @@ python3 scripts/check_split_legacy_compat_sources_regression.py
 - splitter умеет читать старый источник удержаний через `holdbacks.sections`;
 - splitter умеет подхватывать manual settlement rows из legacy `xmlP/xml`, даже если `xmlExtras.settlementRows` ещё не заполнен;
 - single-sheet output остаётся очищенным от active KS-3 строк.
+
+Скрипт по customer shared requisites regression дополнительно проверяет, что:
+- customer XML `Z` в active single-sheet сценарии предпочитает текущие общие реквизиты / подписи заказчика вместо старых `ks3*` fallback-полей;
+- `СодФХЖ4` берёт номер/дату именно из текущего листа КС-2, а не из legacy КС-3 документа;
+- `ВидОпер` берётся из `operationType` или из `ks2DocLabel + ks2DocSubtitle` раньше, чем из старых `ks3*` заголовков.
 
 Скрипт по manual settlement дополнительно проверяет, что:
 - ручные settlement-строки фильтруются по `ks2SheetId` при per-sheet projection;

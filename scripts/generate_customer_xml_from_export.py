@@ -161,21 +161,11 @@ def add_doc_reference(parent: ET._Element, tag_name: str, name: str | None, numb
 
 
 def build_customer_signers(common: dict, manual: dict) -> list[dict]:
-    candidates = [
-        {
-            'name': common.get('ks3DeveloperName'),
-            'position': common.get('ks3DeveloperPosition'),
-            'source': 'ks3Developer',
-        },
+    primary_candidates = [
         {
             'name': common.get('customerSignerName'),
             'position': common.get('customerSignerPosition'),
             'source': 'customerSigner',
-        },
-        {
-            'name': common.get('ks3TechCustomerName'),
-            'position': common.get('ks3TechCustomerPosition'),
-            'source': 'ks3TechCustomer',
         },
         {
             'name': common.get('techCustomerSignerName'),
@@ -183,10 +173,22 @@ def build_customer_signers(common: dict, manual: dict) -> list[dict]:
             'source': 'techCustomerSigner',
         },
     ]
+    legacy_candidates = [
+        {
+            'name': common.get('ks3DeveloperName'),
+            'position': common.get('ks3DeveloperPosition'),
+            'source': 'ks3Developer',
+        },
+        {
+            'name': common.get('ks3TechCustomerName'),
+            'position': common.get('ks3TechCustomerPosition'),
+            'source': 'ks3TechCustomer',
+        },
+    ]
 
     unique = []
     seen = set()
-    for candidate in candidates:
+    for candidate in primary_candidates:
         name = first_non_empty(candidate.get('name'))
         position = first_non_empty(candidate.get('position'))
         if not name and not position:
@@ -200,6 +202,22 @@ def build_customer_signers(common: dict, manual: dict) -> list[dict]:
             'position': position or 'Уполномоченное лицо заказчика',
             'source': candidate['source'],
         })
+
+    if not unique:
+        for candidate in legacy_candidates:
+            name = first_non_empty(candidate.get('name'))
+            position = first_non_empty(candidate.get('position'))
+            if not name and not position:
+                continue
+            key = (name or '', position or '')
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append({
+                'name': name or 'Иванов Иван',
+                'position': position or 'Уполномоченное лицо заказчика',
+                'source': candidate['source'],
+            })
 
     if not unique:
         unique.append({
@@ -321,11 +339,18 @@ def build_operation_kind(common: dict) -> str:
     explicit = first_non_empty(common.get('operationType'))
     if explicit:
         return explicit
-    label = first_non_empty(common.get('ks3DocLabel'))
-    subtitle = first_non_empty(common.get('ks3DocSubtitle'))
-    if label and subtitle:
-        return f'{label} {subtitle}'
-    return first_non_empty(label, subtitle, default='Сдача-приемка результатов работ')
+    for label_key, subtitle_key in (
+        ('ks2DocLabel', 'ks2DocSubtitle'),
+        ('ks3DocLabel', 'ks3DocSubtitle'),
+    ):
+        label = first_non_empty(common.get(label_key))
+        subtitle = first_non_empty(common.get(subtitle_key))
+        if label and subtitle:
+            return f'{label} {subtitle}'
+        fallback = first_non_empty(label, subtitle)
+        if fallback:
+            return fallback
+    return 'Сдача-приемка результатов работ'
 
 
 def build_acceptance_block(content: ET._Element, data: dict, manual: dict, accepted_date: str):
@@ -438,10 +463,10 @@ def build_customer_xml(data: dict, contractor_xml_path: Path | None = None) -> E
 
     customer_subject_name = first_non_empty(
         manual.get('customerEconomicSubjectName'),
-        common.get('ks3TechCustomerOrgName'),
         common.get('techCustomerName'),
-        common.get('ks3DeveloperOrgName'),
         common.get('developerName'),
+        common.get('ks3TechCustomerOrgName'),
+        common.get('ks3DeveloperOrgName'),
         manual.get('economicSubjectName'),
         default='Заказчик',
     )
@@ -486,8 +511,8 @@ def build_customer_xml(data: dict, contractor_xml_path: Path | None = None) -> E
     else:
         ET.SubElement(info_p, 'ЭП').text = str(first_non_empty(manual.get('contractorSignaturePayload'), default='placeholder-signature-base64'))
 
-    posting_number = first_non_empty(ks3_doc.get('number'), first_doc.get('number'), default='без номера')
-    posting_date = first_non_empty(ks3_doc.get('date'), first_doc.get('date'))
+    posting_number = first_non_empty(first_doc.get('number'), ks3_doc.get('number'), default='без номера')
+    posting_date = first_non_empty(first_doc.get('date'), ks3_doc.get('date'))
     content = ET.SubElement(
         doc,
         'СодФХЖ4',
