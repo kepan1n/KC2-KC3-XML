@@ -1442,6 +1442,11 @@ function firstFilledValue(...values) {
 }
 
 function buildValidationReport(model) {
+  const documentContext = model.documentContext || model.common || {};
+  const xmlManual = model.xmlP?.manual || model.xml?.manual || {};
+  const manualSettlementRows = model.xmlExtras?.settlementRows || model.xml?.settlement?.manualRows || [];
+  const representativeRow = model.xml?.settlement?.representativeRow || null;
+  const xmlSettlementRows = model.xml?.settlement?.settlementRows || [];
   const errors = [];
   const warnings = [];
   const pushIssue = (severity, path, label, message) => {
@@ -1454,20 +1459,20 @@ function buildValidationReport(model) {
     }
   };
 
-  requireValue(((model.documentContext || model.common)).developerName, 'documentContext.developerName', 'Застройщик');
-  requireValue(((model.documentContext || model.common)).developerOkpo, 'documentContext.developerOkpo', 'ОКПО застройщика');
-  requireValue(((model.documentContext || model.common)).techCustomerName, 'documentContext.techCustomerName', 'Технический заказчик');
-  requireValue(((model.documentContext || model.common)).techCustomerOkpo, 'documentContext.techCustomerOkpo', 'ОКПО технического заказчика');
-  requireValue(((model.documentContext || model.common)).contractorName, 'documentContext.contractorName', 'Генподрядчик');
-  requireValue(((model.documentContext || model.common)).contractorOkpo, 'documentContext.contractorOkpo', 'ОКПО генподрядчика');
-  requireValue(((model.documentContext || model.common)).constructionObject, 'documentContext.constructionObject', 'Стройка');
-  requireValue(((model.documentContext || model.common)).objectName, 'documentContext.objectName', 'Объект');
-  requireValue(((model.documentContext || model.common)).contractNumber, 'documentContext.contractNumber', 'Номер договора');
-  requireValue(((model.documentContext || model.common)).contractDate, 'documentContext.contractDate', 'Дата договора');
-  requireValue(((model.documentContext || model.common)).operationType, 'documentContext.operationType', 'Вид операции');
-  requireValue(((model.documentContext || model.common)).okudKs2, 'documentContext.okudKs2', 'ОКУД КС-2');
-  requireValue(((model.documentContext || model.common)).objectOkpo, 'documentContext.objectOkpo', 'ОКПО объекта', 'warning');
-  requireValue(((model.documentContext || model.common)).okdpCode, 'documentContext.okdpCode', 'ОКДП', 'warning');
+  requireValue(documentContext.developerName, 'documentContext.developerName', 'Застройщик');
+  requireValue(documentContext.developerOkpo, 'documentContext.developerOkpo', 'ОКПО застройщика');
+  requireValue(documentContext.techCustomerName, 'documentContext.techCustomerName', 'Технический заказчик');
+  requireValue(documentContext.techCustomerOkpo, 'documentContext.techCustomerOkpo', 'ОКПО технического заказчика');
+  requireValue(documentContext.contractorName, 'documentContext.contractorName', 'Генподрядчик');
+  requireValue(documentContext.contractorOkpo, 'documentContext.contractorOkpo', 'ОКПО генподрядчика');
+  requireValue(documentContext.constructionObject, 'documentContext.constructionObject', 'Стройка');
+  requireValue(documentContext.objectName, 'documentContext.objectName', 'Объект');
+  requireValue(documentContext.contractNumber, 'documentContext.contractNumber', 'Номер договора');
+  requireValue(documentContext.contractDate, 'documentContext.contractDate', 'Дата договора');
+  requireValue(documentContext.operationType, 'documentContext.operationType', 'Вид операции');
+  requireValue(documentContext.okudKs2, 'documentContext.okudKs2', 'ОКУД КС-2');
+  requireValue(documentContext.objectOkpo, 'documentContext.objectOkpo', 'ОКПО объекта', 'warning');
+  requireValue(documentContext.okdpCode, 'documentContext.okdpCode', 'ОКДП', 'warning');
 
   model.ks2Sheets.forEach((sheet, index) => {
     const prefix = `ks2Sheets.${index}`;
@@ -1507,25 +1512,24 @@ function buildValidationReport(model) {
     });
   }
 
-  requireValue(model.xmlP.manual.contractorInn, 'xmlP.manual.contractorInn', 'ИНН подрядчика', 'warning');
-  requireValue(model.xmlP.manual.customerInn, 'xmlP.manual.customerInn', 'ИНН заказчика', 'warning');
-  requireValue(model.xmlP.manual.economicSubjectName || ((model.documentContext || model.common)).contractorName, 'xmlP.manual.economicSubjectName', 'Составитель XML', 'warning');
-  if (String(model.xmlP.manual.isCorrectionAct || '0') === '1') {
-    requireValue(model.xmlP.manual.correctionNumber, 'xmlP.manual.correctionNumber', 'Исправление №', 'warning');
-    requireValue(model.xmlP.manual.correctionDate, 'xmlP.manual.correctionDate', 'Дата исправления', 'warning');
+  requireValue(xmlManual.contractorInn, 'xmlP.manual.contractorInn', 'ИНН подрядчика', 'warning');
+  requireValue(xmlManual.customerInn, 'xmlP.manual.customerInn', 'ИНН заказчика', 'warning');
+  requireValue(xmlManual.economicSubjectName || documentContext.contractorName, 'xmlP.manual.economicSubjectName', 'Составитель XML', 'warning');
+  if (String(xmlManual.isCorrectionAct || '0') === '1') {
+    requireValue(xmlManual.correctionNumber, 'xmlP.manual.correctionNumber', 'Исправление №', 'warning');
+    requireValue(xmlManual.correctionDate, 'xmlP.manual.correctionDate', 'Дата исправления', 'warning');
   }
 
-  if (String(model.xmlP.manual.hasEstimateChange || '1') === '1') {
-    requireValue(model.xmlP.manual.estimateVersionCode, 'xmlP.manual.estimateVersionCode', 'Версия сметы (КодСмет)', 'warning');
-    requireValue(model.xmlP.manual.supplementDocType, 'xmlP.manual.supplementDocType', 'Тип допсоглашения', 'warning');
-    requireValue(model.xmlP.manual.supplementDocNumber, 'xmlP.manual.supplementDocNumber', 'Номер допсоглашения', 'warning');
-    requireValue(model.xmlP.manual.supplementDocDate, 'xmlP.manual.supplementDocDate', 'Дата допсоглашения', 'warning');
+  if (String(xmlManual.hasEstimateChange || '1') === '1') {
+    requireValue(xmlManual.estimateVersionCode, 'xmlP.manual.estimateVersionCode', 'Версия сметы (КодСмет)', 'warning');
+    requireValue(xmlManual.supplementDocType, 'xmlP.manual.supplementDocType', 'Тип допсоглашения', 'warning');
+    requireValue(xmlManual.supplementDocNumber, 'xmlP.manual.supplementDocNumber', 'Номер допсоглашения', 'warning');
+    requireValue(xmlManual.supplementDocDate, 'xmlP.manual.supplementDocDate', 'Дата допсоглашения', 'warning');
   }
-  requireValue(model.xmlP.manual.developerPostalIndex, 'xmlP.manual.developerPostalIndex', 'Индекс адреса', 'warning');
-  requireValue(model.xmlP.manual.developerRegionCode, 'xmlP.manual.developerRegionCode', 'Код региона', 'warning');
-  requireValue(model.xmlP.manual.signerName || ((model.documentContext || model.common)).contractorSignerName, 'xmlP.manual.signerName', 'Подписант XML: ФИО', 'warning');
+  requireValue(xmlManual.developerPostalIndex, 'xmlP.manual.developerPostalIndex', 'Индекс адреса', 'warning');
+  requireValue(xmlManual.developerRegionCode, 'xmlP.manual.developerRegionCode', 'Код региона', 'warning');
+  requireValue(xmlManual.signerName || documentContext.contractorSignerName, 'xmlP.manual.signerName', 'Подписант XML: ФИО', 'warning');
 
-  const manualSettlementRows = model.xml.settlement?.manualRows || [];
   manualSettlementRows.forEach((row, index) => {
     const hasContent = numberOrZero(row.amount) > 0 || row.documentRef || row.comment || row.customKindText;
     if (!hasContent) return;
@@ -1548,8 +1552,6 @@ function buildValidationReport(model) {
     }
   });
 
-  const representativeRow = model.xml.settlement?.representativeRow || null;
-  const xmlSettlementRows = model.xml.settlement?.settlementRows || [];
   const distinctSettlementKinds = new Set(xmlSettlementRows.map((row) => `${normalizeSettlementKind(row.kind)}:${normalizeSettlementCode(row.kind, row.kindCode)}`));
   if (distinctSettlementKinds.size > 1) {
     pushIssue('warning', 'xml.settlement.settlementRows', 'СвОРасч', `В текущем XSD-ready профиле несколько видов требований / удержаний будут сжаты в один УчетТребУдерж. Сейчас основной строкой выбрана: ${buildRepresentativeSettlementLabel(representativeRow)}.`);
@@ -2232,12 +2234,12 @@ function splitSignerName(text) {
 }
 
 function buildXmlExportString(model) {
-  const common = model.common;
-  const manual = model.xml.manual;
-  const generated = model.xml.generated;
-  const constants = model.xml.constants;
-  const traceableGoods = model.xml.traceableGoods || [];
-  const settlement = model.xml.settlement || { totalRetention: 0, totalClaims: 0, settlementRows: [] };
+  const common = model.documentContext || model.common || {};
+  const manual = model.xmlP?.manual || model.xml?.manual || {};
+  const generated = model.xmlP?.generated || model.xml?.generated || {};
+  const constants = model.xmlP?.constants || model.xml?.constants || {};
+  const traceableGoods = model.xmlP?.traceableGoods || model.xmlExtras?.traceableGoods || model.xml?.traceableGoods || [];
+  const settlement = model.xml?.settlement || { totalRetention: 0, totalClaims: 0, settlementRows: [] };
   const firstSheet = model.ks2Sheets[0] || { document: {}, items: [] };
   const signer = splitSignerName(manual.signerName || common.contractorSignerName || common.contractorSigner || common.contractorResponsible || 'Иванов Иван');
   const signerAttr = signer.patronymic ? ` Отчество="${xmlEscape(signer.patronymic)}"` : '';
