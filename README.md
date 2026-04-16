@@ -76,6 +76,7 @@ Legacy multi-KS2 и старые КС-3 данные сохраняются то
 - `scripts/check_customer_per_sheet_pair_regression.py` — регрессия по связанной per-sheet паре `P + Z`
 - `scripts/check_xml_extras_settlement_backend_regression.py` — регрессия по active backend path без legacy `common/xml`: per-sheet settlement-строки должны читаться из `xmlExtras`
 - `scripts/check_modern_light_sample_pair_regression.py` — smoke/regression по стартовому sample `modern-light`: одна single-sheet пара `P + Z` должна собираться и проходить XSD
+- `scripts/check_modern_light_browser_smoke_regression.mjs` — browser-smoke regression по `modern-light`: headless Chrome открывает реальную страницу, проверяет отсутствие runtime exceptions и переключение верхних вкладок `Реквизиты → XML → КС-2`
 - `scripts/check_single_sheet_ui_contract_regression.py` — регрессия по active UI-контракту single-sheet режима (`modern-light`)
 - `scripts/check_single_sheet_docs_contract_regression.py` — регрессия по README / `nalog docs/Прогресс`, чтобы проектные документы не откатывались к старому KS-3 / multi-sheet описанию
 - `scripts/check_single_sheet_fallback_validation_regression.py` — регрессия по backend fallback-логике обязательных XML manual-полей в single-sheet `P` экспорте
@@ -140,6 +141,7 @@ python3 scripts/check_advance_31_regression.py
 ```bash
 python3 scripts/check_manual_settlement_per_sheet_regression.py
 python3 scripts/check_modern_light_sample_pair_regression.py
+node scripts/check_modern_light_browser_smoke_regression.mjs
 python3 scripts/check_single_sheet_ui_contract_regression.py
 python3 scripts/check_single_sheet_docs_contract_regression.py
 python3 scripts/check_single_sheet_fallback_validation_regression.py
@@ -155,6 +157,11 @@ python3 scripts/check_xml_extras_settlement_backend_regression.py
 Скрипт по sample pair regression дополнительно проверяет, что:
 - стартовый `modern-light` sample реально собирает одну single-sheet пару `P + Z`;
 - и подрядческий `P`, и customer `Z` проходят XSD без ручной подготовки sample перед запуском UI.
+
+Скрипт по browser smoke regression дополнительно проверяет, что:
+- `modern-light` реально открывается в headless Chrome как живая страница, а не только как шаблон / статический HTML;
+- при первом рендере нет runtime exceptions, которые оставляют видимую верхнюю навигацию, но ломают основную панель;
+- верхние вкладки `Реквизиты`, `XML`, `КС-2` реально переключают контент в браузере.
 
 Скрипт по docs contract regression дополнительно проверяет, что:
 - README и `nalog docs/Прогресс` описывают именно текущий single-sheet продукт;
