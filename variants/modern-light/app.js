@@ -3487,6 +3487,33 @@ function renderHoldbackGroup(group) {
   return sectionRow + subitemRows;
 }
 
+function renderHoldbackRowActions(rowIndex, rowKind) {
+  const effectiveIndex = rowKind === 'subitem' ? findHoldbackSectionIndex(rowIndex) : rowIndex;
+  const menuOpen = app.state.ui.holdbackActionMenu === rowIndex;
+  const confirmDelete = app.state.ui.holdbackDeleteConfirm === rowIndex;
+  return `
+    <div class="row-action-stack">
+      <button class="stack-button add" title="Добавить" aria-label="Добавить" data-action="open-holdback-menu" data-hold-index="${effectiveIndex}">+</button>
+      <button class="stack-button danger" title="Удалить строку" aria-label="Удалить строку" data-action="request-holdback-delete" data-hold-index="${rowIndex}">×</button>
+      ${menuOpen ? `
+        <div class="row-action-menu">
+          <button class="row-action-menu-item" data-action="insert-holdback-section" data-hold-index="${effectiveIndex}">+ Раздел</button>
+          <button class="row-action-menu-item" data-action="insert-holdback-subitem" data-hold-index="${effectiveIndex}">+ Подпункт</button>
+        </div>
+      ` : ''}
+      ${confirmDelete ? `
+        <div class="row-action-confirm">
+          <div class="row-action-confirm-label">${rowKind === 'subitem' ? 'Удалить подпункт?' : 'Удалить раздел со вложениями?'}</div>
+          <div class="row-action-confirm-buttons">
+            <button class="row-action-confirm-btn confirm" data-action="confirm-holdback-delete" data-hold-index="${rowIndex}">✓</button>
+            <button class="row-action-confirm-btn cancel" data-action="cancel-holdback-delete" data-hold-index="${rowIndex}">×</button>
+          </div>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
 function buildKs2SheetSelectOptions() {
   const options = app.state.ks2Sheets.length > 1 ? { '': '— выбрать лист КС-2 —' } : {};
   app.state.ks2Sheets.forEach((sheet, index) => {
