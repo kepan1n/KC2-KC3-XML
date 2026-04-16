@@ -2198,6 +2198,22 @@ function findKs2RowSourceByXmlLine(sheetIndex, tag, attrs) {
   };
 }
 
+function findFirstKs2TabularSource(sheetIndex) {
+  const sheet = app.state.ks2Sheets?.[sheetIndex];
+  if (!sheet) return null;
+  const firstRowIndex = (sheet.rows || []).findIndex((row) => row?.type === 'item' || row?.type === 'section');
+  if (firstRowIndex !== -1) {
+    return {
+      path: `ks2Sheets.${sheetIndex}.rows.${firstRowIndex}.name`,
+      label: 'Первая строка табличной части КС-2',
+    };
+  }
+  return {
+    path: `ks2Sheets.${sheetIndex}.title`,
+    label: 'Лист КС-2',
+  };
+}
+
 function findManualSettlementPreviewSource(sheetIndex, previewContext, preferredField = 'amount') {
   const targetSheetId = app.state.ks2Sheets?.[sheetIndex]?.id || '';
   let best = null;
@@ -2435,6 +2451,12 @@ function resolveXmlPreviewLineSource(line, meta, scope = 'p', sheetIndex = 0, li
         { path: `ks2Sheets.${sheetIndex}.documentDate`, label: 'Дата документа', matchValue: attrs.ДатаДок },
         { path: 'documentContext.objectName', label: 'Наименование объекта', matchValue: attrs.НаимОб },
       ]);
+    case 'ИдДог':
+      return chooseXmlPreviewSource([
+        { path: 'documentContext.contractNumber', label: 'Номер договора', priority: 20 },
+        { path: 'documentContext.contractDate', label: 'Дата договора' },
+        { path: `ks2Sheets.${sheetIndex}.basis`, label: 'Основание акта' },
+      ]);
     case 'ТипИдДок':
       if (parents[parents.length - 1] === 'ДокПодтСумУд') {
         return findPreviewSettlementSource(sheetIndex, settlementContext, 'documentRef');
@@ -2458,6 +2480,17 @@ function resolveXmlPreviewLineSource(line, meta, scope = 'p', sheetIndex = 0, li
       return chooseXmlPreviewSource([
         { path: 'documentContext.techCustomerName', label: 'Технический заказчик', priority: 20 },
         { path: 'documentContext.developerName', label: 'Заказчик / застройщик' },
+      ]);
+    case 'СвСторДог':
+    case 'ИдСв':
+      return chooseXmlPreviewSource([
+        { path: 'documentContext.contractorName', label: 'Подрядчик', priority: parents.includes('СвПодр') ? 30 : 0 },
+        { path: 'documentContext.contractorOkpo', label: 'ОКПО подрядчика', priority: parents.includes('СвПодр') ? 20 : 0 },
+        { path: 'xmlP.manual.contractorInn', label: 'ИНН подрядчика', priority: parents.includes('СвПодр') ? 20 : 0 },
+        { path: 'documentContext.techCustomerName', label: 'Технический заказчик', priority: parents.includes('СвЗак') ? 30 : 0 },
+        { path: 'documentContext.techCustomerOkpo', label: 'ОКПО техзаказчика', priority: parents.includes('СвЗак') ? 20 : 0 },
+        { path: 'documentContext.developerName', label: 'Заказчик / застройщик', priority: parents.includes('СвЗак') ? 10 : 0 },
+        { path: 'xmlP.manual.customerInn', label: 'ИНН заказчика', priority: parents.includes('СвЗак') ? 20 : 0 },
       ]);
     case 'СвЮЛУч':
       return chooseXmlPreviewSource([
@@ -2513,6 +2546,8 @@ function resolveXmlPreviewLineSource(line, meta, scope = 'p', sheetIndex = 0, li
     case 'ВидРаб':
     case 'СвВидРаб':
       return findKs2RowSourceByXmlLine(sheetIndex, tag, attrs);
+    case 'НаимИСт':
+      return findFirstKs2TabularSource(sheetIndex);
     case 'СвПродПер':
       return chooseXmlPreviewSource([
         { path: 'documentContext.operationType', label: 'Вид операции', priority: 20 },
