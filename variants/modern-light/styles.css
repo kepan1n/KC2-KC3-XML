@@ -345,6 +345,7 @@ button.secondary {
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 12px;
+  scroll-margin-top: 96px;
 }
 .field { grid-column: span 4; }
 .field-wide { grid-column: span 12; }
@@ -397,6 +398,14 @@ button.secondary {
 
 .xml-cell-wrap {
   position: relative;
+  scroll-margin-top: 96px;
+}
+
+.field.is-jump-target,
+.field-wide.is-jump-target,
+.xml-cell-wrap.is-jump-target {
+  border-color: rgba(59, 130, 246, 0.85) !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
 }
 
 .xml-cell-wrap.is-direct input,
@@ -1467,6 +1476,16 @@ body[data-scale="115"] {
   min-width: 0;
 }
 
+.xml-line.is-clickable,
+.xml-line-note.is-clickable {
+  cursor: pointer;
+}
+
+.xml-line.is-clickable:hover,
+.xml-line-note.is-clickable:hover {
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.45);
+}
+
 .xml-line + .xml-line {
   margin-top: 1px;
 }
@@ -1500,6 +1519,12 @@ body[data-scale="115"] {
 .xml-line-note-title {
   color: #f8fafc;
   font-size: 12px;
+}
+
+.xml-line-jump-hint {
+  color: #93c5fd;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .xml-line-sheet {

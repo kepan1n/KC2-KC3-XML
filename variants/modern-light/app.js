@@ -31,6 +31,10 @@ const app = {
   state: null,
 };
 
+let pendingFieldJump = null;
+let activeFieldJumpTarget = null;
+let activeFieldJumpTimer = 0;
+
 const EXPENSE_TYPE_OPTIONS = {
   '1': '1 — работа',
   '2': '2 — услуга',
@@ -483,6 +487,11 @@ function handleContentClick(event) {
     app.state.ui.ks2ViewMode[idx] = mode;
     render();
     if (mode === 'xml') loadKs2XmlPreviewPair(idx, true);
+    return;
+  }
+
+  if (action === 'jump-to-source-field') {
+    jumpToSourceField(actionButton.dataset.sourcePath || '');
     return;
   }
 
@@ -1140,6 +1149,7 @@ function render() {
   renderStats();
   renderContent();
   applyColumnWidths();
+  performPendingFieldJump();
 }
 
 function applyUiPreferences() {
@@ -2098,6 +2108,510 @@ function buildXmlPreviewLineMeta(line, scope = 'p') {
   }
 }
 
+function buildXmlPreviewContexts(lines = []) {
+  const contexts = [];
+  const stack = [];
+  lines.forEach((rawLine, index) => {
+    const line = String(rawLine || '').trim();
+    contexts[index] = { parents: [...stack] };
+    if (!line || line.startsWith('<?xml')) return;
+    if (line.startsWith('</')) {
+      if (stack.length) stack.pop();
+      return;
+    }
+    const tag = extractXmlPreviewTag(line);
+    if (!tag) return;
+    const isSelfClosing = line.endsWith('/>');
+    const isInline = line.includes(`</${tag}>`);
+    if (!isSelfClosing && !isInline) stack.push(tag);
+  });
+  return contexts;
+}
+
+function findPreviewContainerLineIndex(lines, contexts, lineIndex, tagName) {
+  const currentTag = extractXmlPreviewTag(lines[lineIndex] || '');
+  if (currentTag === tagName && !String(lines[lineIndex] || '').trim().startsWith('</')) return lineIndex;
+  const parents = contexts[lineIndex]?.parents || [];
+  const tagPos = parents.lastIndexOf(tagName);
+  if (tagPos === -1) return -1;
+  const parentSignature = parents.slice(0, tagPos).join('>');
+  for (let index = lineIndex; index >= 0; index -= 1) {
+    if (extractXmlPreviewTag(lines[index] || '') !== tagName) continue;
+    if (String(lines[index] || '').trim().startsWith('</')) continue;
+    const candidateParents = contexts[index]?.parents || [];
+    if (candidateParents.join('>') === parentSignature) return index;
+  }
+  return -1;
+}
+
+function resolveSettlementPreviewContext(lines, contexts, lineIndex) {
+  const containerIndex = findPreviewContainerLineIndex(lines, contexts, lineIndex, 'УчетТребУдерж');
+  if (containerIndex === -1) return null;
+  const context = {
+    amount: parseXmlPreviewAttrs(lines[containerIndex]).СумТребУдерж || '',
+    kind: '',
+    kindCode: '',
+    customKindText: '',
+    documentRef: '',
+  };
+  for (let index = containerIndex + 1; index < lines.length; index += 1) {
+    const trimmed = String(lines[index] || '').trim();
+    if (trimmed.startsWith('</УчетТребУдерж')) break;
+    const parents = contexts[index]?.parents || [];
+    if (!parents.includes('УчетТребУдерж')) continue;
+    const tag = extractXmlPreviewTag(trimmed);
+    if (tag === 'ВидТреб' || tag === 'ВидУдерж') {
+      context.kind = tag === 'ВидТреб' ? 'claim' : 'withhold';
+      context.kindCode = extractXmlPreviewInnerText(trimmed);
+    }
+    if (tag === 'ИнВидТреб' || tag === 'ИнВидУдерж') {
+      context.customKindText = extractXmlPreviewInnerText(trimmed);
+    }
+    if (tag === 'ТипИдДок' && parents[parents.length - 1] === 'ДокПодтСумУд') {
+      context.documentRef = parseXmlPreviewAttrs(trimmed).НомерДок || '';
+    }
+  }
+  return context;
+}
+
+function findKs2RowSourceByXmlLine(sheetIndex, tag, attrs) {
+  const sheet = app.state.ks2Sheets?.[sheetIndex];
+  if (!sheet) return null;
+  const expectedType = tag === 'Раздел' ? 'section' : 'item';
+  let best = null;
+  sheet.rows.forEach((row, rowIndex) => {
+    if (row.type !== expectedType) return;
+    let score = 0;
+    const nameNeedle = tag === 'Раздел' ? attrs.НаимРаздел : attrs.НаимТов;
+    const estimateNeedle = tag === 'Раздел' ? attrs.ПозРаздСмет : attrs.ПозСмет;
+    if (nameNeedle && comparableValuesMatch(row.name, nameNeedle)) score += 70;
+    if (attrs.НомПоз && comparableValuesMatch(row.lineNo, attrs.НомПоз)) score += 120;
+    if (estimateNeedle && comparableValuesMatch(row.estimateNo, estimateNeedle)) score += 50;
+    if (attrs.ЦенаТов && numericValuesMatch(row.price, attrs.ЦенаТов)) score += 20;
+    if (attrs.КолТов && numericValuesMatch(row.quantity, attrs.КолТов)) score += 20;
+    if (score > 0 && (!best || score > best.score)) best = { rowIndex, score };
+  });
+  if (!best) return null;
+  return {
+    path: `ks2Sheets.${sheetIndex}.rows.${best.rowIndex}.name`,
+    label: expectedType === 'section' ? 'Раздел КС-2' : 'Строка КС-2',
+  };
+}
+
+function findManualSettlementPreviewSource(sheetIndex, previewContext, preferredField = 'amount') {
+  const targetSheetId = app.state.ks2Sheets?.[sheetIndex]?.id || '';
+  let best = null;
+  (app.state.xmlExtras.settlementRows || []).forEach((rawRow, rowIndex) => {
+    const row = prepareSettlementRow(rawRow);
+    const rowSheetId = getExplicitSettlementSheetId(row);
+    if (targetSheetId && rowSheetId && String(rowSheetId) !== String(targetSheetId)) return;
+    let score = 0;
+    if (previewContext.kind && normalizeSettlementKind(row.kind) === previewContext.kind) score += 60;
+    if (previewContext.kindCode && String(row.kindCode || '') === String(previewContext.kindCode)) score += 120;
+    if (previewContext.amount && numericValuesMatch(row.amount, previewContext.amount)) score += 120;
+    if (previewContext.documentRef && comparableValuesMatch(row.documentRef, previewContext.documentRef)) score += 100;
+    if (previewContext.customKindText && comparableValuesMatch(row.customKindText, previewContext.customKindText)) score += 80;
+    if (row.isPrimary) score += 4;
+    if (score > 0 && (!best || score > best.score)) best = { rowIndex, score };
+  });
+  if (!best) return null;
+  const fieldMap = {
+    amount: 'amount',
+    kindCode: 'kindCode',
+    customKindText: 'customKindText',
+    documentRef: 'documentRef',
+  };
+  const labelMap = {
+    amount: 'Ручная строка расчётов',
+    kindCode: 'Код ручной строки расчётов',
+    customKindText: 'Иной вид расчётов',
+    documentRef: 'Документ строки расчётов',
+  };
+  const field = fieldMap[preferredField] || 'amount';
+  return {
+    path: `xmlExtras.settlementRows.${best.rowIndex}.${field}`,
+    label: labelMap[field],
+  };
+}
+
+function findAutoSettlementPreviewSource(sheetIndex, previewContext, preferredField = 'amount') {
+  const sheetId = app.state.ks2Sheets?.[sheetIndex]?.id || '';
+  let best = null;
+  buildHoldbackGroups(sheetId).forEach((group) => {
+    const computed = computeHoldbackSectionComputed(group);
+    let sectionScore = 0;
+    if (!previewContext.kind || previewContext.kind === 'withhold') sectionScore += 5;
+    if (!previewContext.kindCode || previewContext.kindCode === '32') sectionScore += 40;
+    if (previewContext.amount && numericValuesMatch(computed.retentionAmount, previewContext.amount)) sectionScore += 120;
+    if (previewContext.documentRef && comparableValuesMatch(group.section.row.retentionDocNumber, previewContext.documentRef)) sectionScore += 100;
+    if (sectionScore > 0 && (!best || sectionScore > best.score)) {
+      best = { type: 'section', index: group.section.index, score: sectionScore };
+    }
+
+    group.subitems.forEach((entry) => {
+      let subScore = 0;
+      if (!previewContext.kind || previewContext.kind === 'withhold') subScore += 5;
+      if (!previewContext.kindCode || previewContext.kindCode === '31') subScore += 40;
+      if (previewContext.amount && numericValuesMatch(entry.row.closingAmount, previewContext.amount)) subScore += 120;
+      if (previewContext.documentRef && comparableValuesMatch(entry.row.advanceDoc, previewContext.documentRef)) subScore += 100;
+      if (subScore > 0 && (!best || subScore > best.score)) {
+        best = { type: 'subitem', index: entry.index, score: subScore };
+      }
+    });
+  });
+
+  if (!best) return null;
+
+  if (best.type === 'section') {
+    const fieldMap = {
+      amount: '__retentionAmount',
+      kindCode: 'retentionRate',
+      customKindText: 'comment',
+      documentRef: 'retentionDocNumber',
+    };
+    const labelMap = {
+      amount: 'Сумма гарантийного удержания',
+      kindCode: 'Настройка гарантийного удержания',
+      customKindText: 'Комментарий по удержанию',
+      documentRef: 'Документ гарантийного удержания',
+    };
+    const field = fieldMap[preferredField] || 'name';
+    return {
+      path: `holdbacks.rows.${best.index}.${field}`,
+      label: labelMap[preferredField] || 'Блок удержаний',
+    };
+  }
+
+  const fieldMap = {
+    amount: 'closingAmount',
+    kindCode: 'advanceDoc',
+    customKindText: 'comment',
+    documentRef: 'advanceDoc',
+  };
+  const labelMap = {
+    amount: 'Сумма закрытия аванса',
+    kindCode: 'Документ аванса',
+    customKindText: 'Комментарий подпункта удержаний',
+    documentRef: 'Документ аванса',
+  };
+  const field = fieldMap[preferredField] || 'advanceDoc';
+  return {
+    path: `holdbacks.rows.${best.index}.${field}`,
+    label: labelMap[preferredField] || 'Подпункт удержаний',
+  };
+}
+
+function findPreviewSettlementSource(sheetIndex, previewContext, preferredField = 'amount') {
+  if (!previewContext) return null;
+  return findManualSettlementPreviewSource(sheetIndex, previewContext, preferredField)
+    || findAutoSettlementPreviewSource(sheetIndex, previewContext, preferredField);
+}
+
+function findHoldbackPreviewSourceByIdent(sheetIndex, ident, matchValue = '') {
+  const sheetId = app.state.ks2Sheets?.[sheetIndex]?.id || '';
+  const groups = buildHoldbackGroups(sheetId);
+  if (!groups.length) return null;
+
+  const sectionFieldMap = {
+    RET_SEC_NAME: { field: 'name', label: 'Наименование блока удержания', value: (group) => group.section.row.name },
+    RET32_RATE: { field: 'retentionRate', label: 'Процент гарантийного удержания', value: (group) => group.section.row.retentionRate },
+    RET32_BASE: { field: 'ks2Amount', label: 'Сумма КС-2 в удержании', value: (group) => group.section.row.ks2Amount },
+    RET32_SUM: { field: '__retentionAmount', label: 'Сумма гарантийного удержания', value: (group, computed) => computed.retentionAmount },
+    ADV31_IN_TOT: { field: '__advanceReceived', label: 'Получено аванса по блоку', value: (group, computed) => computed.advanceReceived },
+    ADV31_DOC_CNT: { field: '__docCount', label: 'Количество подпунктов аванса', value: (group) => group.subitems.length ? `${group.subitems.length} подп.` : '—' },
+    ADV31_PREV_TOT: { field: '__previousBalance', label: 'Остаток прошлого периода', value: (group, computed) => computed.previousBalance },
+    ADV31_TOTAL: { field: '__closingAmount', label: 'Закрыто сейчас', value: (group, computed) => computed.closingAmount },
+    ADV31_NEXT_TOT: { field: '__nextBalance', label: 'Остаток следующего периода', value: (group, computed) => computed.nextBalance },
+    RET_NOTE: { field: 'comment', label: 'Комментарий по удержанию', value: (group) => group.section.row.comment },
+  };
+
+  const subitemFieldMap = {
+    RET_DOC_REF: { field: 'advanceDoc', label: 'Документ аванса', value: (entry) => entry.row.advanceDoc },
+    ADV31_IN: { field: 'advanceReceived', label: 'Получено аванса', value: (entry) => entry.row.advanceReceived },
+    ADV31_PREV: { field: 'previousBalance', label: 'Остаток прошлого периода', value: (entry) => entry.row.previousBalance },
+    ADV31_CLOSE: { field: 'closingAmount', label: 'Закрыто сейчас', value: (entry) => entry.row.closingAmount },
+    ADV31_NEXT: { field: '__nextBalance', label: 'Остаток следующего периода', value: (entry) => computeHoldbackRow(entry.row).nextBalance },
+    RET_NOTE: { field: 'comment', label: 'Комментарий подпункта удержаний', value: (entry) => entry.row.comment },
+  };
+
+  let best = null;
+
+  const sectionEntry = sectionFieldMap[ident];
+  if (sectionEntry) {
+    groups.forEach((group) => {
+      const actual = sectionEntry.value(group, computeHoldbackSectionComputed(group));
+      let score = hasContentValue(actual) ? 10 : 0;
+      if (matchValue && (numericValuesMatch(actual, matchValue) || comparableValuesMatch(actual, matchValue))) score += 120;
+      if (!best || score > best.score) {
+        best = {
+          path: `holdbacks.rows.${group.section.index}.${sectionEntry.field}`,
+          label: sectionEntry.label,
+          score,
+        };
+      }
+    });
+  }
+
+  const subitemEntry = subitemFieldMap[ident];
+  if (subitemEntry) {
+    groups.forEach((group) => {
+      group.subitems.forEach((entry) => {
+        const actual = subitemEntry.value(entry);
+        let score = hasContentValue(actual) ? 10 : 0;
+        if (matchValue && (numericValuesMatch(actual, matchValue) || comparableValuesMatch(actual, matchValue))) score += 120;
+        if (!best || score > best.score) {
+          best = {
+            path: `holdbacks.rows.${entry.index}.${subitemEntry.field}`,
+            label: subitemEntry.label,
+            score,
+          };
+        }
+      });
+    });
+  }
+
+  return best && best.score >= 0 ? { path: best.path, label: best.label } : null;
+}
+
+function resolveXmlPreviewLineSource(line, meta, scope = 'p', sheetIndex = 0, lineIndex = 0, lines = [], contexts = []) {
+  const trimmed = String(line || '').trim();
+  if (!trimmed || trimmed.startsWith('<?xml') || trimmed.startsWith('</')) return null;
+  const tag = extractXmlPreviewTag(trimmed);
+  if (!tag) return null;
+  const attrs = parseXmlPreviewAttrs(trimmed);
+  const value = extractXmlPreviewInnerText(trimmed);
+  const parents = contexts[lineIndex]?.parents || [];
+  const settlementContext = tag === 'УчетТребУдерж'
+    || tag === 'ВидТреб'
+    || tag === 'ВидУдерж'
+    || tag === 'ИнВидТреб'
+    || tag === 'ИнВидУдерж'
+    || tag === 'ДокПодтСумУд'
+    || parents.includes('УчетТребУдерж')
+    ? resolveSettlementPreviewContext(lines, contexts, lineIndex)
+    : null;
+  const subjectName = attrs.НаимЭконСубСост || attrs.НаимЭкСубСост || '';
+
+  switch (tag) {
+    case 'Файл':
+      return chooseXmlPreviewSource([
+        { path: 'xmlP.generated.fileId', label: 'Идентификатор файла', matchValue: attrs.ИдФайл, priority: 20 },
+        { path: 'xmlP.generated.formatVersion', label: 'Версия формата', matchValue: attrs.ВерсФорм },
+      ]);
+    case 'Документ':
+      return scope === 'z'
+        ? chooseXmlPreviewSource([
+          { path: 'xmlZ.manual.customerEconomicSubjectName', label: 'Составитель файла Z', matchValue: subjectName, priority: 20 },
+          { path: 'documentContext.techCustomerName', label: 'Технический заказчик', matchValue: subjectName },
+          { path: 'documentContext.developerName', label: 'Заказчик / застройщик', matchValue: subjectName },
+        ])
+        : chooseXmlPreviewSource([
+          { path: 'xmlP.manual.economicSubjectName', label: 'Наименование экономического субъекта-составителя', matchValue: subjectName, priority: 20 },
+          { path: 'documentContext.contractorName', label: 'Подрядчик', matchValue: subjectName },
+        ]);
+    case 'ОснДовОргСост':
+    case 'ОснДоверОргСост':
+      return scope === 'z'
+        ? chooseXmlPreviewSource([
+          { path: 'xmlZ.manual.customerAuthorityDocName', label: 'Основание подписания заказчика', priority: 20 },
+          { path: 'xmlZ.manual.customerAuthorityDocNumber', label: 'Номер основания заказчика' },
+        ])
+        : chooseXmlPreviewSource([
+          { path: 'xmlP.manual.contractorInn', label: 'ИНН подрядчика', priority: 20 },
+          { path: 'xmlP.manual.economicSubjectName', label: 'Составитель XML' },
+        ]);
+    case 'ИдРекСост':
+      return chooseXmlPreviewSource([
+        { path: 'xmlP.manual.contractorInn', label: 'ИНН подрядчика', priority: 20 },
+      ]);
+    case 'ИННЮЛ':
+      return chooseXmlPreviewSource([
+        { path: 'xmlP.manual.contractorInn', label: 'ИНН подрядчика', matchValue: value, priority: parents.includes('СвПодр') || parents.includes('ОснДовОргСост') || parents.includes('ОснДоверОргСост') ? 30 : 0 },
+        { path: 'xmlP.manual.customerInn', label: 'ИНН заказчика', matchValue: value, priority: parents.includes('СвЗак') ? 30 : 0 },
+      ]);
+    case 'СвАктСдПр':
+      return chooseXmlPreviewSource([
+        { path: `ks2Sheets.${sheetIndex}.documentNumber`, label: 'Номер документа', matchValue: attrs.НомерДок, priority: 20 },
+        { path: `ks2Sheets.${sheetIndex}.documentDate`, label: 'Дата документа', matchValue: attrs.ДатаДок },
+        { path: 'documentContext.objectName', label: 'Наименование объекта', matchValue: attrs.НаимОб },
+      ]);
+    case 'ТипИдДок':
+      if (parents[parents.length - 1] === 'ДокПодтСумУд') {
+        return findPreviewSettlementSource(sheetIndex, settlementContext, 'documentRef');
+      }
+      return chooseXmlPreviewSource([
+        { path: `ks2Sheets.${sheetIndex}.basis`, label: 'Основание акта', matchValue: attrs.НаимДок, priority: parents.includes('ОснСдачи') ? 30 : 0 },
+        { path: 'documentContext.contractNumber', label: 'Номер договора', matchValue: attrs.НомерДок, priority: parents.includes('ИдДог') ? 30 : 0 },
+        { path: 'documentContext.contractDate', label: 'Дата договора', matchValue: attrs.ДатаДок, priority: parents.includes('ИдДог') ? 30 : 0 },
+        { path: 'xmlP.manual.supplementDocType', label: 'Тип допсоглашения', matchValue: attrs.НаимДок, priority: parents.includes('ИдДопСогл') ? 30 : 0 },
+        { path: 'xmlP.manual.supplementDocNumber', label: 'Номер допсоглашения', matchValue: attrs.НомерДок, priority: parents.includes('ИдДопСогл') ? 30 : 0 },
+        { path: 'xmlP.manual.supplementDocDate', label: 'Дата допсоглашения', matchValue: attrs.ДатаДок, priority: parents.includes('ИдДопСогл') ? 30 : 0 },
+        { path: 'xmlZ.manual.customerAuthorityDocName', label: 'Основание подписания заказчика', matchValue: attrs.НаимДок, priority: parents.includes('ДокОснПолнПодпис') ? 30 : 0 },
+        { path: 'xmlZ.manual.customerAuthorityDocNumber', label: 'Номер основания заказчика', matchValue: attrs.НомерДок, priority: parents.includes('ДокОснПолнПодпис') ? 30 : 0 },
+        { path: 'xmlZ.manual.customerAuthorityDocDate', label: 'Дата основания заказчика', matchValue: attrs.ДатаДок, priority: parents.includes('ДокОснПолнПодпис') ? 30 : 0 },
+      ]);
+    case 'СвПодр':
+      return chooseXmlPreviewSource([
+        { path: 'documentContext.contractorName', label: 'Подрядчик', priority: 20 },
+      ]);
+    case 'СвЗак':
+      return chooseXmlPreviewSource([
+        { path: 'documentContext.techCustomerName', label: 'Технический заказчик', priority: 20 },
+        { path: 'documentContext.developerName', label: 'Заказчик / застройщик' },
+      ]);
+    case 'СвЮЛУч':
+      return chooseXmlPreviewSource([
+        { path: 'documentContext.contractorName', label: 'Подрядчик', matchValue: attrs.НаимОрг, priority: parents.includes('СвПодр') ? 30 : 0 },
+        { path: 'documentContext.techCustomerName', label: 'Технический заказчик', matchValue: attrs.НаимОрг, priority: parents.includes('СвЗак') ? 30 : 0 },
+        { path: 'documentContext.developerName', label: 'Заказчик / застройщик', matchValue: attrs.НаимОрг },
+      ]);
+    case 'ОсновСтроит':
+      return chooseXmlPreviewSource([
+        { path: 'xmlP.constants.isGovMunicipal', label: 'Строительство для гос/мун нужд', matchValue: attrs.ПрГосМун, priority: 20 },
+      ]);
+    case 'МестВыпРаб':
+      return chooseXmlPreviewSource([
+        { path: 'documentContext.constructionObject', label: 'Стройка / адрес / описание объекта', priority: 20 },
+      ]);
+    case 'АдрРФ':
+      return chooseXmlPreviewSource([
+        { path: 'xmlP.manual.developerPostalIndex', label: 'Индекс адреса работ', matchValue: attrs.Индекс, priority: parents.includes('МестВыпРаб') ? 30 : 0 },
+        { path: 'xmlP.manual.developerRegionCode', label: 'Код региона адреса работ', matchValue: attrs.КодРегион, priority: parents.includes('МестВыпРаб') ? 30 : 0 },
+        { path: 'xmlP.manual.contractorPostalIndex', label: 'Индекс подрядчика', matchValue: attrs.Индекс, priority: parents.includes('СвПодр') ? 30 : 0 },
+        { path: 'xmlP.manual.contractorRegionCode', label: 'Код региона подрядчика', matchValue: attrs.КодРегион, priority: parents.includes('СвПодр') ? 30 : 0 },
+      ]);
+    case 'ИзмСмет':
+      return chooseXmlPreviewSource([
+        { path: 'xmlP.manual.estimateVersionCode', label: 'Версия сметы', matchValue: attrs.КодСмет, priority: 20 },
+        { path: 'xmlP.manual.hasEstimateChange', label: 'Изменение сметы' },
+      ]);
+    case 'ИдДопСогл':
+      return chooseXmlPreviewSource([
+        { path: 'xmlP.manual.supplementDocNumber', label: 'Номер допсоглашения', priority: 20 },
+        { path: 'xmlP.manual.supplementDocType', label: 'Тип допсоглашения' },
+      ]);
+    case 'ДенИзм':
+      return chooseXmlPreviewSource([
+        { path: 'documentContext.currencyCode', label: 'Валюта (код)', matchValue: attrs.КодОКВ, priority: 20 },
+        { path: 'documentContext.currencyName', label: 'Валюта (наименование)', matchValue: attrs.НаимОКВ },
+      ]);
+    case 'ИнфПолФХЖ1':
+      return chooseXmlPreviewSource([
+        { path: 'xmlP.manual.customInfoValue', label: 'ИнфПолФХЖ1 / customField', priority: 20 },
+      ]);
+    case 'ТекстИнф': {
+      const ident = String(attrs.Идентиф || '').trim();
+      const infoValue = attrs.Значение || value;
+      if (/^(ADV|RET)/.test(ident)) {
+        return findHoldbackPreviewSourceByIdent(sheetIndex, ident, infoValue);
+      }
+      return chooseXmlPreviewSource([
+        { path: 'xmlP.manual.customInfoValue', label: 'ИнфПолФХЖ1 / customField', matchValue: infoValue, priority: ident === 'customField' ? 40 : 0 },
+      ]);
+    }
+    case 'Раздел':
+    case 'ВидРаб':
+    case 'СвВидРаб':
+      return findKs2RowSourceByXmlLine(sheetIndex, tag, attrs);
+    case 'СвПродПер':
+      return chooseXmlPreviewSource([
+        { path: 'documentContext.operationType', label: 'Вид операции', priority: 20 },
+      ]);
+    case 'СвПер':
+      return chooseXmlPreviewSource([
+        { path: `ks2Sheets.${sheetIndex}.periodFrom`, label: 'Период с', matchValue: attrs.НачПерВДок, priority: 20 },
+        { path: `ks2Sheets.${sheetIndex}.periodTo`, label: 'Период по', matchValue: attrs.ОконПерВДок },
+        { path: 'documentContext.operationType', label: 'Вид операции', matchValue: attrs.СодОпер },
+      ]);
+    case 'СвОРасч':
+      return findHoldbackPreviewSourceByIdent(sheetIndex, 'RET32_SUM', attrs.СумУдержВсегоОтч)
+        || findPreviewSettlementSource(sheetIndex, { kind: 'claim', amount: attrs.СумТребВсегоОтч }, 'amount');
+    case 'УчетТребУдерж':
+      return findPreviewSettlementSource(sheetIndex, settlementContext, 'amount');
+    case 'ВидУдерж':
+    case 'ВидТреб':
+      return findPreviewSettlementSource(sheetIndex, settlementContext, 'kindCode');
+    case 'ИнВидУдерж':
+    case 'ИнВидТреб':
+      return findPreviewSettlementSource(sheetIndex, settlementContext, 'customKindText');
+    case 'ДокПодтСумУд':
+      return findPreviewSettlementSource(sheetIndex, settlementContext, 'documentRef');
+    case 'ВсегоАктОтч':
+    case 'ВсегоАктСНач':
+    case 'СумНалВсего':
+    case 'СумПоСтавке':
+      return chooseXmlPreviewSource([
+        { path: `ks2Sheets.${sheetIndex}.vatRate`, label: 'Ставка НДС', priority: 20 },
+      ]);
+    case 'НастрФормДок':
+      return chooseXmlPreviewSource([
+        { path: 'xmlP.constants.requiresSettlementApproval', label: 'Сведения о расчётах для согласования', matchValue: attrs.ПрСведРасчСогл, priority: 20 },
+        { path: 'xmlP.constants.vatCalcInTotalOnly', label: 'Режим НДС', matchValue: attrs.ПрНДСВИтог },
+        { path: 'xmlP.constants.priceIndexYear', label: 'Год индекса цен', matchValue: attrs.ПрИндЦен },
+      ]);
+    case 'ПодписантПодр':
+      return chooseXmlPreviewSource([
+        { path: 'xmlP.manual.signerName', label: 'Подписант XML — ФИО', priority: 20 },
+        { path: 'documentContext.contractorSignerName', label: 'Подрядчик: ФИО' },
+      ]);
+    case 'ПодписантЗак':
+      return chooseXmlPreviewSource([
+        { path: 'documentContext.customerSignerName', label: 'Заказчик: ФИО', priority: 20 },
+        { path: 'xmlZ.manual.customerSignerPaperPowerFio', label: 'ФИО по бумажной доверенности' },
+      ]);
+    case 'Подписант':
+      return scope === 'z'
+        ? chooseXmlPreviewSource([
+          { path: 'documentContext.customerSignerPosition', label: 'Заказчик: должность', matchValue: attrs.Должн, priority: 20 },
+          { path: 'xmlZ.manual.customerSignerStatus', label: 'Статус подписанта Z', matchValue: attrs.СтатПодп },
+          { path: 'xmlZ.manual.customerSignatureType', label: 'Тип подписи Z', matchValue: attrs.ТипПодпис },
+        ])
+        : chooseXmlPreviewSource([
+          { path: 'xmlP.manual.signerPosition', label: 'Подписант XML — должность', matchValue: attrs.Должн, priority: 20 },
+          { path: 'xmlP.manual.signerStatus', label: 'Подписант XML — статус', matchValue: attrs.СтатПодп },
+          { path: 'xmlP.manual.signatureType', label: 'Подписант XML — тип подписи', matchValue: attrs.ТипПодпис },
+        ]);
+    case 'ФИО':
+      return scope === 'z'
+        ? chooseXmlPreviewSource([
+          { path: 'xmlZ.manual.customerSignerPaperPowerFio', label: 'ФИО по бумажной доверенности', matchValue: value, priority: 20 },
+          { path: 'documentContext.customerSignerName', label: 'Заказчик: ФИО', matchValue: value },
+        ])
+        : chooseXmlPreviewSource([
+          { path: 'xmlP.manual.signerName', label: 'Подписант XML — ФИО', matchValue: value, priority: 20 },
+          { path: 'documentContext.contractorSignerName', label: 'Подрядчик: ФИО', matchValue: value },
+        ]);
+    case 'ИдИнфПодр':
+      return chooseXmlPreviewSource([
+        { path: 'xmlP.generated.fileId', label: 'Идентификатор файла P', matchValue: attrs.ИдФайлИнфПодр, priority: 20 },
+      ]);
+    case 'ЭП':
+      return scope === 'z'
+        ? chooseXmlPreviewSource([
+          { path: 'xmlZ.manual.customerSignatureStorageId', label: 'Идентификатор хранения подписи Z', priority: 20 },
+        ])
+        : chooseXmlPreviewSource([
+          { path: 'xmlP.manual.signatureType', label: 'Подписант XML — тип подписи', priority: 20 },
+        ]);
+    case 'СодФХЖ4':
+      return chooseXmlPreviewSource([
+        { path: `ks2Sheets.${sheetIndex}.documentNumber`, label: 'Номер документа', matchValue: attrs.НомПостДок, priority: 20 },
+        { path: `ks2Sheets.${sheetIndex}.documentDate`, label: 'Дата документа', matchValue: attrs.ДатаПостДок },
+        { path: 'documentContext.operationType', label: 'Вид операции', matchValue: attrs.ВидОпер },
+      ]);
+    case 'СвПрием':
+      return chooseXmlPreviewSource([
+        { path: 'xmlZ.manual.customerAcceptanceCode', label: 'Приемка работ в Z', matchValue: attrs.КодСодОпер, priority: 20 },
+      ]);
+    case 'ДатаПрин':
+      return chooseXmlPreviewSource([
+        { path: 'xmlZ.manual.customerAcceptanceDate', label: 'Дата приемки / отказа Z', matchValue: value, priority: 20 },
+      ]);
+    default:
+      return null;
+  }
+}
+
 function renderXmlPreviewLegend() {
   const items = [
     { kind: 'sheet', label: 'шапка и реквизиты' },
@@ -2125,22 +2639,29 @@ function renderXmlPreviewCode(xmlText = '', scope = 'p', sheetIndex = 0, emptyMe
     return `<div class="xml-preview-status">${escapeHtml(emptyMessage)}</div>`;
   }
   const lines = formatted.split('\n');
+  const contexts = buildXmlPreviewContexts(lines);
   return `
     <div class="xml-preview-code annotated" data-scope="${escapeAttr(scope)}" data-sheet-index="${escapeAttr(String(sheetIndex))}">
       ${lines.map((line, index) => {
-        const meta = buildXmlPreviewLineMeta(line, scope, sheetIndex);
+        const baseMeta = buildXmlPreviewLineMeta(line, scope, sheetIndex);
+        const source = baseMeta ? resolveXmlPreviewLineSource(line, baseMeta, scope, sheetIndex, index, lines, contexts) : null;
+        const meta = source ? { ...baseMeta, source } : baseMeta;
         const rowClass = meta ? `has-note is-${meta.kind}` : 'no-note';
-        const lineClass = meta ? `xml-line-${meta.kind}` : '';
+        const lineClass = `${meta ? `xml-line-${meta.kind}` : ''}${meta?.source ? ' is-clickable' : ''}`.trim();
+        const jumpAttrs = meta?.source
+          ? ` data-action="jump-to-source-field" data-source-path="${escapeAttr(meta.source.path)}" title="Перейти к полю: ${escapeAttr(meta.source.label || 'источник')}"`
+          : '';
         return `
           <div class="xml-preview-code-row ${rowClass}">
-            <div class="xml-line ${lineClass}">
+            <div class="xml-line ${lineClass}"${jumpAttrs}>
               <span class="xml-line-no">${index + 1}</span>
               <span class="xml-line-text">${escapeHtml(line)}</span>
             </div>
             ${meta ? `
-              <div class="xml-line-note">
+              <div class="xml-line-note${meta.source ? ' is-clickable' : ''}"${jumpAttrs}>
                 <strong class="xml-line-note-title">${escapeHtml(meta.title)}</strong>
                 <span>${escapeHtml(meta.note)}</span>
+                ${meta.source ? `<span class="xml-line-jump-hint">↗ ${escapeHtml(meta.source.label || 'Перейти к полю')}</span>` : ''}
               </div>
             ` : ''}
           </div>
@@ -3806,7 +4327,7 @@ function renderFieldLabel(label, path) {
 
 function renderTableWrapper(path, innerHtml, extraClass = '') {
   const binding = resolveXmlBinding(path);
-  return `<div class="xml-cell-wrap ${extraClass} is-${binding.status}" title="${escapeAttr(binding.title)}">${innerHtml}${renderXmlIndicator(path, true)}</div>`;
+  return `<div class="xml-cell-wrap ${extraClass} is-${binding.status}" title="${escapeAttr(binding.title)}"${buildFieldPathAttr(path)}>${innerHtml}${renderXmlIndicator(path, true)}</div>`;
 }
 
 function renderTableInput(path, value, valueType = 'string', placeholder = '') {
@@ -3827,7 +4348,7 @@ function renderTableComputed(path, html, extraClass = '') {
 
 function renderInput(label, path, value, valueType = 'string', size = '') {
   return `
-    <div class="field ${size}">
+    <div class="field ${size}"${buildFieldPathAttr(path)}>
       ${renderFieldLabel(label, path)}
       <input data-path="${path}" data-value-type="${valueType}" value="${escapeAttr(value ?? '')}" />
     </div>
@@ -3836,7 +4357,7 @@ function renderInput(label, path, value, valueType = 'string', size = '') {
 
 function renderTextarea(label, path, value, size = 'half') {
   return `
-    <div class="field ${size}">
+    <div class="field ${size}"${buildFieldPathAttr(path)}>
       ${renderFieldLabel(label, path)}
       <textarea data-path="${path}">${escapeHtml(value ?? '')}</textarea>
     </div>
@@ -3845,7 +4366,7 @@ function renderTextarea(label, path, value, size = 'half') {
 
 function renderReadonly(label, value, size = '', path = '') {
   return `
-    <div class="field ${size}">
+    <div class="field ${size}"${buildFieldPathAttr(path)}>
       ${renderFieldLabel(label, path)}
       <div class="readonly">${escapeHtml(String(value ?? ''))}</div>
     </div>
@@ -3902,6 +4423,179 @@ function coerceValue(value, type) {
     return Boolean(value);
   }
   return value;
+}
+
+function getByPath(target, path) {
+  if (!target || !path) return undefined;
+  const parts = String(path).split('.');
+  let cursor = target;
+  for (const part of parts) {
+    if (cursor == null) return undefined;
+    cursor = cursor[isIndex(part) ? Number(part) : part];
+  }
+  return cursor;
+}
+
+function hasContentValue(value) {
+  if (value == null) return false;
+  if (typeof value === 'number') return Number.isFinite(value);
+  return String(value).trim() !== '';
+}
+
+function parseComparableNumber(value) {
+  if (value == null || value === '') return null;
+  const numeric = Number(String(value).replace(/\s+/g, '').replace(',', '.'));
+  return Number.isFinite(numeric) ? round2(numeric) : null;
+}
+
+function normalizeComparableDateToken(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) return `${isoMatch[1]}${isoMatch[2]}${isoMatch[3]}`;
+  const dotMatch = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  if (dotMatch) return `${dotMatch[3]}${dotMatch[2]}${dotMatch[1]}`;
+  return '';
+}
+
+function comparableTokens(value) {
+  const normalized = String(value ?? '')
+    .toLowerCase()
+    .replaceAll('ё', 'е')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const compact = normalized.replace(/[^a-zа-я0-9]/g, '');
+  const dateToken = normalizeComparableDateToken(normalized);
+  return [normalized, compact, dateToken].filter(Boolean);
+}
+
+function comparableValuesMatch(left, right) {
+  if (!hasContentValue(left) || !hasContentValue(right)) return false;
+  const leftTokens = new Set(comparableTokens(left));
+  return comparableTokens(right).some((token) => leftTokens.has(token));
+}
+
+function numericValuesMatch(left, right) {
+  const a = parseComparableNumber(left);
+  const b = parseComparableNumber(right);
+  return a != null && b != null && Math.abs(a - b) < 0.01;
+}
+
+function chooseXmlPreviewSource(candidates = []) {
+  let best = null;
+  candidates.forEach((rawCandidate, index) => {
+    if (!rawCandidate) return;
+    const candidate = typeof rawCandidate === 'string'
+      ? { path: rawCandidate, label: '' }
+      : rawCandidate;
+    if (!candidate.path) return;
+    const actual = getByPath(app.state, candidate.path);
+    let score = candidate.priority || 0;
+    if (hasContentValue(actual)) score += 10;
+    if (candidate.matchValue != null && candidate.matchValue !== '') {
+      if (numericValuesMatch(actual, candidate.matchValue) || comparableValuesMatch(actual, candidate.matchValue)) score += 120;
+      else score -= 3;
+    }
+    if (candidate.requireValue && !hasContentValue(actual)) score -= 50;
+    if (!best || score > best.score || (score === best.score && index < best.index)) {
+      best = { candidate, score, index };
+    }
+  });
+  if (!best || best.score < 0) return null;
+  return {
+    path: best.candidate.path,
+    label: best.candidate.label || 'Исходное поле',
+  };
+}
+
+function buildFieldPathAttr(path = '') {
+  return path ? ` data-field-path="${escapeAttr(path)}"` : '';
+}
+
+function cssEscape(value) {
+  return window.CSS?.escape ? window.CSS.escape(value) : String(value).replace(/["\\]/g, '\\$&');
+}
+
+function findFieldElementByPath(path) {
+  if (!path) return null;
+  const selector = `[data-path="${cssEscape(path)}"], [data-field-path="${cssEscape(path)}"]`;
+  return refs.content?.querySelector(selector) || null;
+}
+
+function resolveFieldJumpNavigation(path) {
+  if (!path) return { pane: app.state.ui.activePane || 'requisites' };
+  const ks2Match = path.match(/^ks2Sheets\.(\d+)\./);
+  if (ks2Match) {
+    return { pane: `ks2:${Number(ks2Match[1])}`, ks2ViewMode: 'form' };
+  }
+  if (path.startsWith('documentContext.') || path.startsWith('holdbacks.')) {
+    return { pane: 'requisites' };
+  }
+  if (path.startsWith('xmlP.') || path.startsWith('xmlZ.') || path.startsWith('xmlExtras.')) {
+    return { pane: 'xml' };
+  }
+  return { pane: app.state.ui.activePane || 'requisites' };
+}
+
+function highlightJumpTarget(node) {
+  const target = node?.closest?.('[data-field-path]') || node?.closest?.('.xml-cell-wrap') || node?.closest?.('.field') || node;
+  if (!target) return;
+  if (activeFieldJumpTarget && activeFieldJumpTarget !== target) {
+    activeFieldJumpTarget.classList.remove('is-jump-target');
+  }
+  clearTimeout(activeFieldJumpTimer);
+  activeFieldJumpTarget = target;
+  target.classList.add('is-jump-target');
+  activeFieldJumpTimer = setTimeout(() => {
+    target.classList.remove('is-jump-target');
+    if (activeFieldJumpTarget === target) activeFieldJumpTarget = null;
+  }, 2200);
+}
+
+function openAncestorDetails(node) {
+  let current = node;
+  while (current) {
+    if (current.tagName === 'DETAILS') current.open = true;
+    current = current.parentElement;
+  }
+}
+
+function focusFieldElement(node) {
+  if (!node) return;
+  const focusTarget = node.matches?.('input, textarea, select, button, [tabindex]')
+    ? node
+    : node.querySelector?.('input, textarea, select, button, [tabindex]');
+  focusTarget?.focus?.({ preventScroll: true });
+}
+
+function jumpToSourceField(path) {
+  if (!path) return;
+  const navigation = resolveFieldJumpNavigation(path);
+  app.state.ui.activePane = navigation.pane;
+  if (navigation.ks2ViewMode) {
+    const match = navigation.pane.match(/^ks2:(\d+)$/);
+    if (match) app.state.ui.ks2ViewMode[Number(match[1])] = navigation.ks2ViewMode;
+  }
+  pendingFieldJump = { path };
+  render();
+}
+
+function performPendingFieldJump() {
+  if (!pendingFieldJump?.path) return;
+  const request = pendingFieldJump;
+  pendingFieldJump = null;
+  window.requestAnimationFrame(() => {
+    const node = findFieldElementByPath(request.path);
+    if (!node) {
+      flash('Не нашёл исходное поле для этой XML-строки.');
+      return;
+    }
+    openAncestorDetails(node);
+    const target = node.closest?.('[data-field-path]') || node.closest?.('.xml-cell-wrap') || node.closest?.('.field') || node;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    highlightJumpTarget(target);
+    focusFieldElement(node);
+  });
 }
 
 function inferCategory(name, note) {
