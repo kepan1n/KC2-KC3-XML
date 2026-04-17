@@ -430,13 +430,6 @@ function handleContentClick(event) {
     return;
   }
 
-  if (action === 'toggle-sheet-add-menu') {
-    const idx = Number(sheetIndex);
-    app.state.ui.sheetAddMenu = app.state.ui.sheetAddMenu === idx ? null : idx;
-    render();
-    return;
-  }
-
   if (action === 'open-pane') {
     app.state.ui.activePane = String(actionButton.dataset.targetPane || 'requisites');
     render();
@@ -1007,7 +1000,6 @@ function prepareState(raw) {
   data.ui.rowDeleteConfirm ??= null;
   data.ui.ks3RowActionMenu ??= null;
   data.ui.ks3RowDeleteConfirm ??= null;
-  data.ui.sheetAddMenu ??= null;
   data.ui.holdbackActionMenu ??= null;
   data.ui.holdbackDeleteConfirm ??= null;
   data.ui.settlementAddMenu ??= false;
@@ -1210,7 +1202,6 @@ function hasTransientRowUi() {
     || app.state.ui.rowDeleteConfirm
     || app.state.ui.ks3RowActionMenu != null
     || app.state.ui.ks3RowDeleteConfirm != null
-    || app.state.ui.sheetAddMenu != null
     || app.state.ui.holdbackActionMenu != null
     || app.state.ui.holdbackDeleteConfirm != null
     || app.state.ui.settlementAddMenu
@@ -1223,7 +1214,6 @@ function clearTransientRowUi() {
   app.state.ui.rowDeleteConfirm = null;
   app.state.ui.ks3RowActionMenu = null;
   app.state.ui.ks3RowDeleteConfirm = null;
-  app.state.ui.sheetAddMenu = null;
   app.state.ui.holdbackActionMenu = null;
   app.state.ui.holdbackDeleteConfirm = null;
   app.state.ui.settlementAddMenu = false;
@@ -3131,9 +3121,6 @@ function renderKs2FormPane(sheetIndex, sheet) {
   const totals = computeSheetTotals(sheet);
   const rowsHtml = sheet.rows.map((row, rowIndex) => {
     const amount = row.type === 'item' ? computeRowDisplayAmount(row) : null;
-    const isDeletePending = app.state.ui.rowDeleteConfirm
-      && app.state.ui.rowDeleteConfirm.sheetIndex === sheetIndex
-      && app.state.ui.rowDeleteConfirm.rowIndex === rowIndex;
 
     return `
       <tr class="${row.type === 'section' ? 'section-row' : row.type === 'note' ? 'note-row' : ''}">
@@ -3156,11 +3143,7 @@ function renderKs2FormPane(sheetIndex, sheet) {
           material: 'Материал',
         })}</td>
         <td>${renderTableTextarea(`ks2Sheets.${sheetIndex}.rows.${rowIndex}.note`, row.note)}</td>
-        <td class="actions-cell">
-          ${isDeletePending
-            ? `<div class="row-action-stack"><button class="mini danger" data-action="confirm-delete-row" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">Удалить</button><button class="mini ghost" data-action="cancel-delete-row" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">Отмена</button></div>`
-            : `<button class="mini danger" data-action="prompt-delete-row" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">Удалить</button>`}
-        </td>
+        <td class="actions-cell">${renderKs2RowActions(sheetIndex, rowIndex)}</td>
       </tr>
     `;
   }).join('');
@@ -3219,14 +3202,10 @@ function renderKs2FormPane(sheetIndex, sheet) {
                 <th></th>
               </tr>
             </thead>
-            <tbody>${rowsHtml}</tbody>
+            <tbody>${rowsHtml || renderKs2EmptyRow(sheetIndex)}</tbody>
           </table>
         </div>
-        <div class="inline-actions">
-          ${renderKs2SheetAddMenu(sheetIndex)}
-          <button class="mini secondary" data-action="add-section-row" data-sheet-index="${sheetIndex}">+ Раздел</button>
-          <button class="mini secondary" data-action="add-note-row" data-sheet-index="${sheetIndex}">+ Примечание</button>
-        </div>
+        <p class="kbd-note">Добавление строк теперь открывается через кнопку <strong>+</strong> у нужной строки, рядом с удалением, как во вкладке удержаний.</p>
       </div>
     </div>
   `;
@@ -4546,17 +4525,61 @@ function renderReadonly(label, value, size = '', path = '') {
   `;
 }
 
-function renderKs2SheetAddMenu(sheetIndex) {
-  const menuOpen = app.state.ui.sheetAddMenu === sheetIndex;
+function isSameRowCoords(value, sheetIndex, rowIndex) {
+  return Boolean(value && value.sheetIndex === sheetIndex && value.rowIndex === rowIndex);
+}
+
+function renderKs2RowMenuItems(sheetIndex, rowIndex) {
   return `
-    <div class="row-action-stack inline-add-stack">
-      <button class="mini" data-action="toggle-sheet-add-menu" data-sheet-index="${sheetIndex}">+ Добавить позицию</button>
+    <button class="row-action-menu-item" data-action="insert-row-after" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}" data-row-kind="section">+ Раздел</button>
+    <button class="row-action-menu-item" data-action="insert-row-after" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}" data-row-kind="note">+ Примечание</button>
+    ${renderExpenseTypeMenuItems(sheetIndex, rowIndex)}
+  `;
+}
+
+function renderKs2RowActions(sheetIndex, rowIndex) {
+  const menuOpen = isSameRowCoords(app.state.ui.rowActionMenu, sheetIndex, rowIndex);
+  const confirmDelete = isSameRowCoords(app.state.ui.rowDeleteConfirm, sheetIndex, rowIndex);
+  return `
+    <div class="row-action-stack">
+      <button class="stack-button add" title="Добавить строку" aria-label="Добавить строку" data-action="toggle-row-menu" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">+</button>
+      <button class="stack-button danger" title="Удалить строку" aria-label="Удалить строку" data-action="prompt-delete-row" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">×</button>
       ${menuOpen ? `
         <div class="row-action-menu row-action-menu-wide">
-          ${renderExpenseTypeMenuItems(sheetIndex)}
+          ${renderKs2RowMenuItems(sheetIndex, rowIndex)}
+        </div>
+      ` : ''}
+      ${confirmDelete ? `
+        <div class="row-action-confirm">
+          <div class="row-action-confirm-label">Удалить строку?</div>
+          <div class="row-action-confirm-buttons">
+            <button class="row-action-confirm-btn confirm" data-action="confirm-delete-row" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">✓</button>
+            <button class="row-action-confirm-btn cancel" data-action="cancel-delete-row" data-sheet-index="${sheetIndex}" data-row-index="${rowIndex}">×</button>
+          </div>
         </div>
       ` : ''}
     </div>
+  `;
+}
+
+function renderKs2EmptyRow(sheetIndex) {
+  const menuOpen = isSameRowCoords(app.state.ui.rowActionMenu, sheetIndex, -1);
+  return `
+    <tr class="empty-table-row">
+      <td colspan="13">
+        <div class="inline-actions">
+          <span class="kbd-note">Лист пока пустой. Добавь первую строку через это меню.</span>
+          <div class="row-action-stack inline-add-stack">
+            <button class="stack-button add" title="Добавить строку" aria-label="Добавить строку" data-action="toggle-row-menu" data-sheet-index="${sheetIndex}" data-row-index="-1">+</button>
+            ${menuOpen ? `
+              <div class="row-action-menu row-action-menu-wide">
+                ${renderKs2RowMenuItems(sheetIndex, -1)}
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      </td>
+    </tr>
   `;
 }
 

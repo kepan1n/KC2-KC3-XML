@@ -110,6 +110,8 @@ def main():
     require_contains(app_js, 'Подсказки справа коротко объясняют, зачем нужен узел XML', 'variants/modern-light/app.js')
     require_contains(app_js, 'function renderXmlPreviewLegend()', 'variants/modern-light/app.js')
     require_contains(app_js, 'function renderXmlPreviewCode(xmlText = \'\', scope = \'p\', sheetIndex = 0, emptyMessage = \'Preview ещё не собран.\')', 'variants/modern-light/app.js')
+    require_contains(app_js, 'function renderKs2RowActions(sheetIndex, rowIndex)', 'variants/modern-light/app.js')
+    require_contains(app_js, 'Добавление строк теперь открывается через кнопку <strong>+</strong> у нужной строки', 'variants/modern-light/app.js')
     require_contains(app_js, 'title: \'XSD-ready строка расчётов\'', 'variants/modern-light/app.js')
     require_absent(app_js, 'const documentContext = model.documentContext || model.common || {};', 'variants/modern-light/app.js')
     require_absent(app_js, 'const manualSettlementRows = model.xmlExtras?.settlementRows || model.xml?.settlement?.manualRows || [];', 'variants/modern-light/app.js')
@@ -125,6 +127,9 @@ def main():
     require_absent(app_js, 'const traceableGoods = model.xmlP?.traceableGoods || model.xmlExtras?.traceableGoods || model.xml?.traceableGoods || [];', 'variants/modern-light/app.js')
     require_absent(app_js, 'common: clone(app.state.documentContext),', 'variants/modern-light/app.js')
     require_absent(app_js, '    xml: {', 'variants/modern-light/app.js')
+    require_absent(app_js, 'renderKs2SheetAddMenu(sheetIndex)', 'variants/modern-light/app.js')
+    require_absent(app_js, 'button class="mini secondary" data-action="add-section-row"', 'variants/modern-light/app.js')
+    require_absent(app_js, 'button class="mini secondary" data-action="add-note-row"', 'variants/modern-light/app.js')
     require_absent(app_js, 'function buildXmlExportString(model)', 'variants/modern-light/app.js')
     require_absent(app_js, 'model.ks3.totals?.forPeriod', 'variants/modern-light/app.js')
 

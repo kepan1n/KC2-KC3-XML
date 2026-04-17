@@ -282,6 +282,12 @@ async function main() {
     await cdp.waitFor('document.getElementById("content")?.innerText?.includes("XML preview ·")', 'ks2 xml pane render');
     await cdp.click('[data-action="set-ks2-view-mode"][data-mode="form"]');
     await cdp.waitFor('document.getElementById("content")?.innerText?.includes("Название листа")', 'ks2 pane render');
+    await cdp.waitFor('!document.querySelector(`[data-action="add-section-row"], [data-action="add-note-row"], [data-action="toggle-sheet-add-menu"]`)', 'ks2 bottom add controls removed');
+    const beforeKs2Rows = await cdp.evaluate('document.querySelectorAll(`#content table tbody tr`).length');
+    await cdp.click('[data-action="toggle-row-menu"][data-sheet-index="0"][data-row-index="0"]');
+    await cdp.waitFor('Boolean(document.querySelector(`[data-action="insert-row-after"][data-sheet-index="0"][data-row-index="0"][data-row-kind="note"]`))', 'ks2 row add menu open');
+    await cdp.click('[data-action="insert-row-after"][data-sheet-index="0"][data-row-index="0"][data-row-kind="note"]');
+    await cdp.waitFor(`document.querySelectorAll('#content table tbody tr').length === ${Number(beforeKs2Rows) + 1}`, 'ks2 row inserted via per-row add menu');
 
     await cdp.click('[data-pane="holdbacks"]');
     await cdp.waitFor('document.getElementById("content")?.innerText?.includes("Удержания текущего листа КС-2")', 'holdbacks pane render');
