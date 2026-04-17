@@ -196,6 +196,7 @@ async function main() {
   const chromeBin = resolveChromeBinary();
   const serverPort = await getFreePort();
   const cdpPort = await getFreePort();
+  const targetUrl = `http://127.0.0.1:${serverPort}/variants/modern-light/`;
   const chromeProfileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kc2-browser-smoke-'));
   const serverLogs = [];
   const browserLogs = [];
@@ -231,7 +232,7 @@ async function main() {
     collectOutput(server.stdout, serverLogs);
     collectOutput(server.stderr, serverLogs);
 
-    await waitForFetch(`http://127.0.0.1:${serverPort}/variants/modern-light/`);
+    await waitForFetch(targetUrl);
 
     const browser = spawn(chromeBin, [
       '--headless=new',
@@ -254,7 +255,7 @@ async function main() {
     });
     assert.ok(versionInfo.webSocketDebuggerUrl, 'CDP websocket url must be available');
 
-    const pageInfoResponse = await fetch(`http://127.0.0.1:${cdpPort}/json/new?http://127.0.0.1:${serverPort}/variants/modern-light/`, {
+    const pageInfoResponse = await fetch(`http://127.0.0.1:${cdpPort}/json/new?${targetUrl}`, {
       method: 'PUT',
     });
     assert.equal(pageInfoResponse.ok, true, `Failed to create browser page: ${pageInfoResponse.status}`);
@@ -264,15 +265,22 @@ async function main() {
     const cdp = new CdpClient(pageInfo.webSocketDebuggerUrl);
     await cdp.open();
     await cdp.enable();
+    await cdp.send('Page.navigate', { url: targetUrl });
 
     await cdp.waitFor('document.readyState === "complete"', 'document ready');
     await cdp.waitFor('Array.from(document.querySelectorAll(".nav-chip")).map((node) => node.textContent.trim()).join("|").includes("Реквизиты|XML|КС-2")', 'top navigation chips');
     await cdp.waitFor('document.getElementById("content")?.innerText?.includes("Реквизиты single-sheet формы")', 'requisites pane render');
 
+    await cdp.click('[data-field-path="documentContext.contractNumber"] .xml-indicator');
+    await cdp.waitFor('document.getElementById("content")?.innerText?.includes("XML preview ·")', 'xml preview pane render via field jump', 20000);
+    await cdp.waitFor('Boolean(document.querySelector(`.xml-preview-code-row.is-jump-target .xml-line[data-source-path="documentContext.contractNumber"], .xml-preview-code-row.is-jump-target .xml-line-note[data-source-path="documentContext.contractNumber"]`))', 'contract number xml highlight', 20000);
+
     await cdp.click('[data-pane="xml"]');
     await cdp.waitFor('document.getElementById("content")?.innerText?.includes("XML-модель: P и Z")', 'xml pane render');
 
     await cdp.click('[data-pane="ks2:0"]');
+    await cdp.waitFor('document.getElementById("content")?.innerText?.includes("XML preview ·")', 'ks2 xml pane render');
+    await cdp.click('[data-action="set-ks2-view-mode"][data-mode="form"]');
     await cdp.waitFor('document.getElementById("content")?.innerText?.includes("Название листа")', 'ks2 pane render');
 
     const seriousExceptions = cdp.runtimeExceptions.filter(Boolean);

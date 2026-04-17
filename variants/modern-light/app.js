@@ -34,6 +34,9 @@ const app = {
 let pendingFieldJump = null;
 let activeFieldJumpTarget = null;
 let activeFieldJumpTimer = 0;
+let pendingXmlPreviewJump = null;
+let activeXmlPreviewJumpTarget = null;
+let activeXmlPreviewJumpTimer = 0;
 
 const EXPENSE_TYPE_OPTIONS = {
   '1': '1 — работа',
@@ -492,6 +495,11 @@ function handleContentClick(event) {
 
   if (action === 'jump-to-source-field') {
     jumpToSourceField(actionButton.dataset.sourcePath || '');
+    return;
+  }
+
+  if (action === 'jump-to-xml-preview') {
+    jumpToXmlPreview(actionButton.dataset.sourcePath || '');
     return;
   }
 
@@ -1150,6 +1158,7 @@ function render() {
   renderContent();
   applyColumnWidths();
   performPendingFieldJump();
+  performPendingXmlPreviewJump();
 }
 
 function applyUiPreferences() {
@@ -4380,7 +4389,12 @@ function resolveXmlBinding(path) {
 
 function renderXmlIndicator(path, compact = false) {
   const binding = resolveXmlBinding(path);
-  return `<span class="xml-indicator is-${binding.status} ${compact ? 'compact' : 'inline'}" title="${escapeAttr(binding.title)}" aria-label="${escapeAttr(binding.title)}"></span>`;
+  const isClickable = Boolean(path && binding.included);
+  const title = isClickable ? `${binding.title}\n\nКлик: открыть XML preview и подсветить связанный узел.` : binding.title;
+  const clickAttrs = isClickable
+    ? ` data-action="jump-to-xml-preview" data-source-path="${escapeAttr(path)}"`
+    : '';
+  return `<span class="xml-indicator is-${binding.status} ${compact ? 'compact' : 'inline'}${isClickable ? ' is-clickable' : ''}" title="${escapeAttr(title)}" aria-label="${escapeAttr(title)}"${clickAttrs}></span>`;
 }
 
 function renderFieldLabel(label, path) {
@@ -4642,6 +4656,77 @@ function jumpToSourceField(path) {
   render();
 }
 
+function resolveXmlPreviewNavigation(path) {
+  const ks2Match = String(path || '').match(/^ks2Sheets\.(\d+)\./);
+  const sheetIndex = ks2Match ? Number(ks2Match[1]) : 0;
+  const primaryScope = String(path || '').startsWith('xmlZ.') ? 'z' : 'p';
+  return {
+    pane: `ks2:${sheetIndex}`,
+    sheetIndex,
+    preferredScopes: primaryScope === 'z' ? ['z', 'p'] : ['p', 'z'],
+  };
+}
+
+function findXmlPreviewNodeBySourcePath(path, preferredScopes = ['p', 'z']) {
+  if (!path) return null;
+  const scopes = [...new Set([...(preferredScopes || []), 'p', 'z'])];
+  for (const scope of scopes) {
+    const selector = [
+      `.xml-preview-code[data-scope="${scope}"] .xml-line[data-source-path="${cssEscape(path)}"]`,
+      `.xml-preview-code[data-scope="${scope}"] .xml-line-note[data-source-path="${cssEscape(path)}"]`,
+    ].join(', ');
+    const node = refs.content?.querySelector(selector);
+    if (node) return node.closest?.('.xml-preview-code-row') || node;
+  }
+  return null;
+}
+
+function highlightXmlPreviewTarget(node) {
+  const target = node?.closest?.('.xml-preview-code-row') || node;
+  if (!target) return;
+  if (activeXmlPreviewJumpTarget && activeXmlPreviewJumpTarget !== target) {
+    activeXmlPreviewJumpTarget.classList.remove('is-jump-target');
+  }
+  clearTimeout(activeXmlPreviewJumpTimer);
+  activeXmlPreviewJumpTarget = target;
+  target.classList.add('is-jump-target');
+  activeXmlPreviewJumpTimer = setTimeout(() => {
+    target.classList.remove('is-jump-target');
+    if (activeXmlPreviewJumpTarget === target) activeXmlPreviewJumpTarget = null;
+  }, 2200);
+}
+
+async function jumpToXmlPreview(path) {
+  if (!path) return;
+  const navigation = resolveXmlPreviewNavigation(path);
+  app.state.ui.activePane = navigation.pane;
+  app.state.ui.ks2ViewMode[navigation.sheetIndex] = 'xml';
+  render();
+
+  try {
+    const contractorPreview = app.state.ui.ks2XmlPreview?.[String(navigation.sheetIndex)]?.xmlText || '';
+    const customerPreview = app.state.ui.ks2CustomerXmlPreview?.[String(navigation.sheetIndex)]?.xmlText || '';
+    if (!contractorPreview && !customerPreview) {
+      await loadKs2XmlPreviewPair(navigation.sheetIndex, false);
+    }
+    const hasPreview = Boolean(
+      app.state.ui.ks2XmlPreview?.[String(navigation.sheetIndex)]?.xmlText
+      || app.state.ui.ks2CustomerXmlPreview?.[String(navigation.sheetIndex)]?.xmlText,
+    );
+    if (!hasPreview) {
+      flash('Не удалось собрать XML preview для этого поля.');
+      return;
+    }
+    pendingXmlPreviewJump = {
+      path,
+      preferredScopes: navigation.preferredScopes,
+    };
+    render();
+  } catch (error) {
+    flash(`Не удалось открыть XML preview: ${error.message}`);
+  }
+}
+
 function performPendingFieldJump() {
   if (!pendingFieldJump?.path) return;
   const request = pendingFieldJump;
@@ -4657,6 +4742,22 @@ function performPendingFieldJump() {
     target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
     highlightJumpTarget(target);
     focusFieldElement(node);
+  });
+}
+
+function performPendingXmlPreviewJump() {
+  if (!pendingXmlPreviewJump?.path) return;
+  const request = pendingXmlPreviewJump;
+  pendingXmlPreviewJump = null;
+  window.requestAnimationFrame(() => {
+    const node = findXmlPreviewNodeBySourcePath(request.path, request.preferredScopes);
+    if (!node) {
+      flash('Не нашёл XML-строку для этого поля.');
+      return;
+    }
+    openAncestorDetails(node);
+    node.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    highlightXmlPreviewTarget(node);
   });
 }
 
