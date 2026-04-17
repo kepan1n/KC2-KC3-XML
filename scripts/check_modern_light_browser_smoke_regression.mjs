@@ -268,7 +268,7 @@ async function main() {
     await cdp.send('Page.navigate', { url: targetUrl });
 
     await cdp.waitFor('document.readyState === "complete"', 'document ready');
-    await cdp.waitFor('Array.from(document.querySelectorAll(".nav-chip")).map((node) => node.textContent.trim()).join("|").includes("Реквизиты|XML|КС-2")', 'top navigation chips');
+    await cdp.waitFor('Array.from(document.querySelectorAll(".nav-chip")).map((node) => node.textContent.trim()).join("|").includes("Реквизиты|Удержания|XML|КС-2")', 'top navigation chips');
     await cdp.waitFor('document.getElementById("content")?.innerText?.includes("Реквизиты single-sheet формы")', 'requisites pane render');
 
     await cdp.click('[data-field-path="documentContext.contractNumber"] .xml-indicator');
@@ -282,6 +282,18 @@ async function main() {
     await cdp.waitFor('document.getElementById("content")?.innerText?.includes("XML preview ·")', 'ks2 xml pane render');
     await cdp.click('[data-action="set-ks2-view-mode"][data-mode="form"]');
     await cdp.waitFor('document.getElementById("content")?.innerText?.includes("Название листа")', 'ks2 pane render');
+
+    await cdp.click('[data-pane="holdbacks"]');
+    await cdp.waitFor('document.getElementById("content")?.innerText?.includes("Удержания текущего листа КС-2")', 'holdbacks pane render');
+    await cdp.click('[data-action="toggle-holdbacks-xml-export"]');
+    await cdp.waitFor('document.getElementById("content")?.innerText?.includes("Удержания в XML: выкл")', 'holdbacks xml toggle off');
+    await cdp.waitFor('Boolean(document.querySelector(`[data-field-path="holdbacks.rows.0.name"] .xml-indicator.is-unused`))', 'holdback indicator switched to unused');
+
+    await cdp.click('[data-pane="ks2:0"]');
+    await cdp.waitFor('document.getElementById("content")?.innerText?.includes("Название листа")', 'ks2 pane rerender after holdbacks toggle');
+    await cdp.click('[data-action="set-ks2-view-mode"][data-mode="xml"]');
+    await cdp.waitFor('document.getElementById("content")?.innerText?.includes("XML preview ·")', 'ks2 xml preview after holdbacks toggle', 20000);
+    await cdp.waitFor('document.querySelectorAll(`.xml-preview-code .xml-line[data-source-path^="holdbacks.rows."], .xml-preview-code .xml-line-note[data-source-path^="holdbacks.rows."]`).length === 0', 'holdbacks removed from xml preview', 20000);
 
     const seriousExceptions = cdp.runtimeExceptions.filter(Boolean);
     const seriousConsoleErrors = cdp.consoleErrors.filter((entry) => {

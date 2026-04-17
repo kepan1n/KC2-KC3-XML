@@ -437,12 +437,29 @@ function handleContentClick(event) {
     return;
   }
 
+  if (action === 'open-pane') {
+    app.state.ui.activePane = String(actionButton.dataset.targetPane || 'requisites');
+    render();
+    return;
+  }
+
   if (action === 'toggle-customer-readiness-blocking') {
     app.state.ui.customerReadinessBlockingMode = !app.state.ui.customerReadinessBlockingMode;
     render();
     flash(app.state.ui.customerReadinessBlockingMode
       ? 'Strict Z readiness-check включён: экспорт P + Z будет блокироваться на бизнес-ошибках заказчика.'
       : 'Strict Z readiness-check выключён: checklist остаётся advisory-проверкой.');
+    return;
+  }
+
+  if (action === 'toggle-holdbacks-xml-export') {
+    app.state.holdbacks.includeInXml = !shouldIncludeHoldbacksInXml();
+    app.state = prepareState(app.state);
+    invalidateXmlPreviewCache();
+    render();
+    flash(app.state.holdbacks.includeInXml
+      ? 'Передача удержаний в XML включена: авто-строки снова попадут в preview и экспорт.'
+      : 'Передача удержаний в XML отключена: данные останутся во вкладке «Удержания», но не попадут в XML preview и экспорт.');
     return;
   }
 
@@ -762,8 +779,7 @@ function handleContentChange(event) {
   const { path, valueType = 'string' } = field.dataset;
   setByPath(app.state, path, coerceValue(field.value, valueType));
   app.state = prepareState(app.state);
-  app.state.ui.ks2XmlPreview = {};
-  app.state.ui.ks2CustomerXmlPreview = {};
+  invalidateXmlPreviewCache();
   render();
 }
 
@@ -974,10 +990,10 @@ function migrateLegacyXmlScopes(data) {
 function normalizeActivePaneSingleSheet(value) {
   const pane = String(value ?? '').trim();
   if (!pane) return 'requisites';
-  if (pane === 'ks3' || pane === 'holdbacks') return 'requisites';
+  if (pane === 'ks3') return 'requisites';
   if (pane === 'ks2' || pane === 'sheet' || pane === 'current-sheet') return 'ks2:0';
   if (pane.startsWith('ks2:')) return 'ks2:0';
-  if (pane === 'requisites' || pane === 'xml') return pane;
+  if (pane === 'requisites' || pane === 'holdbacks' || pane === 'xml') return pane;
   return 'requisites';
 }
 
@@ -1005,11 +1021,12 @@ function prepareState(raw) {
   data.documentContext ??= {};
   migrateLegacyDocumentContext(data);
   data.ks3 ??= {};
-  data.holdbacks ??= { rows: [] };
+  data.holdbacks ??= { rows: [], includeInXml: true };
   data.legacy ??= {};
   enforceSingleKs2SheetMode(data);
   data.ui.activePane = normalizeActivePaneSingleSheet(data.ui.activePane);
   data.holdbacks.rows ??= [];
+  data.holdbacks.includeInXml = data.holdbacks.includeInXml !== false;
   data.xmlExtras ??= {};
   data.xmlExtras.generated ??= {};
   data.xmlExtras.constants ??= {};
@@ -1268,6 +1285,7 @@ function renderNavStrip() {
   const active = app.state.ui.activePane;
   const primaryButtons = [
     { pane: 'requisites', label: 'Реквизиты' },
+    { pane: 'holdbacks', label: 'Удержания' },
     { pane: 'xml', label: 'XML' },
   ].map((item) => `
     <button class="nav-chip ${active === item.pane ? 'active' : ''}" data-pane="${item.pane}" title="${escapeAttr(item.label)}">${escapeHtml(item.label)}</button>
@@ -1296,7 +1314,8 @@ function renderStats() {
   const grossTotal = app.state.ks2Sheets.reduce((sum, sheet) => sum + computeSheetTotals(sheet).gross, 0);
   const validation = buildLogicBundle().validation;
   const ignoredSheets = app.state.legacy?.extraKs2Sheets?.length || 0;
-  refs.stats.textContent = `1 лист КС-2 · ${totalRows} строк · общая сумма с НДС: ${formatMoney(grossTotal)} · ошибок: ${validation.errors.length} · предупреждений: ${validation.warnings.length}${ignoredSheets ? ` · доп. legacy-листов вне текущей формы: ${ignoredSheets}` : ''}`;
+  const holdbacksMode = shouldIncludeHoldbacksInXml() ? '' : ' · удержания в XML: выкл';
+  refs.stats.textContent = `1 лист КС-2 · ${totalRows} строк · общая сумма с НДС: ${formatMoney(grossTotal)} · ошибок: ${validation.errors.length} · предупреждений: ${validation.warnings.length}${ignoredSheets ? ` · доп. legacy-листов вне текущей формы: ${ignoredSheets}` : ''}${holdbacksMode}`;
 }
 
 function renderContent() {
@@ -1304,11 +1323,34 @@ function renderContent() {
   let html = '';
 
   if (pane === 'requisites') html = renderRequisitesPane();
+  else if (pane === 'holdbacks') html = renderHoldbacksPane();
   else if (pane === 'xml') html = renderXmlPane();
   else if (pane.startsWith('ks2:')) html = renderKs2Pane(Number(pane.split(':')[1]));
   else html = '<div class="panel"><div class="empty-state">Не удалось открыть выбранную вкладку.</div></div>';
 
   refs.content.innerHTML = html;
+}
+
+function createEmptyHoldbackTotals() {
+  return {
+    ks2Amount: 0,
+    materialsUsed: 0,
+    advanceReceived: 0,
+    previousBalance: 0,
+    closingAmount: 0,
+    nextBalance: 0,
+    retentionAmount: 0,
+    payableAmount: 0,
+  };
+}
+
+function shouldIncludeHoldbacksInXml(source = app.state) {
+  return source?.holdbacks?.includeInXml !== false;
+}
+
+function invalidateXmlPreviewCache() {
+  app.state.ui.ks2XmlPreview = {};
+  app.state.ui.ks2CustomerXmlPreview = {};
 }
 
 function buildLogicBundle() {
@@ -1403,8 +1445,9 @@ function buildDocumentModel() {
     acc.retentionAmount += numberOrZero(row.retentionAmount);
     acc.payableAmount += numberOrZero(row.payableAmount);
     return acc;
-  }, { ks2Amount: 0, materialsUsed: 0, advanceReceived: 0, previousBalance: 0, closingAmount: 0, nextBalance: 0, retentionAmount: 0, payableAmount: 0 });
+  }, createEmptyHoldbackTotals());
 
+  const includeHoldbacksInXml = shouldIncludeHoldbacksInXml();
   const holdbacksXml = buildHoldbacksXmlSettlementModel();
 
   return {
@@ -1418,8 +1461,9 @@ function buildDocumentModel() {
     },
     holdbacks: {
       rows: holdbacksRows,
-      sections: holdbackSections,
-      totals: holdbacksTotals,
+      sections: includeHoldbacksInXml ? holdbackSections : [],
+      totals: includeHoldbacksInXml ? holdbacksTotals : createEmptyHoldbackTotals(),
+      includeInXml: includeHoldbacksInXml,
     },
     legacy: {
       extraKs2Sheets: clone(app.state.legacy?.extraKs2Sheets || []),
@@ -1460,6 +1504,7 @@ function buildValidationReport(model) {
   const manualSettlementRows = settlementModel.manualRows || model.xmlExtras?.settlementRows || [];
   const representativeRow = settlementModel.representativeRow || null;
   const xmlSettlementRows = settlementModel.settlementRows || [];
+  const holdbacksIncludeInXml = model.holdbacks?.includeInXml !== false;
   const errors = [];
   const warnings = [];
   const pushIssue = (severity, path, label, message) => {
@@ -1508,11 +1553,11 @@ function buildValidationReport(model) {
     pushIssue('warning', 'legacy.extraKs2Sheets', 'Single-sheet режим', `Во входных данных были дополнительные листы КС-2 (${model.legacy.extraKs2Sheets.length} шт.). Редактор и экспорт используют только текущий лист; остальные можно разложить в отдельные single-sheet формы.`);
   }
 
-  if (!model.holdbacks.rows.length) {
+  if (holdbacksIncludeInXml && !model.holdbacks.rows.length) {
     pushIssue('warning', 'holdbacks.rows', 'Удержания', 'Нет ни одной строки удержаний');
   }
 
-  if (model.ks2Sheets.length > 1) {
+  if (holdbacksIncludeInXml && model.ks2Sheets.length > 1) {
     model.holdbacks.sections.forEach((section, index) => {
       const sheetId = String(section.ks2SheetId || '').trim();
       if (!sheetId) {
@@ -2717,7 +2762,7 @@ function renderRequisitesPane() {
   const totalGross = sheetTotals.gross;
   const totalVat = sheetTotals.vat;
   const totalBase = Math.max(totalGross - totalVat, 0);
-  const holdbackGroups = buildHoldbackGroups(sheet.id);
+  const holdbacksInXml = shouldIncludeHoldbacksInXml();
 
   return `
     <div class="panel">
@@ -2736,7 +2781,7 @@ function renderRequisitesPane() {
       </div>
 
       <div class="inline-hint">${escapeHtml(app.state.ui.singleSheetModeNotice || 'Редактор работает только с одним листом КС-2 за раз.')}</div>
-      <div class="inline-hint">Основной сценарий теперь такой: реквизиты документа → текущий лист КС-2 → удержания этого листа → XML P/Z. Всё, что относится к старой multi-sheet книге, вынесено в совместимость.</div>
+      <div class="inline-hint">Основной сценарий теперь такой: реквизиты документа → текущий лист КС-2 → отдельная вкладка удержаний → XML P/Z. Всё, что относится к старой multi-sheet книге, вынесено в совместимость.</div>
       ${(app.state.legacy?.extraKs2Sheets || []).length ? `
         <div class="inline-actions section-block">
           <button class="secondary" data-action="split-legacy-forms">Разложить legacy-листы в отдельные single-sheet JSON</button>
@@ -2805,8 +2850,55 @@ function renderRequisitesPane() {
       </details>
 
       <div class="section-block">
-        <h3>Удержания текущего листа КС-2</h3>
-        <p class="kbd-note">В active single-sheet режиме удержания редактируются прямо здесь: один блок 3% на текущий лист КС-2 и подпункты по документам аванса ниже.</p>
+        <h3>Удержания вынесены в отдельную вкладку</h3>
+        <p class="kbd-note">Так реквизиты остаются компактными, а все расчёты по гарантийному удержанию и авансам живут рядом с собственным переключателем XML.</p>
+        <div class="inline-actions">
+          <button class="mini secondary" data-action="open-pane" data-target-pane="holdbacks">Открыть вкладку «Удержания»</button>
+          <span class="kbd-note">${holdbacksInXml ? 'Сейчас удержания автоматически попадают в XML preview и экспорт.' : 'Сейчас передача удержаний в XML отключена, сами данные формы при этом сохранены.'}</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderHoldbacksPane() {
+  const sheet = app.state.ks2Sheets[0] || createBlankSheet(1);
+  const holdbackGroups = buildHoldbackGroups(sheet.id);
+  const includeInXml = shouldIncludeHoldbacksInXml();
+  const summary = holdbackGroups.reduce((acc, group) => {
+    const computed = computeHoldbackSectionComputed(group);
+    acc.sections += 1;
+    acc.advanceDocs += group.subitems.length;
+    acc.retentionAmount += numberOrZero(computed.retentionAmount);
+    return acc;
+  }, { sections: 0, advanceDocs: 0, retentionAmount: 0 });
+
+  return `
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Удержания текущего листа КС-2</h2>
+          <p class="panel-subtitle">Отдельная вкладка для гарантийного удержания, документов аванса и решения, должны ли эти данные автоматически попадать в XML.</p>
+        </div>
+      </div>
+
+      <div class="summary-grid">
+        <div class="summary-card"><span>Блоков удержаний</span><strong>${summary.sections}</strong></div>
+        <div class="summary-card"><span>Документов аванса</span><strong>${summary.advanceDocs}</strong></div>
+        <div class="summary-card"><span>Сумма удержания</span><strong>${formatMoney(summary.retentionAmount)}</strong></div>
+        <div class="summary-card"><span>Передача в XML</span><strong>${includeInXml ? 'вкл' : 'выкл'}</strong></div>
+      </div>
+
+      <div class="inline-actions section-block">
+        <button class="ghost mini toggle-chip ${includeInXml ? 'is-active' : ''}" data-action="toggle-holdbacks-xml-export">${includeInXml ? 'Удержания в XML: вкл' : 'Удержания в XML: выкл'}</button>
+        <span class="kbd-note">${includeInXml
+          ? 'Автоматический блок удержаний из этой вкладки сейчас попадает в XML preview и в экспорт P / P+Z.'
+          : 'Автоматический блок удержаний из этой вкладки сейчас не попадает в XML preview и экспорт. Ручные settlement-строки в XML-вкладке продолжают жить отдельно.'}</span>
+      </div>
+
+      <div class="section-block">
+        <h3>Таблица удержаний</h3>
+        <p class="kbd-note">Один блок 3% на текущий лист КС-2 и подпункты по документам аванса ниже.</p>
         ${holdbackGroups.length ? `
           <div class="table-wrapper">
             <table class="table">
@@ -2847,6 +2939,7 @@ function renderRequisitesPane() {
 function renderXmlPane() {
   const logicBundle = buildLogicBundle();
   const validation = logicBundle.validation;
+  const holdbacksInXml = shouldIncludeHoldbacksInXml();
   const customerPreview = app.state.ui.ks2CustomerXmlPreview?.['0'] || null;
   const customerReadiness = buildCustomerXmlReadiness(logicBundle.model, 0, customerPreview);
   const strictCustomerReadiness = buildCustomerXmlReadiness(logicBundle.model, 0, customerPreview, { strictMode: true });
@@ -2884,6 +2977,10 @@ function renderXmlPane() {
             ? `Сейчас checklist advisory-only. Если включить blocking mode, ещё ${advisoryEscalationCount} пункт(ов) станут блокирующими для экспорта P + Z.`
             : 'Сейчас checklist advisory-only. Blocking mode можно включить, если захочешь жёстко стопорить экспорт P + Z по Z-бизнес-правилам.'}</span>
       </div>
+
+      <div class="inline-hint">${holdbacksInXml
+        ? 'Авто-удержания из отдельной вкладки сейчас включены в XML. При необходимости их можно отключить прямо во вкладке «Удержания».'
+        : 'Авто-удержания из отдельной вкладки сейчас исключены из XML. В preview и экспорт попадут только ручные settlement-строки из этого раздела и прочие XML-поля.'}</div>
 
       ${renderValidationSummary(validation)}
       ${renderCustomerReadinessPanel(activeCustomerReadiness, {
@@ -3651,7 +3748,9 @@ function buildAutoSettlementRowsFromHoldbacks(targetSheetId = null) {
 }
 
 function buildHoldbacksXmlSettlementModel(targetSheetId = null, { includeUnassignedManualRows = false } = {}) {
-  const autoRows = buildAutoSettlementRowsFromHoldbacks(targetSheetId);
+  const autoRows = shouldIncludeHoldbacksInXml()
+    ? buildAutoSettlementRowsFromHoldbacks(targetSheetId)
+    : [];
   const manualRows = (app.state.xmlExtras.settlementRows || []).map((row, rowIndex) => ({
     rowIndex,
     ...prepareSettlementRow(row),
@@ -4302,6 +4401,9 @@ function resolveXmlBinding(path) {
   if (match) {
     const rowIndex = Number(match[1]);
     const field = match[2];
+    if (!shouldIncludeHoldbacksInXml()) {
+      return xmlBinding(false, [], 'Передача удержаний в XML сейчас отключена. Данные остаются в отдельной вкладке и в JSON формы, но не попадают в XML preview / export.');
+    }
     const entry = findHoldbackGroupEntry(rowIndex);
     if (!entry) return xmlBinding(false, [], 'Строка удержаний не распознана.');
     const snippet = buildHoldbackXmlSnippet(rowIndex);
@@ -4599,8 +4701,11 @@ function resolveFieldJumpNavigation(path) {
   if (ks2Match) {
     return { pane: `ks2:${Number(ks2Match[1])}`, ks2ViewMode: 'form' };
   }
-  if (path.startsWith('documentContext.') || path.startsWith('holdbacks.')) {
+  if (path.startsWith('documentContext.')) {
     return { pane: 'requisites' };
+  }
+  if (path.startsWith('holdbacks.')) {
+    return { pane: 'holdbacks' };
   }
   if (path.startsWith('xmlP.') || path.startsWith('xmlZ.') || path.startsWith('xmlExtras.')) {
     return { pane: 'xml' };
