@@ -38,7 +38,7 @@ function makeBaseModel() {
     xmlZ: {
       manual: {},
     },
-    xml: {
+    xmlExtras: {
       settlement: {
         settlementRows: [
           { kind: 'withhold', kindCode: '32', amount: 1000 },
@@ -119,11 +119,23 @@ function hasLabel(issues, label) {
     customerAcceptanceDate: '2026-04-12',
     customerSettlementNotice: GOV_EXTRA_NOTICE,
   };
-  model.xml.settlement.settlementRows = [];
+  model.xmlExtras.settlement.settlementRows = [];
   const readiness = buildCustomerXmlReadiness(model, 0, null);
   const strictReadiness = buildCustomerXmlReadiness(model, 0, null, { strictMode: true });
   assert.ok(hasLabel(readiness.warnings, 'Извещение по расчётам Z'), 'advisory mode must warn when gov extra notice has no settlement rows');
   assert.ok(hasLabel(strictReadiness.errors, 'Извещение по расчётам Z'), 'strict mode must block when gov extra notice has no settlement rows');
+}
+
+{
+  const model = makeBaseModel();
+  model.xml = {
+    settlement: {
+      settlementRows: [{ kind: 'withhold', kindCode: '32', amount: 1000 }],
+    },
+  };
+  delete model.xmlExtras;
+  const readiness = buildCustomerXmlReadiness(model, 0, null);
+  assert.equal(readiness.ready, true, 'customer readiness must keep legacy xml.settlement fallback for older payloads');
 }
 
 console.log('OK: customer readiness regression passed');

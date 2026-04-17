@@ -45,6 +45,10 @@ function getGeneratedXmlState(source = {}) {
   return source.xmlP?.generated || source.xml?.p?.generated || source.xml?.generated || source.xmlExtras?.generated || {};
 }
 
+function getSettlementState(source = {}) {
+  return source.xmlExtras?.settlement || source.xml?.settlement || {};
+}
+
 function getSheetDocumentForCustomerReadiness(sheet = {}) {
   return sheet.document || {
     number: sheet.documentNumber,
@@ -104,7 +108,7 @@ function formatDocumentSummary(doc = {}) {
 }
 
 function countSettlementRows(source = {}) {
-  const rows = source.xml?.settlement?.settlementRows || [];
+  const rows = getSettlementState(source).settlementRows || [];
   return rows.filter((row) => numberOrNull(row.amount) != null && numberOrNull(row.amount) > 0).length;
 }
 

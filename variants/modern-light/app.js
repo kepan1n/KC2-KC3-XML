@@ -1427,6 +1427,7 @@ function buildDocumentModel() {
     xmlExtras: {
       traceableGoods: clone(app.state.xmlExtras.traceableGoods),
       settlementRows: clone(holdbacksXml.manualRows || []),
+      settlement: clone(holdbacksXml),
     },
     xmlP: {
       generated: buildGeneratedXmlFields(),
@@ -1436,13 +1437,6 @@ function buildDocumentModel() {
     },
     xmlZ: {
       manual: clone(app.state.xmlZ.manual),
-    },
-    xml: {
-      generated: buildGeneratedXmlFields(),
-      constants: clone(app.state.xmlP.constants),
-      manual: mergeXmlManualScopes(app.state.xmlP.manual, app.state.xmlZ.manual),
-      traceableGoods: clone(app.state.xmlExtras.traceableGoods),
-      settlement: holdbacksXml,
     },
   };
 }
@@ -1460,11 +1454,12 @@ function firstFilledValue(...values) {
 }
 
 function buildValidationReport(model) {
-  const documentContext = model.documentContext || model.common || {};
-  const xmlManual = model.xmlP?.manual || model.xml?.manual || {};
-  const manualSettlementRows = model.xmlExtras?.settlementRows || model.xml?.settlement?.manualRows || [];
-  const representativeRow = model.xml?.settlement?.representativeRow || null;
-  const xmlSettlementRows = model.xml?.settlement?.settlementRows || [];
+  const documentContext = model.documentContext || {};
+  const xmlManual = model.xmlP?.manual || {};
+  const settlementModel = model.xmlExtras?.settlement || {};
+  const manualSettlementRows = settlementModel.manualRows || model.xmlExtras?.settlementRows || [];
+  const representativeRow = settlementModel.representativeRow || null;
+  const xmlSettlementRows = settlementModel.settlementRows || [];
   const errors = [];
   const warnings = [];
   const pushIssue = (severity, path, label, message) => {
@@ -1554,25 +1549,25 @@ function buildValidationReport(model) {
     if (model.ks2Sheets.length > 1) {
       const sheetId = String(row.ks2SheetId || '').trim();
       if (!sheetId) {
-        pushIssue('error', `xml.settlement.manualRows.${index}.ks2SheetId`, `СвОРасч: строка ${index + 1}`, 'Во входных legacy-данных ручную строку ВидТреб / ВидУдерж нужно явно привязать к листу КС-2. Без этого single-sheet export не собирается.');
+        pushIssue('error', `xmlExtras.settlement.manualRows.${index}.ks2SheetId`, `СвОРасч: строка ${index + 1}`, 'Во входных manual settlement-данных строку ВидТреб / ВидУдерж нужно явно привязать к листу КС-2. Без этого single-sheet export не собирается.');
       } else if (!isKnownKs2SheetId(sheetId, model.ks2Sheets)) {
-        pushIssue('error', `xml.settlement.manualRows.${index}.ks2SheetId`, `СвОРасч: строка ${index + 1}`, `Указанный лист КС-2 (${sheetId}) не найден среди текущих листов.`);
+        pushIssue('error', `xmlExtras.settlement.manualRows.${index}.ks2SheetId`, `СвОРасч: строка ${index + 1}`, `Указанный лист КС-2 (${sheetId}) не найден среди текущих листов.`);
       }
     }
     if (row.amount == null || numberOrZero(row.amount) <= 0) {
-      pushIssue('warning', `xml.settlement.manualRows.${index}.amount`, `СвОРасч: строка ${index + 1}`, 'Для typed-строки ВидТреб / ВидУдерж нужна сумма больше 0');
+      pushIssue('warning', `xmlExtras.settlement.manualRows.${index}.amount`, `СвОРасч: строка ${index + 1}`, 'Для typed-строки ВидТреб / ВидУдерж нужна сумма больше 0');
     }
     if (isSettlementOtherCode(row) && !String(row.customKindText || '').trim()) {
-      pushIssue('warning', `xml.settlement.manualRows.${index}.customKindText`, `СвОРасч: строка ${index + 1}`, `Для кода ${row.kind === 'claim' ? '05' : '36'} нужно заполнить поле «Иной вид»`);
+      pushIssue('warning', `xmlExtras.settlement.manualRows.${index}.customKindText`, `СвОРасч: строка ${index + 1}`, `Для кода ${row.kind === 'claim' ? '05' : '36'} нужно заполнить поле «Иной вид»`);
     }
     if (row.isPrimary && (row.amount == null || numberOrZero(row.amount) <= 0)) {
-      pushIssue('warning', `xml.settlement.manualRows.${index}.isPrimary`, `СвОРасч: строка ${index + 1}`, 'Эта строка отмечена как основная для XSD-ready, но без суммы она не попадет в экспорт.');
+      pushIssue('warning', `xmlExtras.settlement.manualRows.${index}.isPrimary`, `СвОРасч: строка ${index + 1}`, 'Эта строка отмечена как основная для XSD-ready, но без суммы она не попадет в экспорт.');
     }
   });
 
   const distinctSettlementKinds = new Set(xmlSettlementRows.map((row) => `${normalizeSettlementKind(row.kind)}:${normalizeSettlementCode(row.kind, row.kindCode)}`));
   if (distinctSettlementKinds.size > 1) {
-    pushIssue('warning', 'xml.settlement.settlementRows', 'СвОРасч', `В текущем XSD-ready профиле несколько видов требований / удержаний будут сжаты в один УчетТребУдерж. Сейчас основной строкой выбрана: ${buildRepresentativeSettlementLabel(representativeRow)}.`);
+    pushIssue('warning', 'xmlExtras.settlement.settlementRows', 'СвОРасч', `В текущем XSD-ready профиле несколько видов требований / удержаний будут сжаты в один УчетТребУдерж. Сейчас основной строкой выбрана: ${buildRepresentativeSettlementLabel(representativeRow)}.`);
   }
 
   const customerReadiness = buildCustomerXmlReadiness(model, 0, null, { includeSheetSpecific: false });
