@@ -113,6 +113,24 @@ def calc_vat(base_amount, vat_rate):
     return max(round(base * rate / 100, 2), 0)
 
 
+def split_vat_inclusive_amount(amount, vat_rate):
+    gross = safe_float(amount, 0.0)
+    rate = safe_float(vat_rate, 0.0)
+    sign = -1.0 if gross < 0 else 1.0
+    gross_abs = abs(gross)
+    if rate <= 0:
+        base_abs = round(gross_abs, 2)
+        vat_abs = 0.0
+    else:
+        base_abs = round(gross_abs / (1 + rate / 100), 2)
+        vat_abs = round(gross_abs - base_abs, 2)
+    return {
+        'base': round(base_abs * sign, 2),
+        'vat': round(vat_abs * sign, 2),
+        'gross': round(gross_abs * sign, 2),
+    }
+
+
 def merge_xml_scopes(*scopes) -> dict:
     merged = {}
     for scope in scopes:
@@ -601,7 +619,7 @@ def build_ks2_xml_totals(ks2_sheets: list[dict]):
         'vatFromStart': 0.0,
     }
 
-    for entry in iter_ks2_sections(ks2_sheets):
+    for entry in list(iter_ks2_sections(ks2_sheets)):
         items = entry.get('items', [])
         if not items:
             continue
@@ -609,17 +627,111 @@ def build_ks2_xml_totals(ks2_sheets: list[dict]):
         sheet_doc = sheet.get('document', {})
         vat_rate = safe_float(first_non_empty(sheet_doc.get('vatRate'), sheet.get('vatRate')), 20.0)
 
-        section_amount_raw = sum(resolve_effective_row_amount(item) for item in items)
-        section_amount = max(round(section_amount_raw, 2), 0.0)
-        cumulative_raw = sum(resolve_effective_cumulative_amount(item, resolve_effective_row_amount(item)) for item in items)
-        cumulative_amount = max(round(cumulative_raw, 2), section_amount)
+        section_gross_raw = sum(resolve_effective_row_amount(item) for item in items)
+        section_gross = max(round(section_gross_raw, 2), 0.0)
+        cumulative_gross_raw = sum(resolve_effective_cumulative_amount(item, resolve_effective_row_amount(item)) for item in items)
+        cumulative_gross = max(round(cumulative_gross_raw, 2), section_gross)
+        section_amounts = split_vat_inclusive_amount(section_gross, vat_rate)
+        cumulative_amounts = split_vat_inclusive_amount(cumulative_gross, vat_rate)
 
-        totals['forPeriod'] += section_amount
-        totals['vatForPeriod'] += calc_vat(section_amount, vat_rate)
-        totals['fromStart'] += cumulative_amount
-        totals['vatFromStart'] += calc_vat(cumulative_amount, vat_rate)
+        totals['forPeriod'] += section_amounts['base']
+        totals['vatForPeriod'] += section_amounts['vat']
+        totals['fromStart'] += cumulative_amounts['base']
+        totals['vatFromStart'] += cumulative_amounts['vat']
 
     return {key: round(value, 2) for key, value in totals.items()}
+
+
+def compute_holdback_subitem(row: dict) -> dict:
+    advance_received = safe_float(row.get('advanceReceived'), 0.0)
+    previous_balance = safe_float(
+        row.get('previousBalance') if row.get('previousBalance') not in (None, '') else advance_received,
+        advance_received,
+    )
+    closing_amount = safe_float(row.get('closingAmount'), 0.0)
+    next_balance = round(max(previous_balance - closing_amount, 0.0), 2)
+    return {
+        'advanceReceived': round(advance_received, 2),
+        'previousBalance': round(previous_balance, 2),
+        'closingAmount': round(closing_amount, 2),
+        'nextBalance': next_balance,
+        'retentionAmount': 0.0,
+        'payableAmount': 0.0,
+    }
+
+
+def build_holdback_sections_from_rows(rows: list[dict]):
+    groups = []
+    current_group = None
+
+    for row_index, raw_row in enumerate(rows or []):
+        row = copy.deepcopy(raw_row or {})
+        kind = str(row.get('kind') or 'section').strip().lower()
+        if kind != 'subitem' or current_group is None:
+            current_group = {
+                'section': row,
+                'rowIndex': row_index,
+                'subitems': [],
+            }
+            groups.append(current_group)
+            continue
+        current_group['subitems'].append({
+            'row': row,
+            'rowIndex': row_index,
+        })
+
+    sections = []
+    for section_index, group in enumerate(groups):
+        section_row = copy.deepcopy(group['section'])
+        ks2_amount = safe_float(section_row.get('ks2Amount'), 0.0)
+        retention_rate = safe_float(section_row.get('retentionRate'), 0.0)
+
+        advance_received = 0.0
+        previous_balance = 0.0
+        closing_amount = 0.0
+        next_balance = 0.0
+        prepared_subitems = []
+
+        for entry in group['subitems']:
+            row = copy.deepcopy(entry['row'])
+            computed = compute_holdback_subitem(row)
+            advance_received += computed['advanceReceived']
+            previous_balance += computed['previousBalance']
+            closing_amount += computed['closingAmount']
+            next_balance += computed['nextBalance']
+            prepared_subitems.append({
+                **row,
+                **computed,
+                'rowIndex': entry['rowIndex'],
+            })
+
+        retention_amount = round(ks2_amount * retention_rate / 100, 2)
+        payable_amount = round(ks2_amount - closing_amount - retention_amount, 2)
+        sections.append({
+            **section_row,
+            'sectionIndex': section_index,
+            'rowIndex': group['rowIndex'],
+            'advanceReceived': round(advance_received, 2),
+            'previousBalance': round(previous_balance, 2),
+            'closingAmount': round(closing_amount, 2),
+            'nextBalance': round(next_balance, 2),
+            'retentionAmount': retention_amount,
+            'payableAmount': payable_amount,
+            'subitems': prepared_subitems,
+        })
+
+    return sections
+
+
+def resolve_holdback_sections(data: dict) -> list[dict]:
+    holdbacks = data.get('holdbacks', {}) or {}
+    sections = holdbacks.get('sections') or []
+    if sections:
+        return copy.deepcopy(sections)
+    rows = holdbacks.get('rows') or []
+    if rows:
+        return build_holdback_sections_from_rows(rows)
+    return []
 
 
 def resolve_holdback_sheet_id(section: dict) -> str | None:
@@ -652,7 +764,7 @@ def collect_holdback_sheet_binding_errors(data: dict) -> list[dict]:
     if len(ks2_sheets) <= 1:
         return []
 
-    sections = ((data.get('holdbacks', {}) or {}).get('sections') or [])
+    sections = resolve_holdback_sections(data)
     if not sections:
         return []
 
@@ -986,6 +1098,7 @@ def build_settlement_info_blocks(holdback_sections: list[dict], sheet: dict | No
 
     blocks: list[list[tuple[str, str | None]]] = []
     summary = build_sheet_settlement_from_holdback_sections(holdback_sections)
+    guarantee_sections = [section for section in holdback_sections if safe_float(section.get('retentionAmount'), 0.0) > 0]
 
     blocks.append([
         ('AVANS_ROW_COUNT', str(len(summary.get('paymentRows', [])))),
@@ -993,7 +1106,22 @@ def build_settlement_info_blocks(holdback_sections: list[dict], sheet: dict | No
         ('AVANS_TOTAL_PREVIOUS_BALANCE_RUB', fmt_money(summary.get('totalAdvancePrevious'))),
         ('AVANS_TOTAL_CLOSING_RUB', fmt_money(summary.get('totalAdvanceClose'))),
         ('AVANS_TOTAL_NEXT_BALANCE_RUB', fmt_money(summary.get('totalAdvanceNext'))),
+        ('RET_GUARANTEE_ROW_COUNT', str(len(guarantee_sections))),
+        ('RET_GUARANTEE_TOTAL_RUB', fmt_money(summary.get('totalGuaranteeRetention'))),
     ])
+
+    for section_no, section in enumerate(guarantee_sections, start=1):
+        blocks.append([
+            ('RET_SECTION_NO', str(section_no)),
+            ('RET_SECTION_NAME', first_non_empty(section.get('name'))),
+            ('RET_BASE_RUB', fmt_money(section.get('ks2Amount'))),
+            ('RET_RATE_PCT', fmt_money(section.get('retentionRate')).rstrip('0').rstrip('.')),
+            ('RET_AMOUNT_RUB', fmt_money(section.get('retentionAmount'))),
+            ('RET_DOC_NAME', first_non_empty(section.get('retentionDocName'))),
+            ('RET_DOC_NO', first_non_empty(section.get('retentionDocNumber'))),
+            ('RET_DOC_DATE', fmt_date(first_non_empty(section.get('retentionDocDate'))) if first_non_empty(section.get('retentionDocDate')) else None),
+            ('RET_DOC_EXTRA', first_non_empty(section.get('retentionDocExtra'), section.get('comment'))),
+        ])
 
     for row in summary.get('paymentRows', []):
         blocks.append([
@@ -1072,7 +1200,7 @@ def project_payload_to_single_ks2_sheet(data: dict, sheet_index: int) -> dict:
     ks3['totals'] = {}
 
     holdbacks = projected.setdefault('holdbacks', {})
-    original_sections = (data.get('holdbacks', {}) or {}).get('sections', []) or []
+    original_sections = resolve_holdback_sections(data)
     filtered_sections = select_holdback_sections_for_sheet(original_sections, ks2_sheets[sheet_index])
     holdbacks['sections'] = filtered_sections
     holdbacks['totals'] = summarize_holdback_sections(filtered_sections)
@@ -1220,9 +1348,17 @@ def build_xml(data: dict) -> ET._ElementTree:
     generated = xml.get('generated', {})
     manual = xml.get('manual', {})
     constants = xml.get('constants', {})
-    settlement = xml.get('settlement', {})
-    holdbacks = data.get('holdbacks', {})
-    sections = holdbacks.get('sections', [])
+    settlement = copy.deepcopy(xml.get('settlement', {}) or {})
+    sections = resolve_holdback_sections(data)
+    holdbacks = {
+        **copy.deepcopy(data.get('holdbacks', {}) or {}),
+        'sections': sections,
+    }
+    if not holdbacks.get('totals') and sections:
+        holdbacks['totals'] = summarize_holdback_sections(sections)
+    manual_rows = settlement.get('manualRows') if isinstance(settlement.get('manualRows'), list) else []
+    if not settlement.get('settlementRows') and (sections or manual_rows):
+        settlement = build_sheet_settlement_from_holdback_sections(sections, manual_rows)
     ks2_sheets = data.get('ks2Sheets', [])
     first_sheet = ks2_sheets[0] if ks2_sheets else {}
     first_doc = first_sheet.get('document') or {
@@ -1427,11 +1563,15 @@ def build_xml(data: dict) -> ET._ElementTree:
         export_items = all_items if all_items else []
         row_no = 1
         for sheet_index, sheet, item in export_items:
-            amount = float(item.get('amount') or 0)
+            sheet_doc = sheet.get('document', {})
+            vat_rate = safe_float(first_non_empty(sheet_doc.get('vatRate'), sheet.get('vatRate'), first_doc.get('vatRate')), 20.0)
+            amount_gross = resolve_row_amount(item)
+            amount_parts = split_vat_inclusive_amount(amount_gross, vat_rate)
+            price_parts = split_vat_inclusive_amount(item.get('price') or 0, vat_rate)
             attrs = {
                 'НаимТов': item.get('name') or f'Работа {row_no}',
-                'ЦенаТов': fmt_money(item.get('price')),
-                'СтТовБезНДС': fmt_money(amount),
+                'ЦенаТов': fmt_money(price_parts['base']),
+                'СтТовБезНДС': fmt_money(amount_parts['base']),
                 'НомСтр': str(row_no),
                 'НомПоз': item.get('lineNo') or str(row_no),
                 'ТипЗатр': resolve_expense_type(item),
@@ -1439,11 +1579,8 @@ def build_xml(data: dict) -> ET._ElementTree:
                 'НаимЕдИзм': item.get('unit') or 'шт',
             }
             work_el = ET.SubElement(works, 'ВидРаб', **attrs)
-            sheet_doc = sheet.get('document', {})
             tax = ET.SubElement(work_el, 'СумНал')
-            vat_rate = safe_float(first_non_empty(sheet_doc.get('vatRate'), sheet.get('vatRate'), first_doc.get('vatRate')), 20.0)
-            vat_amount = calc_vat(amount, vat_rate)
-            ET.SubElement(tax, 'СумНал').text = fmt_money(vat_amount)
+            ET.SubElement(tax, 'СумНал').text = fmt_money(amount_parts['vat'])
             tg = traceable_goods[0] if traceable_goods else {}
             ET.SubElement(
                 work_el,
@@ -1471,21 +1608,26 @@ def build_xml(data: dict) -> ET._ElementTree:
             filtered_subitems = [sub for sub in subitems if float(sub.get('closingAmount') or 0) > 0 or float(sub.get('advanceReceived') or 0) > 0]
             if section_amount <= 0 and not filtered_subitems:
                 continue
+            section_parts = split_vat_inclusive_amount(section_amount, safe_float(first_non_empty(first_doc.get('vatRate'), 20), 20.0))
             sec = ET.SubElement(works, 'Раздел',
                                 НаимРаздел=section.get('name') or f'Раздел №{idx}',
-                                СтБезНДСРаздОтч=fmt_money(section_amount))
+                                СтБезНДСРаздОтч=fmt_money(section_parts['base']))
             chosen_subitems = filtered_subitems[:1] if filtered_subitems else []
             if chosen_subitems:
                 for sub in chosen_subitems:
+                    row_amount = export_items[0][2].get('amount') if export_items else (sub.get('closingAmount') or sub.get('advanceReceived'))
+                    row_parts = split_vat_inclusive_amount(row_amount, safe_float(first_non_empty(first_doc.get('vatRate'), 20), 20.0))
+                    row_price = export_items[0][2].get('price') if export_items else (sub.get('advanceReceived') or row_amount)
+                    row_price_parts = split_vat_inclusive_amount(row_price, safe_float(first_non_empty(first_doc.get('vatRate'), 20), 20.0))
                     ET.SubElement(sec, 'СвВидРаб',
-                                  НаимТов=(export_items[0][1].get('name') if export_items else sub.get('advanceDoc') or f'Подпункт {idx}'),
-                                  ЦенаТов=fmt_money((export_items[0][1].get('price') if export_items else sub.get('advanceReceived'))),
-                                  СтТовБезНДС=fmt_money((export_items[0][1].get('amount') if export_items else sub.get('closingAmount') or sub.get('advanceReceived'))))
+                                  НаимТов=(export_items[0][2].get('name') if export_items else sub.get('advanceDoc') or f'Подпункт {idx}'),
+                                  ЦенаТов=fmt_money(row_price_parts['base']),
+                                  СтТовБезНДС=fmt_money(row_parts['base']))
             else:
                 ET.SubElement(sec, 'СвВидРаб',
                               НаимТов=section.get('name') or f'Раздел №{idx}',
-                              ЦенаТов=fmt_money(section_amount),
-                              СтТовБезНДС=fmt_money(section_amount))
+                              ЦенаТов=fmt_money(section_parts['base']),
+                              СтТовБезНДС=fmt_money(section_parts['base']))
     else:
         grouped_sections = {sheet_index: [] for sheet_index, _ in enumerate(ks2_sheets)}
         for entry in section_entries:
@@ -1509,51 +1651,63 @@ def build_xml(data: dict) -> ET._ElementTree:
                 items = entry['items']
                 if not items:
                     continue
-                section_amount_raw = sum(resolve_effective_row_amount(item) for item in items)
-                section_amount = max(round(section_amount_raw, 2), 0)
+                section_gross_raw = sum(resolve_effective_row_amount(item) for item in items)
+                section_gross = max(round(section_gross_raw, 2), 0)
                 section_estimate_no = entry.get('estimateNo') or next((str(it.get('estimateNo')) for it in items if it.get('estimateNo')), '')
-                section_cumulative_amount_raw = sum(resolve_effective_cumulative_amount(item, resolve_effective_row_amount(item)) for item in items)
-                section_cumulative_amount = max(round(section_cumulative_amount_raw, 2), 0)
-                section_vat = calc_vat(section_amount, vat_rate_default)
-                section_cumulative_vat = calc_vat(section_cumulative_amount, vat_rate_default)
+                section_cumulative_gross_raw = sum(resolve_effective_cumulative_amount(item, resolve_effective_row_amount(item)) for item in items)
+                section_cumulative_gross = max(round(section_cumulative_gross_raw, 2), 0)
+                section_amount_parts = split_vat_inclusive_amount(section_gross, vat_rate_default)
+                section_cumulative_parts = split_vat_inclusive_amount(section_cumulative_gross, vat_rate_default)
+                section_amount = section_amount_parts['base']
+                section_cumulative_amount = section_cumulative_parts['base']
+                section_vat = section_amount_parts['vat']
+                section_cumulative_vat = section_cumulative_parts['vat']
                 sec_attrs = {
                     'НомСтр': str(entry['rowNo']),
                     'НомРазд': str(entry['sectionNo']),
                     'НаимРаздел': entry['name'],
                     'СтБезНДСРаздСмет': fmt_money(section_amount),
-                    'СтСНДСРаздСмет': fmt_money(section_amount + section_vat),
+                    'СтСНДСРаздСмет': fmt_money(section_amount_parts['gross']),
                     'СтБезНДСРаздОтч': fmt_money(section_amount),
-                    'СтСНДСРаздОтч': fmt_money(section_amount + section_vat),
+                    'СтСНДСРаздОтч': fmt_money(section_amount_parts['gross']),
                 }
                 if cumulative_mode == '1':
                     sec_attrs['СтБезНДСРаздСНач'] = fmt_money(section_cumulative_amount)
-                    sec_attrs['СтСНДСРаздСНач'] = fmt_money(section_cumulative_amount + section_cumulative_vat)
+                    sec_attrs['СтСНДСРаздСНач'] = fmt_money(section_cumulative_parts['gross'])
                 if section_estimate_no:
                     sec_attrs['ПозРаздСмет'] = section_estimate_no
                 sec = ET.SubElement(works, 'Раздел', **sec_attrs)
                 for item in items:
                     correction_kind = get_correction_kind(item)
                     correction_row = correction_kind is not None
-                    amount = resolve_row_amount(item)
-                    effective_amount = resolve_effective_row_amount(item)
-                    price = safe_float(item.get('price') or 0)
+                    amount_gross = resolve_row_amount(item)
+                    effective_amount_gross = resolve_effective_row_amount(item)
+                    price_parts = split_vat_inclusive_amount(item.get('price') or 0, vat_rate_default)
                     qty = resolve_row_quantity(item)
                     effective_qty = resolve_effective_row_quantity(item)
-                    cumulative_amount = resolve_xml_cumulative_amount(item, amount)
+                    cumulative_gross = resolve_xml_cumulative_amount(item, amount_gross)
+                    if cumulative_gross == amount_gross and len(items) == 1 and cumulative_mode == '1':
+                        cumulative_gross = section_cumulative_parts['gross']
+                    amount_parts = split_vat_inclusive_amount(amount_gross, vat_rate_default)
+                    cumulative_parts = split_vat_inclusive_amount(cumulative_gross, vat_rate_default)
+                    effective_amount_parts = split_vat_inclusive_amount(effective_amount_gross, vat_rate_default)
+                    amount = amount_parts['base']
+                    cumulative_amount = cumulative_parts['base']
+                    effective_amount = effective_amount_parts['base']
                     if cumulative_amount == amount and len(items) == 1 and cumulative_mode == '1':
                         cumulative_amount = section_cumulative_amount
                     cumulative_qty = resolve_xml_cumulative_quantity(item, qty)
-                    vat_amount = calc_vat(amount, vat_rate_default)
-                    cumulative_vat_amount = calc_vat(cumulative_amount, vat_rate_default)
+                    vat_amount = amount_parts['vat']
+                    cumulative_vat_amount = cumulative_parts['vat']
                     item_attrs = {
                         'НомСтр': str(item.get('xmlRowNo')),
                         'НомПоз': str(item.get('lineNo') or item.get('xmlRowNo')),
                         'НаимТов': item.get('name') or f"Работа {item.get('xmlRowNo')}",
                         'ТипЗатр': resolve_expense_type(item),
-                        'ЦенаТов': fmt_money(price),
+                        'ЦенаТов': fmt_money(price_parts['base']),
                         'СтПоСметеБезНДС': fmt_money(amount),
                         'СтТовБезНДС': fmt_money(amount),
-                        'СтТовУчНал': fmt_money(amount + vat_amount),
+                        'СтТовУчНал': fmt_money(amount_parts['gross']),
                         'ОКЕИ_Стройка': '796',
                         'НаимЕдИзм': item.get('unit') or 'шт',
                     }

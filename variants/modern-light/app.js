@@ -4111,6 +4111,23 @@ function formatXmlScalar(value) {
   return String(value);
 }
 
+function splitVatInclusiveAmount(amount, vatRate) {
+  const gross = numberOrZero(amount);
+  const rate = numberOrZero(vatRate);
+  const sign = gross < 0 ? -1 : 1;
+  const grossAbs = Math.abs(gross);
+  if (!rate) {
+    return { base: round2(gross), vat: 0, gross: round2(gross) };
+  }
+  const baseAbs = round2(grossAbs / (1 + rate / 100));
+  const vatAbs = round2(grossAbs - baseAbs);
+  return {
+    base: round2(baseAbs * sign),
+    vat: round2(vatAbs * sign),
+    gross: round2(grossAbs * sign),
+  };
+}
+
 function buildXmlTagSnippet(tag, attrs = {}, selfClosing = true) {
   const pairs = Object.entries(attrs)
     .filter(([, value]) => value != null && value !== '')
@@ -4130,16 +4147,17 @@ function buildKs2RowXmlSnippet(sheetIndex, rowIndex) {
   }
   const amount = computeRowDisplayAmount(row);
   const vatRate = numberOrZero(app.state.ks2Sheets?.[sheetIndex]?.vatRate) || 20;
-  const vatAmount = amount == null ? null : round2(numberOrZero(amount) * vatRate / 100);
+  const amountParts = amount == null ? null : splitVatInclusiveAmount(amount, vatRate);
+  const priceParts = row.price == null ? null : splitVatInclusiveAmount(row.price, vatRate);
   const attrs = {
     НомПоз: row.lineNo || '',
     ПозСмет: row.estimateNo || '',
     НаимТов: row.name || '',
     НаимЕдИзм: row.unit || '',
     КолТов: row.quantity != null ? formatXmlScalar(row.quantity) : '',
-    ЦенаТов: row.price != null ? formatXmlScalar(row.price) : '',
-    СтТовБезНДС: amount != null ? formatXmlScalar(amount) : '',
-    СтТовУчНал: amount != null ? formatXmlScalar(round2(numberOrZero(amount) + numberOrZero(vatAmount))) : '',
+    ЦенаТов: priceParts ? formatXmlScalar(priceParts.base) : '',
+    СтТовБезНДС: amountParts ? formatXmlScalar(amountParts.base) : '',
+    СтТовУчНал: amountParts ? formatXmlScalar(amountParts.gross) : '',
     ТипЗатр: normalizeExpenseType(row.expenseType, row),
   };
   return buildXmlTagSnippet('СвВидРаб', attrs);

@@ -14,7 +14,12 @@ SAMPLE_PATH = ROOT / 'variants' / 'modern-light' / 'data' / 'sample-data.json'
 
 sys.path.insert(0, str(ROOT / 'scripts'))
 from generate_customer_xml_from_export import build_customer_xml_exports_by_ks2_sheet  # noqa: E402
-from generate_xml_from_export import build_xml_exports_by_ks2_sheet  # noqa: E402
+from generate_xml_from_export import (  # noqa: E402
+    build_holdback_sections_from_rows,
+    build_sheet_settlement_from_holdback_sections,
+    build_xml_exports_by_ks2_sheet,
+    split_vat_inclusive_amount,
+)
 
 
 def serialize_xml_tree(tree: ET._ElementTree) -> bytes:
@@ -35,6 +40,68 @@ def validate_exports(exports, schema_path: Path, label: str):
             )
 
 
+def find_info_pair_values(root: ET._Element, key: str):
+    values = []
+    for block in root.findall('./Документ/СвОРасч/ИнфПолСвОРасч'):
+        for item in block.findall('ТекстИнф'):
+            if item.get('Идентиф') == key:
+                values.append(item.get('Значение'))
+    return values
+
+
+def assert_single_sheet_business_totals(payload: dict, export_item: dict):
+    sheet = payload['ks2Sheets'][0]
+    vat_rate = float(sheet.get('vatRate') or 20)
+    gross_total = round(sum(float(row.get('amount') or 0) for row in sheet.get('rows', []) if row.get('type') == 'item'), 2)
+    totals = split_vat_inclusive_amount(gross_total, vat_rate)
+    holdback_sections = build_holdback_sections_from_rows(payload.get('holdbacks', {}).get('rows', []))
+    settlement = build_sheet_settlement_from_holdback_sections(holdback_sections)
+
+    xml_bytes = serialize_xml_tree(export_item['tree'])
+    root = ET.fromstring(xml_bytes)
+    total = root.find('./Документ/ВсегоАктОтч')
+    settlement_el = root.find('./Документ/СвОРасч')
+    settlement_item = root.find('./Документ/СвОРасч/УчетТребУдерж')
+
+    if total is None or settlement_el is None or settlement_item is None:
+        raise AssertionError('Expected total and settlement blocks in contractor sample export')
+
+    actual_total = {
+        'base': total.get('СтТовБезНДСВсего'),
+        'gross': total.get('СтТовУчНалВсего'),
+        'vat': total.findtext('СумНалВсего'),
+    }
+    expected_total = {
+        'base': f"{totals['base']:.2f}",
+        'gross': f"{totals['gross']:.2f}",
+        'vat': f"{totals['vat']:.2f}",
+    }
+    if actual_total != expected_total:
+        raise AssertionError(f'Unexpected contractor totals: expected {expected_total}, got {actual_total}')
+
+    actual_settlement = {
+        'totalRetention': settlement_el.get('СумУдержВсегоОтч'),
+        'totalClaims': settlement_el.get('СумТребВсегоОтч'),
+        'payable': settlement_el.get('ВсегоКОплатОтч'),
+        'aggregated': settlement_item.get('СумТребУдерж'),
+    }
+    expected_settlement = {
+        'totalRetention': f"{float(settlement['totalRetention']):.2f}",
+        'totalClaims': f"{float(settlement['totalClaims']):.2f}",
+        'payable': f"{float(settlement['totalPayable']):.2f}",
+        'aggregated': f"{float(sum(float(row.get('amount') or 0) for row in settlement['settlementRows'])):.2f}",
+    }
+    if actual_settlement != expected_settlement:
+        raise AssertionError(f'Unexpected contractor settlement: expected {expected_settlement}, got {actual_settlement}')
+
+    guarantee_total_values = find_info_pair_values(root, 'RET_GUARANTEE_TOTAL_RUB')
+    advance_close_values = find_info_pair_values(root, 'AVANS_TOTAL_CLOSING_RUB')
+    if expected_settlement['totalRetention'] not in guarantee_total_values and f"{float(settlement['totalGuaranteeRetention']):.2f}" not in guarantee_total_values:
+        raise AssertionError(f'Missing guarantee retention info block value: {guarantee_total_values}')
+    if f"{float(settlement['totalAdvanceClose']):.2f}" not in advance_close_values:
+        raise AssertionError(f'Missing advance closing info block value: {advance_close_values}')
+
+
 def main():
     payload = json.loads(SAMPLE_PATH.read_text(encoding='utf-8'))
     ks2_sheets = payload.get('ks2Sheets') or []
@@ -51,6 +118,7 @@ def main():
 
     validate_exports(contractor_exports, P_XSD_PATH, 'contractor P')
     validate_exports(customer_exports, Z_XSD_PATH, 'customer Z')
+    assert_single_sheet_business_totals(payload, contractor_exports[0])
 
     print('OK: modern-light sample pair regression passed (single-sheet P + Z)')
 
