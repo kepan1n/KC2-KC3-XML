@@ -300,6 +300,7 @@ async function main() {
     await cdp.click('[data-action="set-ks2-view-mode"][data-mode="xml"]');
     await cdp.waitFor('document.getElementById("content")?.innerText?.includes("XML preview ·")', 'ks2 xml preview after holdbacks toggle', 20000);
     await cdp.waitFor('document.querySelectorAll(`.xml-preview-code .xml-line[data-source-path^="holdbacks.rows."], .xml-preview-code .xml-line-note[data-source-path^="holdbacks.rows."]`).length === 0', 'holdbacks removed from xml preview', 20000);
+    await cdp.waitFor('document.getElementById("content")?.innerText?.includes(`ВсегоКОплатОтч="6257958.31"`)', 'xml payable switches back to gross total when holdbacks export is disabled', 20000);
 
     const seriousExceptions = cdp.runtimeExceptions.filter(Boolean);
     const seriousConsoleErrors = cdp.consoleErrors.filter((entry) => {

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import copy
 import json
 import sys
 from pathlib import Path
@@ -102,6 +103,35 @@ def assert_single_sheet_business_totals(payload: dict, export_item: dict):
         raise AssertionError(f'Missing advance closing info block value: {advance_close_values}')
 
 
+def assert_holdbacks_toggle_affects_payable(payload: dict):
+    gross_total = round(sum(float(row.get('amount') or 0) for row in payload['ks2Sheets'][0].get('rows', []) if row.get('type') == 'item'), 2)
+    disabled_payload = copy.deepcopy(payload)
+    disabled_payload.setdefault('holdbacks', {})['includeInXml'] = False
+
+    disabled_exports = build_xml_exports_by_ks2_sheet(disabled_payload)
+    if len(disabled_exports) != 1:
+        raise AssertionError(f'Expected exactly 1 contractor export for disabled-holdbacks sample, got {len(disabled_exports)}')
+
+    xml_bytes = serialize_xml_tree(disabled_exports[0]['tree'])
+    root = ET.fromstring(xml_bytes)
+    settlement_el = root.find('./Документ/СвОРасч')
+    if settlement_el is None:
+        raise AssertionError('Expected СвОРасч in disabled-holdbacks contractor export')
+
+    actual = {
+        'totalRetention': settlement_el.get('СумУдержВсегоОтч'),
+        'totalClaims': settlement_el.get('СумТребВсегоОтч'),
+        'payable': settlement_el.get('ВсегоКОплатОтч'),
+    }
+    expected = {
+        'totalRetention': '0.00',
+        'totalClaims': '0.00',
+        'payable': f'{gross_total:.2f}',
+    }
+    if actual != expected:
+        raise AssertionError(f'Unexpected settlement totals for disabled holdbacks: expected {expected}, got {actual}')
+
+
 def main():
     payload = json.loads(SAMPLE_PATH.read_text(encoding='utf-8'))
     ks2_sheets = payload.get('ks2Sheets') or []
@@ -119,6 +149,7 @@ def main():
     validate_exports(contractor_exports, P_XSD_PATH, 'contractor P')
     validate_exports(customer_exports, Z_XSD_PATH, 'customer Z')
     assert_single_sheet_business_totals(payload, contractor_exports[0])
+    assert_holdbacks_toggle_affects_payable(payload)
 
     print('OK: modern-light sample pair regression passed (single-sheet P + Z)')
 

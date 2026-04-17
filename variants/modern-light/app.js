@@ -2855,6 +2855,7 @@ function renderHoldbacksPane() {
   const sheet = app.state.ks2Sheets[0] || createBlankSheet(1);
   const holdbackGroups = buildHoldbackGroups(sheet.id);
   const includeInXml = shouldIncludeHoldbacksInXml();
+  const xmlSettlement = buildHoldbacksXmlSettlementModel(sheet.id);
   const summary = holdbackGroups.reduce((acc, group) => {
     const computed = computeHoldbackSectionComputed(group);
     acc.sections += 1;
@@ -2873,17 +2874,18 @@ function renderHoldbacksPane() {
       </div>
 
       <div class="summary-grid">
-        <div class="summary-card"><span>Блоков удержаний</span><strong>${summary.sections}</strong></div>
-        <div class="summary-card"><span>Документов аванса</span><strong>${summary.advanceDocs}</strong></div>
-        <div class="summary-card"><span>Сумма удержания</span><strong>${formatMoney(summary.retentionAmount)}</strong></div>
-        <div class="summary-card"><span>Передача в XML</span><strong>${includeInXml ? 'вкл' : 'выкл'}</strong></div>
-      </div>
+      <div class="summary-card"><span>Блоков удержаний</span><strong>${summary.sections}</strong></div>
+      <div class="summary-card"><span>Документов аванса</span><strong>${summary.advanceDocs}</strong></div>
+      <div class="summary-card"><span>Сумма удержания</span><strong>${formatMoney(summary.retentionAmount)}</strong></div>
+      <div class="summary-card"><span>К оплате в XML</span><strong>${formatMoney(xmlSettlement.totalPayable)}</strong></div>
+      <div class="summary-card"><span>Передача в XML</span><strong>${includeInXml ? 'вкл' : 'выкл'}</strong></div>
+    </div>
 
       <div class="inline-actions section-block">
         <button class="ghost mini toggle-chip ${includeInXml ? 'is-active' : ''}" data-action="toggle-holdbacks-xml-export">${includeInXml ? 'Удержания в XML: вкл' : 'Удержания в XML: выкл'}</button>
         <span class="kbd-note">${includeInXml
-          ? 'Автоматический блок удержаний из этой вкладки сейчас попадает в XML preview и в экспорт P / P+Z.'
-          : 'Автоматический блок удержаний из этой вкладки сейчас не попадает в XML preview и экспорт. Ручные settlement-строки в XML-вкладке продолжают жить отдельно.'}</span>
+          ? 'Автоматический блок удержаний из этой вкладки сейчас попадает в XML preview и в экспорт P / P+Z. Итог к оплате в XML считается как сумма КС-2 минус гарантийное удержание и зачтённые авансы.'
+          : 'Автоматический блок удержаний из этой вкладки сейчас не попадает в XML preview и экспорт. Итог к оплате в XML равен сумме работ по КС-2 без удержаний. Ручные settlement-строки в XML-вкладке продолжают жить отдельно.'}</span>
       </div>
 
       <div class="section-block">
@@ -3758,6 +3760,10 @@ function buildHoldbacksXmlSettlementModel(targetSheetId = null, { includeUnassig
   const totalClaims = settlementRows.reduce((sum, row) => (
     normalizeSettlementKind(row.kind) === 'claim' ? sum + numberOrZero(row.amount) : sum
   ), 0);
+  const totalGross = (targetSheetId
+    ? app.state.ks2Sheets.filter((sheet) => String(sheet.id || '') === String(targetSheetId || '')).reduce((sum, sheet) => sum + numberOrZero(computeSheetTotals(sheet).gross), 0)
+    : app.state.ks2Sheets.reduce((sum, sheet) => sum + numberOrZero(computeSheetTotals(sheet).gross), 0));
+  const totalPayable = round2(Math.max(totalGross + totalClaims - totalRetention, 0));
 
   const representativeRow = exportManualRows.find((row) => row.isPrimary)
     || chooseRepresentativeSettlementRow(settlementRows, totalClaims, totalRetention)
@@ -3766,6 +3772,7 @@ function buildHoldbacksXmlSettlementModel(targetSheetId = null, { includeUnassig
   return {
     totalRetention,
     totalClaims,
+    totalPayable,
     settlementRows,
     autoRows,
     manualRows,

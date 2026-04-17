@@ -205,6 +205,11 @@ def resolve_xml_payload(data: dict) -> dict:
     return legacy_xml
 
 
+def should_include_holdbacks_in_xml(data: dict) -> bool:
+    holdbacks = data.get('holdbacks', {}) or {}
+    return holdbacks.get('includeInXml') is not False
+
+
 def resolve_cumulative_mode(constants: dict) -> str:
     # Текущее проектное решение: подрядческий P-файл всегда собираем
     # в режиме full cumulative как развернутый аналог КС-3 из Excel.
@@ -724,6 +729,8 @@ def build_holdback_sections_from_rows(rows: list[dict]):
 
 
 def resolve_holdback_sections(data: dict) -> list[dict]:
+    if not should_include_holdbacks_in_xml(data):
+        return []
     holdbacks = data.get('holdbacks', {}) or {}
     sections = holdbacks.get('sections') or []
     if sections:
@@ -1080,6 +1087,14 @@ def build_sheet_settlement_from_holdback_sections(sections: list[dict], manual_r
         'manualRows': prepared_manual_rows,
         'representativeRow': representative_row,
     }
+
+
+def resolve_settlement_payable_total(total_period_with_vat: float, settlement: dict | None) -> float:
+    settlement = settlement or {}
+    total_retention = safe_float(settlement.get('totalRetention'), 0.0)
+    total_claims = safe_float(settlement.get('totalClaims'), 0.0)
+    payable = round(safe_float(total_period_with_vat, 0.0) + total_claims - total_retention, 2)
+    return max(payable, 0.0)
 
 
 def build_ks3_totals_from_row(row: dict | None) -> dict:
@@ -1788,10 +1803,11 @@ def build_xml(data: dict) -> ET._ElementTree:
 
     settlement_el = doc.find('СвОРасч')
     clear_children(settlement_el)
+    payable_total = resolve_settlement_payable_total(total_period_with_vat, settlement)
     set_attr(settlement_el,
              СумУдержВсегоОтч=fmt_money(settlement.get('totalRetention')),
              СумТребВсегоОтч=fmt_money(settlement.get('totalClaims')),
-             ВсегоКОплатОтч=fmt_money(first_number(settlement.get('totalPayable'), holdbacks.get('totals', {}).get('payableAmount'), total_period_with_vat, default=total_period_with_vat)))
+             ВсегоКОплатОтч=fmt_money(payable_total))
     settlement_rows = [row for row in settlement.get('settlementRows', []) if safe_float(row.get('amount') or 0, 0.0) > 0] or [{'amount': 1, 'kind': 'withhold', 'kindCode': '31'}]
     representative_row = settlement.get('representativeRow') or None
     aggregated_amount = sum(max(float(row.get('amount') or 0), 0) for row in settlement_rows)
