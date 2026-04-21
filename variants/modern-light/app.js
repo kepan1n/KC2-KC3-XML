@@ -469,6 +469,26 @@ function handleContentClick(event) {
     return;
   }
 
+  if (action === 'set-acceptance-deadline-mode') {
+    const mode = normalizeAcceptanceDeadlineMode(actionButton.dataset.mode);
+    app.state.ui.acceptanceDeadlineMode = mode;
+    if (mode === 'workdays') {
+      app.state.xmlP.manual.acceptanceDeadlineCalendarDays = '';
+      app.state.xmlP.manual.acceptanceDeadlineDate = '';
+    } else if (mode === 'calendar') {
+      app.state.xmlP.manual.acceptanceDeadlineWorkDays = '';
+      app.state.xmlP.manual.acceptanceDeadlineDate = '';
+    } else {
+      app.state.xmlP.manual.acceptanceDeadlineWorkDays = '';
+      app.state.xmlP.manual.acceptanceDeadlineCalendarDays = '';
+    }
+    app.state = prepareState(app.state);
+    invalidateXmlPreviewCache();
+    render();
+    flash(`Режим срока принятия переключён: ${mode === 'workdays' ? 'рабочие дни' : mode === 'calendar' ? 'календарные дни' : 'фиксированная дата'}.`);
+    return;
+  }
+
   if (action === 'add-item-row') {
     clearTransientRowUi();
     const expenseType = actionButton.dataset.expenseType || '1';
@@ -784,6 +804,9 @@ function handleContentChange(event) {
   if (!field) return;
   const { path, valueType = 'string' } = field.dataset;
   setByPath(app.state, path, coerceValue(field.value, valueType));
+  if (path === 'xmlP.manual.acceptanceDeadlineWorkDays') app.state.ui.acceptanceDeadlineMode = 'workdays';
+  if (path === 'xmlP.manual.acceptanceDeadlineCalendarDays') app.state.ui.acceptanceDeadlineMode = 'calendar';
+  if (path === 'xmlP.manual.acceptanceDeadlineDate') app.state.ui.acceptanceDeadlineMode = 'date';
   app.state = prepareState(app.state);
   invalidateXmlPreviewCache();
   render();
@@ -1051,6 +1074,7 @@ function prepareState(raw) {
   data.xmlP.constants.diadocCompactMode ||= '0';
   data.xmlP.manual.isCorrectionAct ||= '0';
   data.xmlP.manual.hasEstimateChange ||= '1';
+  data.ui.acceptanceDeadlineMode = normalizeAcceptanceDeadlineMode(data.ui.acceptanceDeadlineMode || inferAcceptanceDeadlineMode(data.xmlP.manual));
   data.xmlExtras.constants = data.xmlP.constants;
   data.xmlExtras.generated = data.xmlP.generated;
   data.xmlExtras.manual = mergeXmlManualScopes(data.xmlP.manual, data.xmlZ.manual);
@@ -1351,6 +1375,16 @@ function shouldIncludeHoldbacksInXml(source = app.state) {
   return source?.holdbacks?.includeInXml !== false;
 }
 
+function normalizeAcceptanceDeadlineMode(value) {
+  return ['workdays', 'calendar', 'date'].includes(value) ? value : 'workdays';
+}
+
+function inferAcceptanceDeadlineMode(source = app.state?.xmlP?.manual || {}) {
+  if (String(source?.acceptanceDeadlineDate || '').trim()) return 'date';
+  if (String(source?.acceptanceDeadlineCalendarDays || '').trim()) return 'calendar';
+  return 'workdays';
+}
+
 function invalidateXmlPreviewCache() {
   app.state.ui.ks2XmlPreview = {};
   app.state.ui.ks2CustomerXmlPreview = {};
@@ -1645,7 +1679,26 @@ function buildValidationReport(model) {
 }
 
 function renderValidationIssue(issue) {
-  return `<li class="issue-item ${issue.severity}"><strong>${escapeHtml(issue.label)}:</strong> ${escapeHtml(issue.message)}</li>`;
+  const path = String(issue?.path || '').trim();
+  const xmlBinding = path ? resolveXmlBinding(path) : null;
+  const canJumpToField = Boolean(path);
+  const canJumpToXml = Boolean(path && xmlBinding?.included);
+  return `
+    <li class="issue-item ${issue.severity}">
+      <div class="issue-item-body">
+        <div class="issue-item-copy">
+          <strong>${escapeHtml(issue.label)}:</strong> ${escapeHtml(issue.message)}
+          ${path ? `<div class="issue-item-path">${escapeHtml(path)}</div>` : ''}
+        </div>
+        ${(canJumpToField || canJumpToXml) ? `
+          <div class="issue-item-actions">
+            ${canJumpToField ? `<button class="ghost mini" type="button" data-action="jump-to-source-field" data-source-path="${escapeAttr(path)}">К полю</button>` : ''}
+            ${canJumpToXml ? `<button class="ghost mini" type="button" data-action="jump-to-xml-preview" data-source-path="${escapeAttr(path)}">XML</button>` : ''}
+          </div>
+        ` : ''}
+      </div>
+    </li>
+  `;
 }
 
 function renderReadinessCheck(check) {
@@ -3044,6 +3097,7 @@ function renderXmlPane() {
   const constants = app.state.xmlP.constants;
   const contractorManual = app.state.xmlP.manual;
   const customerManual = app.state.xmlZ.manual;
+  const acceptanceDeadlineMode = normalizeAcceptanceDeadlineMode(app.state.ui.acceptanceDeadlineMode || inferAcceptanceDeadlineMode(contractorManual));
   const customerSignerStatus = String(customerManual.customerSignerStatus || contractorManual.signerStatus || '1');
   const customerAcceptanceCode = String(customerManual.customerAcceptanceCode || '1');
 
@@ -3075,6 +3129,9 @@ function renderXmlPane() {
       <div class="inline-hint">${holdbacksInXml
         ? 'Авто-удержания из отдельной вкладки сейчас включены в XML. При необходимости их можно отключить прямо во вкладке «Удержания».'
         : 'Авто-удержания из отдельной вкладки сейчас исключены из XML. В preview и экспорт попадут только ручные settlement-строки из этого раздела и прочие XML-поля.'}</div>
+
+      <div class="inline-hint">Статусы возле полей теперь показывают тип связи с XML: <strong>core</strong> — основной XML-узел, <strong>ИнфПол</strong> — structured info block, <strong>derived</strong> — вычисляемое влияние, <strong>UI-only</strong> — в XML не уходит.</div>
+      ${renderXmlBindingLegend()}
 
       ${renderValidationSummary(validation)}
       ${renderCustomerReadinessPanel(activeCustomerReadiness, {
@@ -3137,11 +3194,16 @@ function renderXmlPane() {
       <div class="section-block">
         <h3>xmlP: сдача работ / СвПродПер</h3>
         <p class="kbd-note">Здесь лежат дополнительные реквизиты сдачи результата работ из <code>nalog target.docx</code>: дата предъявления, документ предъявления, срок принятия и сообщение о готовности.</p>
+        <div class="inline-actions section-block compact-section-block">
+          <button class="ghost mini toggle-chip ${acceptanceDeadlineMode === 'workdays' ? 'is-active' : ''}" type="button" data-action="set-acceptance-deadline-mode" data-mode="workdays">Срок: рабочие дни</button>
+          <button class="ghost mini toggle-chip ${acceptanceDeadlineMode === 'calendar' ? 'is-active' : ''}" type="button" data-action="set-acceptance-deadline-mode" data-mode="calendar">Срок: календарные дни</button>
+          <button class="ghost mini toggle-chip ${acceptanceDeadlineMode === 'date' ? 'is-active' : ''}" type="button" data-action="set-acceptance-deadline-mode" data-mode="date">Срок: дата</button>
+        </div>
         <div class="form-grid">
           ${renderInput('Дата предъявления результатов заказчику', 'xmlP.manual.deliveryNoticeDate', contractorManual.deliveryNoticeDate, 'string', 'quarter')}
-          ${renderInput('Срок принятия — рабочие дни', 'xmlP.manual.acceptanceDeadlineWorkDays', contractorManual.acceptanceDeadlineWorkDays, 'string', 'quarter')}
-          ${renderInput('Срок принятия — календарные дни', 'xmlP.manual.acceptanceDeadlineCalendarDays', contractorManual.acceptanceDeadlineCalendarDays, 'string', 'quarter')}
-          ${renderInput('Срок принятия — дата', 'xmlP.manual.acceptanceDeadlineDate', contractorManual.acceptanceDeadlineDate, 'string', 'quarter')}
+          ${acceptanceDeadlineMode === 'workdays' ? renderInput('Срок принятия — рабочие дни', 'xmlP.manual.acceptanceDeadlineWorkDays', contractorManual.acceptanceDeadlineWorkDays, 'string', 'quarter') : ''}
+          ${acceptanceDeadlineMode === 'calendar' ? renderInput('Срок принятия — календарные дни', 'xmlP.manual.acceptanceDeadlineCalendarDays', contractorManual.acceptanceDeadlineCalendarDays, 'string', 'quarter') : ''}
+          ${acceptanceDeadlineMode === 'date' ? renderInput('Срок принятия — дата', 'xmlP.manual.acceptanceDeadlineDate', contractorManual.acceptanceDeadlineDate, 'string', 'quarter') : ''}
           ${renderInput('Документ предъявления — наименование', 'xmlP.manual.deliveryNoticeDocName', contractorManual.deliveryNoticeDocName, 'string', 'half')}
           ${renderInput('Документ предъявления — ID', 'xmlP.manual.deliveryNoticeDocId', contractorManual.deliveryNoticeDocId, 'string', 'half')}
           ${renderInput('Документ предъявления — номер', 'xmlP.manual.deliveryNoticeDocNumber', contractorManual.deliveryNoticeDocNumber, 'string', 'quarter')}
@@ -3151,7 +3213,7 @@ function renderXmlPane() {
           ${renderInput('Сообщение о готовности — номер', 'xmlP.manual.readinessNoticeDocNumber', contractorManual.readinessNoticeDocNumber, 'string', 'quarter')}
           ${renderInput('Сообщение о готовности — дата', 'xmlP.manual.readinessNoticeDocDate', contractorManual.readinessNoticeDocDate, 'string', 'quarter')}
         </div>
-        <div class="inline-hint">Если срок принятия задан, лучше заполнить только одно из трёх полей: рабочие дни, календарные дни или фиксированную дату.</div>
+        <div class="inline-hint">Срок принятия теперь задаётся в одном активном режиме. При переключении остальные два варианта автоматически очищаются, чтобы не плодить конфликтующие реквизиты.</div>
       </div>
 
       <div class="section-block">
@@ -3346,6 +3408,8 @@ function renderKs2XmlPane(sheetIndex, sheet) {
   const blockingMode = Boolean(app.state.ui.customerReadinessBlockingMode);
   const activeCustomerReadiness = blockingMode ? strictCustomerReadiness : customerReadiness;
   const advisoryEscalationCount = Math.max((strictCustomerReadiness.summary?.errors || 0) - (customerReadiness.summary?.errors || 0), 0);
+  const xmlSettlement = buildHoldbacksXmlSettlementModel(sheet.id || null, { includeUnassignedManualRows: true });
+  const holdbacksInXml = shouldIncludeHoldbacksInXml();
 
   return `
     <div class="panel">
@@ -3360,6 +3424,15 @@ function renderKs2XmlPane(sheetIndex, sheet) {
           <button class="ghost mini" data-action="copy-customer-xml-preview" data-sheet-index="${sheetIndex}">Копировать Z</button>
         </div>
       </div>
+
+      <div class="summary-grid">
+        <div class="summary-card"><span>Удержания в XML</span><strong>${holdbacksInXml ? 'вкл' : 'выкл'}</strong></div>
+        <div class="summary-card"><span>К оплате по preview</span><strong>${formatMoney(xmlSettlement.totalPayable)}</strong></div>
+        <div class="summary-card"><span>Z-время</span><strong>DOCX · ЧЧ:ММ:СС</strong></div>
+        <div class="summary-card"><span>Z XSD compat</span><strong>validation-only</strong></div>
+      </div>
+
+      <div class="inline-hint">Debug-card выше помогает быстро сверить логику preview: режим удержаний, расчёт итоговой суммы к оплате и тот факт, что customer XML живёт по DOCX-времени <code>ЧЧ:ММ:СС</code>, а совместимость со старой Z-XSD включается только на этапе локальной валидации.</div>
 
       ${renderCustomerReadinessPanel(activeCustomerReadiness, {
         title: 'Z readiness-check по текущему листу',
@@ -4198,12 +4271,35 @@ function buildRepresentativeSettlementLabel(row) {
   return parts.join(' · ');
 }
 
+function resolveXmlBindingKind(status, targets = []) {
+  if (status === 'unused') return 'ui-only';
+  if (status === 'derived') return 'derived';
+  const targetList = Array.isArray(targets) ? targets.filter(Boolean) : [];
+  const hasCoreTarget = targetList.some((item) => !String(item).includes('ИнфПол'));
+  return hasCoreTarget ? 'core' : 'info';
+}
+
+function xmlBindingKindLabel(kind, compact = false) {
+  switch (kind) {
+    case 'core':
+      return compact ? 'C' : 'core';
+    case 'info':
+      return compact ? 'I' : 'ИнфПол';
+    case 'derived':
+      return compact ? 'fx' : 'derived';
+    default:
+      return compact ? '—' : 'UI-only';
+  }
+}
+
 function buildXmlBindingTitle(binding) {
-  const statusTitle = binding.status === 'direct'
-    ? 'Напрямую попадает в XML'
-    : binding.status === 'derived'
-      ? 'Косвенно влияет на XML / вычисляется'
-      : 'Не передается в XML';
+  const statusTitle = binding.kind === 'core'
+    ? 'Статус: core XML — поле уходит в основной XML-узел'
+    : binding.kind === 'info'
+      ? 'Статус: ИнфПол — поле уходит только через structured info block'
+      : binding.kind === 'derived'
+        ? 'Статус: derived — поле косвенно влияет на XML / вычисляется'
+        : 'Статус: UI-only — поле не передается в XML';
   const lines = [statusTitle];
   if (binding.targets?.length) {
     lines.push(...binding.targets.map((item) => `• ${item}`));
@@ -4224,12 +4320,27 @@ function xmlBinding(statusOrIncluded, targets = [], note = '', snippet = '') {
   const binding = {
     status,
     included: status !== 'unused',
+    kind: resolveXmlBindingKind(status, targets),
     targets,
     note,
     snippet,
   };
   binding.title = buildXmlBindingTitle(binding);
   return binding;
+}
+
+function renderXmlBindingLegend() {
+  const items = [
+    { kind: 'core', title: 'Поле попадает в основной XML-узел.' },
+    { kind: 'info', title: 'Поле уходит только через ИнфПол / structured info.' },
+    { kind: 'derived', title: 'Поле не пишется как отдельный реквизит, но влияет на XML.' },
+    { kind: 'ui-only', title: 'Поле остаётся только в web-форме.' },
+  ];
+  return `
+    <div class="xml-binding-legend" aria-label="Легенда статусов XML">
+      ${items.map((item) => `<span class="xml-binding-pill is-${item.kind}" title="${escapeAttr(item.title)}"><span class="xml-binding-pill-dot"></span><span>${escapeHtml(xmlBindingKindLabel(item.kind))}</span></span>`).join('')}
+    </div>
+  `;
 }
 
 function getLogicBundleCached() {
@@ -4632,7 +4743,9 @@ function renderXmlIndicator(path, compact = false) {
   const clickAttrs = isClickable
     ? ` data-action="jump-to-xml-preview" data-source-path="${escapeAttr(path)}"`
     : '';
-  return `<span class="xml-indicator is-${binding.status} ${compact ? 'compact' : 'inline'}${isClickable ? ' is-clickable' : ''}" title="${escapeAttr(title)}" aria-label="${escapeAttr(title)}"${clickAttrs}></span>`;
+  return compact
+    ? `<span class="xml-indicator is-${binding.status} is-${binding.kind} compact${isClickable ? ' is-clickable' : ''}" title="${escapeAttr(title)}" aria-label="${escapeAttr(title)}"${clickAttrs}><span class="xml-indicator-dot"></span></span>`
+    : `<span class="xml-indicator is-${binding.status} is-${binding.kind} inline${isClickable ? ' is-clickable' : ''}" title="${escapeAttr(title)}" aria-label="${escapeAttr(title)}"${clickAttrs}><span class="xml-indicator-dot"></span><span class="xml-indicator-text">${escapeHtml(xmlBindingKindLabel(binding.kind))}</span></span>`;
 }
 
 function renderFieldLabel(label, path) {
