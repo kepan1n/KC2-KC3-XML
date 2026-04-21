@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 from generate_customer_xml_from_export import build_customer_xml_exports_by_ks2_sheet  # noqa: E402
 from generate_xml_from_export import build_xml_exports_by_ks2_sheet  # noqa: E402
 from split_legacy_multi_sheet_form import split_state_into_single_sheet_forms  # noqa: E402
+from z_xsd_compat import normalize_document_for_xsd  # noqa: E402
 
 
 def serialize_xml_tree(tree: ET._ElementTree) -> bytes:
@@ -29,6 +30,7 @@ def validate_exports(exports, schema_path: Path, label: str):
     for item in exports:
         xml_bytes = serialize_xml_tree(item['tree'])
         document = ET.fromstring(xml_bytes)
+        document = normalize_document_for_xsd(document, schema_path)
         if not schema.validate(document):
             last_error = schema.error_log.last_error
             raise AssertionError(

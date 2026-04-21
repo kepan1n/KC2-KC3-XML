@@ -93,8 +93,10 @@ def load_json(path: Path):
 
 
 def fmt_time_dots(value: str | None) -> str:
-    value = str(value or '00:00:00')
-    return value.replace(':', '.')
+    value = str(value or '00:00:00').strip().replace('.', ':')
+    if len(value) == 5:
+        value = f'{value}:00'
+    return value[:8]
 
 
 def fmt_money(value) -> str:

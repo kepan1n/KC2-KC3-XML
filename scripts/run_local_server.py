@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 from generate_customer_xml_from_export import build_customer_xml_exports_by_ks2_sheet  # noqa: E402
 from generate_xml_from_export import build_xml_exports_by_ks2_sheet  # noqa: E402
 from split_legacy_multi_sheet_form import save_split_forms, split_state_into_single_sheet_forms  # noqa: E402
+from z_xsd_compat import normalize_document_for_xsd  # noqa: E402
 
 
 def serialize_xml_tree(tree: ET._ElementTree) -> bytes:
@@ -31,6 +32,7 @@ def serialize_xml_tree(tree: ET._ElementTree) -> bytes:
 def validate_xml_bytes(xml_bytes: bytes, schema_path: Path):
     schema = ET.XMLSchema(ET.parse(str(schema_path)))
     xml_doc = ET.fromstring(xml_bytes)
+    xml_doc = normalize_document_for_xsd(xml_doc, schema_path)
     valid = schema.validate(xml_doc)
     errors = [{'line': err.line, 'message': err.message} for err in schema.error_log] if not valid else []
     return valid, errors

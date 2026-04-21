@@ -21,6 +21,7 @@ from generate_xml_from_export import (  # noqa: E402
     build_xml_exports_by_ks2_sheet,
     split_vat_inclusive_amount,
 )
+from z_xsd_compat import normalize_document_for_xsd  # noqa: E402
 
 
 def serialize_xml_tree(tree: ET._ElementTree) -> bytes:
@@ -34,6 +35,7 @@ def validate_exports(exports, schema_path: Path, label: str):
     for item in exports:
         xml_bytes = serialize_xml_tree(item['tree'])
         document = ET.fromstring(xml_bytes)
+        document = normalize_document_for_xsd(document, schema_path)
         if not schema.validate(document):
             last_error = schema.error_log.last_error
             raise AssertionError(
@@ -132,6 +134,83 @@ def assert_holdbacks_toggle_affects_payable(payload: dict):
         raise AssertionError(f'Unexpected settlement totals for disabled holdbacks: expected {expected}, got {actual}')
 
 
+def assert_customer_time_format(payload: dict):
+    customer_exports = build_customer_xml_exports_by_ks2_sheet(payload)
+    if len(customer_exports) != 1:
+        raise AssertionError(f'Expected exactly 1 customer export for time-format check, got {len(customer_exports)}')
+
+    xml_bytes = serialize_xml_tree(customer_exports[0]['tree'])
+    root = ET.fromstring(xml_bytes)
+    doc = root.find('./Документ')
+    info = root.find('./Документ/ИдИнфПодр')
+    if doc is None or info is None:
+        raise AssertionError('Expected Документ and ИдИнфПодр in customer export')
+
+    for label, value in {
+        'ВрИнфЗак': doc.get('ВрИнфЗак'),
+        'ВремяФайлИнфПодр': info.get('ВремяФайлИнфПодр'),
+    }.items():
+        if not value or ':' not in value or '.' in value:
+            raise AssertionError(f'{label} must use time format ЧЧ:ММ:СС, got {value!r}')
+
+
+def assert_docx_optional_p_fields_supported(payload: dict):
+    custom_payload = copy.deepcopy(payload)
+    xml_p = custom_payload.setdefault('xmlP', {})
+    manual = xml_p.setdefault('manual', {})
+    manual.update({
+        'agreedInfoStructureId': '1234.5678.0000',
+        'hasEstimateChange': '0',
+        'deliveryNoticeDate': '2025-11-03',
+        'deliveryNoticeDocName': 'Письмо о предъявлении результата работ',
+        'deliveryNoticeDocNumber': 'ПР-11',
+        'deliveryNoticeDocDate': '2025-11-03',
+        'acceptanceDeadlineWorkDays': '7',
+        'readinessNoticeDocName': 'Уведомление о готовности к сдаче',
+        'readinessNoticeDocNumber': 'ГС-22',
+        'readinessNoticeDocDate': '2025-11-01',
+    })
+
+    exports = build_xml_exports_by_ks2_sheet(custom_payload)
+    if len(exports) != 1:
+        raise AssertionError(f'Expected exactly 1 contractor export for docx optional-fields check, got {len(exports)}')
+
+    xml_bytes = serialize_xml_tree(exports[0]['tree'])
+    root = ET.fromstring(xml_bytes)
+    doc = root.find('./Документ')
+    act = root.find('./Документ/СвАктСдПр')
+    transfer = root.find('./Документ/СвПродПер/СвПер')
+    if doc is None or act is None or transfer is None:
+        raise AssertionError('Expected Документ, СвАктСдПр and СвПродПер/СвПер in contractor export')
+
+    if doc.get('СоглСтрДопИнф') != '1234.5678.0000':
+        raise AssertionError(f"Expected Документ/@СоглСтрДопИнф, got {doc.get('СоглСтрДопИнф')!r}")
+
+    if act.find('ИзмСмет') is not None:
+        raise AssertionError('Expected ИзмСмет to be omitted when hasEstimateChange=0')
+    estimate_no_change = act.find('ИзмСметНет')
+    if estimate_no_change is None or (estimate_no_change.text or '').strip() != 'смета не менялась':
+        raise AssertionError('Expected ИзмСметНет="смета не менялась" when hasEstimateChange=0')
+
+    if transfer.get('ДатПредъявЗак') != '03.11.2025':
+        raise AssertionError(f"Expected СвПер/@ДатПредъявЗак='03.11.2025', got {transfer.get('ДатПредъявЗак')!r}")
+
+    delivery_doc = transfer.find('./ИдДокПредъявЗак/ТипИдДок')
+    if delivery_doc is None:
+        raise AssertionError('Expected ИдДокПредъявЗак/ТипИдДок in СвПер')
+    if delivery_doc.get('НаимДок') != 'Письмо о предъявлении результата работ' or delivery_doc.get('НомерДок') != 'ПР-11' or delivery_doc.get('ДатаДок') != '03.11.2025':
+        raise AssertionError(f'Unexpected delivery notice doc attrs: {delivery_doc.attrib}')
+
+    if transfer.findtext('СрокПринРабДн') != '7':
+        raise AssertionError(f"Expected СвПер/СрокПринРабДн='7', got {transfer.findtext('СрокПринРабДн')!r}")
+
+    readiness_doc = transfer.find('./ИдСообОГотовн/ТипИдДок')
+    if readiness_doc is None:
+        raise AssertionError('Expected ИдСообОГотовн/ТипИдДок in СвПер')
+    if readiness_doc.get('НаимДок') != 'Уведомление о готовности к сдаче' or readiness_doc.get('НомерДок') != 'ГС-22' or readiness_doc.get('ДатаДок') != '01.11.2025':
+        raise AssertionError(f'Unexpected readiness notice doc attrs: {readiness_doc.attrib}')
+
+
 def main():
     payload = json.loads(SAMPLE_PATH.read_text(encoding='utf-8'))
     ks2_sheets = payload.get('ks2Sheets') or []
@@ -150,6 +229,8 @@ def main():
     validate_exports(customer_exports, Z_XSD_PATH, 'customer Z')
     assert_single_sheet_business_totals(payload, contractor_exports[0])
     assert_holdbacks_toggle_affects_payable(payload)
+    assert_customer_time_format(payload)
+    assert_docx_optional_p_fields_supported(payload)
 
     print('OK: modern-light sample pair regression passed (single-sheet P + Z)')
 

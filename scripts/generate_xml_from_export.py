@@ -519,6 +519,23 @@ def set_attr(el, **attrs):
         el.set(key, str(value))
 
 
+def add_doc_reference(parent: ET._Element, tag_name: str, name: str | None, number: str | None, date: str | None, *, doc_id: str | None = None):
+    has_payload = any(first_non_empty(value) is not None for value in (name, number, date, doc_id))
+    if not has_payload:
+        return None
+
+    block = ET.SubElement(parent, tag_name)
+    attrs = {}
+    if doc_id:
+        attrs['ИдДок'] = str(doc_id)
+    else:
+        attrs['НаимДок'] = first_non_empty(name, default='Без названия')
+        attrs['НомерДок'] = first_non_empty(number, default='Без номера')
+        attrs['ДатаДок'] = fmt_date(date)
+    ET.SubElement(block, 'ТипИдДок', **attrs)
+    return block
+
+
 def iter_ks2_sections(ks2_sheets: list[dict]):
     global_section_no = 0
     global_row_no = 0
@@ -1400,6 +1417,11 @@ def build_xml(data: dict) -> ET._ElementTree:
              ДатаИнфПодр=fmt_date(generated.get('fileDate')),
              ВремИнфПодр=generated.get('fileTime') or doc.get('ВремИнфПодр') or '00:00:00',
              НаимЭкСубСост=manual.get('economicSubjectName') or common.get('contractorName') or doc.get('НаимЭкСубСост'))
+    agreed_info_structure_id = first_non_empty(manual.get('agreedInfoStructureId'))
+    if agreed_info_structure_id:
+        doc.set('СоглСтрДопИнф', str(agreed_info_structure_id))
+    elif 'СоглСтрДопИнф' in doc.attrib:
+        del doc.attrib['СоглСтрДопИнф']
 
     org = doc.find('ОснДовОргСост/ИдРекСост/ИННЮЛ')
     if org is not None:
@@ -1488,6 +1510,7 @@ def build_xml(data: dict) -> ET._ElementTree:
 
     basic = act.find('ОсновСтроит')
     set_attr(basic, ПрГосМун=constants.get('isGovMunicipal') or '0')
+    is_gov_municipal = str(constants.get('isGovMunicipal') or '0') == '1'
 
     address = act.find('МестВыпРаб/АдрРФ')
     set_attr(address,
@@ -1495,15 +1518,29 @@ def build_xml(data: dict) -> ET._ElementTree:
              КодРегион=manual.get('developerRegionCode') or address.get('КодРегион') or '77')
 
     estimate = act.find('ИзмСмет')
+    estimate_no_change = act.find('ИзмСметНет')
     if has_estimate_change:
+        if estimate_no_change is not None:
+            act.remove(estimate_no_change)
         set_attr(estimate, КодСмет=manual.get('estimateVersionCode') or estimate.get('КодСмет') or '1')
         supplement = act.find('ИзмСмет/ИдДопСогл/ТипИдДок')
         set_attr(supplement,
                  НаимДок=manual.get('supplementDocType') or supplement.get('НаимДок') or 'Дополнительное соглашение',
                  НомерДок=manual.get('supplementDocNumber') or supplement.get('НомерДок') or 'ДС-1',
                  ДатаДок=fmt_date(manual.get('supplementDocDate') or supplement.get('ДатаДок')))
-    elif estimate is not None:
-        act.remove(estimate)
+    else:
+        if estimate is not None:
+            act.remove(estimate)
+        if not is_gov_municipal:
+            if estimate_no_change is None:
+                estimate_no_change = ET.Element('ИзмСметНет')
+            estimate_no_change.text = 'смета не менялась'
+            if estimate_no_change.getparent() is None:
+                currency_ref = act.find('ДенИзм')
+                insert_index = list(act).index(currency_ref) if currency_ref is not None else len(list(act))
+                act.insert(insert_index, estimate_no_change)
+        elif estimate_no_change is not None:
+            act.remove(estimate_no_change)
 
     currency = act.find('ДенИзм')
     basis_values = []
@@ -1795,11 +1832,39 @@ def build_xml(data: dict) -> ET._ElementTree:
     transfer_attrs = {
         'СодОпер': build_operation_text(common),
     }
+    delivery_notice_date = first_non_empty(manual.get('deliveryNoticeDate'))
+    if delivery_notice_date:
+        transfer_attrs['ДатПредъявЗак'] = fmt_date(delivery_notice_date)
     if period_from:
         transfer_attrs['НачПерВДок'] = fmt_date(period_from)
     if period_to:
         transfer_attrs['ОконПерВДок'] = fmt_date(period_to)
-    ET.SubElement(transfer, 'СвПер', **transfer_attrs)
+    transfer_item = ET.SubElement(transfer, 'СвПер', **transfer_attrs)
+    add_doc_reference(
+        transfer_item,
+        'ИдДокПредъявЗак',
+        manual.get('deliveryNoticeDocName'),
+        manual.get('deliveryNoticeDocNumber'),
+        manual.get('deliveryNoticeDocDate'),
+        doc_id=manual.get('deliveryNoticeDocId'),
+    )
+    acceptance_deadline_work_days = first_non_empty(manual.get('acceptanceDeadlineWorkDays'))
+    if acceptance_deadline_work_days is not None:
+        ET.SubElement(transfer_item, 'СрокПринРабДн').text = str(acceptance_deadline_work_days)
+    acceptance_deadline_calendar_days = first_non_empty(manual.get('acceptanceDeadlineCalendarDays'))
+    if acceptance_deadline_calendar_days is not None:
+        ET.SubElement(transfer_item, 'СрокПринКалендДн').text = str(acceptance_deadline_calendar_days)
+    acceptance_deadline_date = first_non_empty(manual.get('acceptanceDeadlineDate'))
+    if acceptance_deadline_date is not None:
+        ET.SubElement(transfer_item, 'СрокПринДат').text = fmt_date(acceptance_deadline_date)
+    add_doc_reference(
+        transfer_item,
+        'ИдСообОГотовн',
+        manual.get('readinessNoticeDocName'),
+        manual.get('readinessNoticeDocNumber'),
+        manual.get('readinessNoticeDocDate'),
+        doc_id=manual.get('readinessNoticeDocId'),
+    )
 
     settlement_el = doc.find('СвОРасч')
     clear_children(settlement_el)

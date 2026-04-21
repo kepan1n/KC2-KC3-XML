@@ -14,6 +14,7 @@ SMALL_SAMPLE_JSON = ROOT / 'output' / 'small-sample-export.json'
 sys.path.insert(0, str(ROOT / 'scripts'))
 from generate_customer_xml_from_export import build_customer_xml  # noqa: E402
 from generate_xml_from_export import load_json  # noqa: E402
+from z_xsd_compat import normalize_document_for_xsd  # noqa: E402
 
 
 def render_xml_bytes(tree: ET._ElementTree) -> bytes:
@@ -23,6 +24,7 @@ def render_xml_bytes(tree: ET._ElementTree) -> bytes:
 def ensure_valid_against_xsd(xml_bytes: bytes, xsd_path: Path, label: str) -> ET._Element:
     schema = ET.XMLSchema(ET.parse(str(xsd_path)))
     xml_doc = ET.fromstring(xml_bytes)
+    xml_doc = normalize_document_for_xsd(xml_doc, xsd_path)
     if not schema.validate(xml_doc):
         errors = '\n'.join(f'line {err.line}: {err.message}' for err in schema.error_log)
         raise AssertionError(f'{label}: INVALID against XSD\n{errors}')

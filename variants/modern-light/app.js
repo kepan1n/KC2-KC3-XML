@@ -89,6 +89,7 @@ const XML_P_CONSTANT_KEYS = [
 
 const XML_P_MANUAL_KEYS = [
   'economicSubjectName',
+  'agreedInfoStructureId',
   'isCorrectionAct',
   'correctionNumber',
   'correctionDate',
@@ -108,6 +109,18 @@ const XML_P_MANUAL_KEYS = [
   'customInfoValue',
   'contractorPostalIndex',
   'contractorRegionCode',
+  'deliveryNoticeDate',
+  'deliveryNoticeDocName',
+  'deliveryNoticeDocNumber',
+  'deliveryNoticeDocDate',
+  'deliveryNoticeDocId',
+  'acceptanceDeadlineWorkDays',
+  'acceptanceDeadlineCalendarDays',
+  'acceptanceDeadlineDate',
+  'readinessNoticeDocName',
+  'readinessNoticeDocNumber',
+  'readinessNoticeDocDate',
+  'readinessNoticeDocId',
   'contractorSignaturePayload',
   'contractorSignaturePayloads',
   'contractorSignatures',
@@ -1578,6 +1591,20 @@ function buildValidationReport(model) {
   requireValue(xmlManual.developerRegionCode, 'xmlP.manual.developerRegionCode', 'Код региона', 'warning');
   requireValue(xmlManual.signerName || documentContext.contractorSignerName, 'xmlP.manual.signerName', 'Подписант XML: ФИО', 'warning');
 
+  const agreedInfoStructureId = String(xmlManual.agreedInfoStructureId || '').trim();
+  if (agreedInfoStructureId && !/^\d{4}\.\d{4}\.\d{4}$/.test(agreedInfoStructureId)) {
+    pushIssue('warning', 'xmlP.manual.agreedInfoStructureId', 'СоглСтрДопИнф', 'Ожидается формат XXXX.YYYY.NNNN, например 1234.5678.0000.');
+  }
+
+  const acceptanceDeadlineFields = [
+    ['xmlP.manual.acceptanceDeadlineWorkDays', xmlManual.acceptanceDeadlineWorkDays],
+    ['xmlP.manual.acceptanceDeadlineCalendarDays', xmlManual.acceptanceDeadlineCalendarDays],
+    ['xmlP.manual.acceptanceDeadlineDate', xmlManual.acceptanceDeadlineDate],
+  ].filter(([, value]) => String(value || '').trim());
+  if (acceptanceDeadlineFields.length > 1) {
+    pushIssue('warning', acceptanceDeadlineFields[1][0], 'СвПродПер', 'Срок принятия работ лучше задавать одним способом: рабочие дни, календарные дни или фиксированная дата.');
+  }
+
   manualSettlementRows.forEach((row, index) => {
     const hasContent = numberOrZero(row.amount) > 0 || row.documentRef || row.comment || row.customKindText;
     if (!hasContent) return;
@@ -1785,6 +1812,7 @@ function buildXmlPreviewLineMeta(line, scope = 'p') {
         note: buildXmlPreviewSummary([
           attrs.КНД ? `КНД ${attrs.КНД}` : '',
           (attrs.НаимЭконСубСост || attrs.НаимЭкСубСост) ? `составитель: ${truncateXmlPreviewText(attrs.НаимЭконСубСост || attrs.НаимЭкСубСост, 88)}` : '',
+          attrs.СоглСтрДопИнф ? `СоглСтрДопИнф: ${attrs.СоглСтрДопИнф}` : '',
         ]),
       };
     case 'ОснДовОргСост':
@@ -1829,6 +1857,7 @@ function buildXmlPreviewLineMeta(line, scope = 'p') {
         kind: 'sheet',
         title: 'Реквизиты документа-основания',
         note: buildXmlPreviewSummary([
+          attrs.ИдДок ? `ID: ${truncateXmlPreviewText(attrs.ИдДок, 48)}` : '',
           attrs.НаимДок ? truncateXmlPreviewText(attrs.НаимДок, 58) : '',
           attrs.НомерДок ? `№ ${attrs.НомерДок}` : '',
           attrs.ДатаДок ? `от ${attrs.ДатаДок}` : '',
@@ -1888,6 +1917,12 @@ function buildXmlPreviewLineMeta(line, scope = 'p') {
         kind: 'sheet',
         title: 'Изменение сметы',
         note: attrs.КодСмет ? `Версия сметы / код ${attrs.КодСмет}.` : 'Блок изменений сметы / допсоглашения.',
+      };
+    case 'ИзмСметНет':
+      return {
+        kind: 'sheet',
+        title: 'Смета не менялась',
+        note: value || 'Форматный флаг для сценария без изменения сметы.',
       };
     case 'ИдДопСогл':
       return {
@@ -1989,10 +2024,41 @@ function buildXmlPreviewLineMeta(line, scope = 'p') {
         kind: 'section',
         title: 'Текущий период акта',
         note: buildXmlPreviewSummary([
+          attrs.ДатПредъявЗак ? `предъявлено: ${attrs.ДатПредъявЗак}` : '',
           attrs.НачПерВДок ? `с ${attrs.НачПерВДок}` : '',
           attrs.ОконПерВДок ? `по ${attrs.ОконПерВДок}` : '',
           attrs.СодОпер ? `операция: ${truncateXmlPreviewText(attrs.СодОпер, 72)}` : '',
         ]),
+      };
+    case 'ИдДокПредъявЗак':
+      return {
+        kind: 'section',
+        title: 'Документ предъявления результатов',
+        note: 'Реквизиты сообщения / документа, которым подрядчик предъявил результат заказчику.',
+      };
+    case 'ИдСообОГотовн':
+      return {
+        kind: 'section',
+        title: 'Сообщение о готовности к сдаче',
+        note: 'Идентификаторы отдельного сообщения подрядчика о готовности результата работ к сдаче.',
+      };
+    case 'СрокПринРабДн':
+      return {
+        kind: 'section',
+        title: 'Срок принятия — рабочие дни',
+        note: value ? `Значение: ${value}` : 'Срок принятия работ в рабочих днях.',
+      };
+    case 'СрокПринКалендДн':
+      return {
+        kind: 'section',
+        title: 'Срок принятия — календарные дни',
+        note: value ? `Значение: ${value}` : 'Срок принятия работ в календарных днях.',
+      };
+    case 'СрокПринДат':
+      return {
+        kind: 'section',
+        title: 'Срок принятия — дата',
+        note: value ? `Значение: ${value}` : 'Фиксированная дата, до которой заказчик принимает работы.',
       };
     case 'СвОРасч':
       return {
@@ -2461,6 +2527,7 @@ function resolveXmlPreviewLineSource(line, meta, scope = 'p', sheetIndex = 0, li
           { path: 'documentContext.developerName', label: 'Заказчик / застройщик', matchValue: subjectName },
         ])
         : chooseXmlPreviewSource([
+          { path: 'xmlP.manual.agreedInfoStructureId', label: 'СоглСтрДопИнф', matchValue: attrs.СоглСтрДопИнф, priority: attrs.СоглСтрДопИнф ? 30 : 0 },
           { path: 'xmlP.manual.economicSubjectName', label: 'Наименование экономического субъекта-составителя', matchValue: subjectName, priority: 20 },
           { path: 'documentContext.contractorName', label: 'Подрядчик', matchValue: subjectName },
         ]);
@@ -2507,6 +2574,14 @@ function resolveXmlPreviewLineSource(line, meta, scope = 'p', sheetIndex = 0, li
         { path: 'xmlP.manual.supplementDocType', label: 'Тип допсоглашения', matchValue: attrs.НаимДок, priority: parents.includes('ИдДопСогл') ? 30 : 0 },
         { path: 'xmlP.manual.supplementDocNumber', label: 'Номер допсоглашения', matchValue: attrs.НомерДок, priority: parents.includes('ИдДопСогл') ? 30 : 0 },
         { path: 'xmlP.manual.supplementDocDate', label: 'Дата допсоглашения', matchValue: attrs.ДатаДок, priority: parents.includes('ИдДопСогл') ? 30 : 0 },
+        { path: 'xmlP.manual.deliveryNoticeDocName', label: 'Документ предъявления — наименование', matchValue: attrs.НаимДок, priority: parents.includes('ИдДокПредъявЗак') ? 30 : 0 },
+        { path: 'xmlP.manual.deliveryNoticeDocNumber', label: 'Документ предъявления — номер', matchValue: attrs.НомерДок, priority: parents.includes('ИдДокПредъявЗак') ? 30 : 0 },
+        { path: 'xmlP.manual.deliveryNoticeDocDate', label: 'Документ предъявления — дата', matchValue: attrs.ДатаДок, priority: parents.includes('ИдДокПредъявЗак') ? 30 : 0 },
+        { path: 'xmlP.manual.deliveryNoticeDocId', label: 'Документ предъявления — ID', matchValue: attrs.ИдДок, priority: parents.includes('ИдДокПредъявЗак') ? 30 : 0 },
+        { path: 'xmlP.manual.readinessNoticeDocName', label: 'Сообщение о готовности — наименование', matchValue: attrs.НаимДок, priority: parents.includes('ИдСообОГотовн') ? 30 : 0 },
+        { path: 'xmlP.manual.readinessNoticeDocNumber', label: 'Сообщение о готовности — номер', matchValue: attrs.НомерДок, priority: parents.includes('ИдСообОГотовн') ? 30 : 0 },
+        { path: 'xmlP.manual.readinessNoticeDocDate', label: 'Сообщение о готовности — дата', matchValue: attrs.ДатаДок, priority: parents.includes('ИдСообОГотовн') ? 30 : 0 },
+        { path: 'xmlP.manual.readinessNoticeDocId', label: 'Сообщение о готовности — ID', matchValue: attrs.ИдДок, priority: parents.includes('ИдСообОГотовн') ? 30 : 0 },
         { path: 'xmlZ.manual.customerAuthorityDocName', label: 'Основание подписания заказчика', matchValue: attrs.НаимДок, priority: parents.includes('ДокОснПолнПодпис') ? 30 : 0 },
         { path: 'xmlZ.manual.customerAuthorityDocNumber', label: 'Номер основания заказчика', matchValue: attrs.НомерДок, priority: parents.includes('ДокОснПолнПодпис') ? 30 : 0 },
         { path: 'xmlZ.manual.customerAuthorityDocDate', label: 'Дата основания заказчика', matchValue: attrs.ДатаДок, priority: parents.includes('ДокОснПолнПодпис') ? 30 : 0 },
@@ -2557,6 +2632,10 @@ function resolveXmlPreviewLineSource(line, meta, scope = 'p', sheetIndex = 0, li
         { path: 'xmlP.manual.estimateVersionCode', label: 'Версия сметы', matchValue: attrs.КодСмет, priority: 20 },
         { path: 'xmlP.manual.hasEstimateChange', label: 'Изменение сметы' },
       ]);
+    case 'ИзмСметНет':
+      return chooseXmlPreviewSource([
+        { path: 'xmlP.manual.hasEstimateChange', label: 'Изменение сметы', priority: 20 },
+      ]);
     case 'ИдДопСогл':
       return chooseXmlPreviewSource([
         { path: 'xmlP.manual.supplementDocNumber', label: 'Номер допсоглашения', priority: 20 },
@@ -2593,9 +2672,32 @@ function resolveXmlPreviewLineSource(line, meta, scope = 'p', sheetIndex = 0, li
       ]);
     case 'СвПер':
       return chooseXmlPreviewSource([
+        { path: 'xmlP.manual.deliveryNoticeDate', label: 'Дата предъявления результатов заказчику', matchValue: attrs.ДатПредъявЗак, priority: attrs.ДатПредъявЗак ? 30 : 0 },
         { path: `ks2Sheets.${sheetIndex}.periodFrom`, label: 'Период с', matchValue: attrs.НачПерВДок, priority: 20 },
         { path: `ks2Sheets.${sheetIndex}.periodTo`, label: 'Период по', matchValue: attrs.ОконПерВДок },
         { path: 'documentContext.operationType', label: 'Вид операции', matchValue: attrs.СодОпер },
+      ]);
+    case 'ИдДокПредъявЗак':
+      return chooseXmlPreviewSource([
+        { path: 'xmlP.manual.deliveryNoticeDocName', label: 'Документ предъявления — наименование', priority: 20 },
+        { path: 'xmlP.manual.deliveryNoticeDocNumber', label: 'Документ предъявления — номер' },
+      ]);
+    case 'ИдСообОГотовн':
+      return chooseXmlPreviewSource([
+        { path: 'xmlP.manual.readinessNoticeDocName', label: 'Сообщение о готовности — наименование', priority: 20 },
+        { path: 'xmlP.manual.readinessNoticeDocNumber', label: 'Сообщение о готовности — номер' },
+      ]);
+    case 'СрокПринРабДн':
+      return chooseXmlPreviewSource([
+        { path: 'xmlP.manual.acceptanceDeadlineWorkDays', label: 'Срок принятия — рабочие дни', matchValue: value, priority: 20 },
+      ]);
+    case 'СрокПринКалендДн':
+      return chooseXmlPreviewSource([
+        { path: 'xmlP.manual.acceptanceDeadlineCalendarDays', label: 'Срок принятия — календарные дни', matchValue: value, priority: 20 },
+      ]);
+    case 'СрокПринДат':
+      return chooseXmlPreviewSource([
+        { path: 'xmlP.manual.acceptanceDeadlineDate', label: 'Срок принятия — дата', matchValue: value, priority: 20 },
       ]);
     case 'СвОРасч':
       return findHoldbackPreviewSourceByIdent(sheetIndex, 'RET32_SUM', attrs.СумУдержВсегоОтч)
@@ -3006,8 +3108,10 @@ function renderXmlPane() {
 
       <div class="section-block">
         <h3>xmlP: подрядчик / общий XML</h3>
+        <p class="kbd-note">Здесь живут реквизиты самого подрядческого файла. Для <code>СоглСтрДопИнф</code> поле оставляй пустым, если у сторон нет отдельного согласованного профиля дополнительных структурированных полей.</p>
         <div class="form-grid">
           ${renderInput('Наименование экономического субъекта-составителя', 'xmlP.manual.economicSubjectName', contractorManual.economicSubjectName, 'string', 'half')}
+          ${renderInput('СоглСтрДопИнф', 'xmlP.manual.agreedInfoStructureId', contractorManual.agreedInfoStructureId, 'string', 'half')}
           ${renderSelect('Тип акта', 'xmlP.manual.isCorrectionAct', contractorManual.isCorrectionAct || '0', { '0': '0 — первичный акт', '1': '1 — исправленный акт' }, 'half')}
           ${String(contractorManual.isCorrectionAct || '0') === '1' ? renderInput('Исправление №', 'xmlP.manual.correctionNumber', contractorManual.correctionNumber, 'string', 'quarter') : ''}
           ${String(contractorManual.isCorrectionAct || '0') === '1' ? renderInput('Дата исправления', 'xmlP.manual.correctionDate', contractorManual.correctionDate, 'string', 'quarter') : ''}
@@ -3028,6 +3132,26 @@ function renderXmlPane() {
           ${renderInput('Индекс подрядчика', 'xmlP.manual.contractorPostalIndex', contractorManual.contractorPostalIndex, 'string', 'quarter')}
           ${renderInput('Код региона подрядчика', 'xmlP.manual.contractorRegionCode', contractorManual.contractorRegionCode, 'string', 'quarter')}
         </div>
+      </div>
+
+      <div class="section-block">
+        <h3>xmlP: сдача работ / СвПродПер</h3>
+        <p class="kbd-note">Здесь лежат дополнительные реквизиты сдачи результата работ из <code>nalog target.docx</code>: дата предъявления, документ предъявления, срок принятия и сообщение о готовности.</p>
+        <div class="form-grid">
+          ${renderInput('Дата предъявления результатов заказчику', 'xmlP.manual.deliveryNoticeDate', contractorManual.deliveryNoticeDate, 'string', 'quarter')}
+          ${renderInput('Срок принятия — рабочие дни', 'xmlP.manual.acceptanceDeadlineWorkDays', contractorManual.acceptanceDeadlineWorkDays, 'string', 'quarter')}
+          ${renderInput('Срок принятия — календарные дни', 'xmlP.manual.acceptanceDeadlineCalendarDays', contractorManual.acceptanceDeadlineCalendarDays, 'string', 'quarter')}
+          ${renderInput('Срок принятия — дата', 'xmlP.manual.acceptanceDeadlineDate', contractorManual.acceptanceDeadlineDate, 'string', 'quarter')}
+          ${renderInput('Документ предъявления — наименование', 'xmlP.manual.deliveryNoticeDocName', contractorManual.deliveryNoticeDocName, 'string', 'half')}
+          ${renderInput('Документ предъявления — ID', 'xmlP.manual.deliveryNoticeDocId', contractorManual.deliveryNoticeDocId, 'string', 'half')}
+          ${renderInput('Документ предъявления — номер', 'xmlP.manual.deliveryNoticeDocNumber', contractorManual.deliveryNoticeDocNumber, 'string', 'quarter')}
+          ${renderInput('Документ предъявления — дата', 'xmlP.manual.deliveryNoticeDocDate', contractorManual.deliveryNoticeDocDate, 'string', 'quarter')}
+          ${renderInput('Сообщение о готовности — наименование', 'xmlP.manual.readinessNoticeDocName', contractorManual.readinessNoticeDocName, 'string', 'half')}
+          ${renderInput('Сообщение о готовности — ID', 'xmlP.manual.readinessNoticeDocId', contractorManual.readinessNoticeDocId, 'string', 'half')}
+          ${renderInput('Сообщение о готовности — номер', 'xmlP.manual.readinessNoticeDocNumber', contractorManual.readinessNoticeDocNumber, 'string', 'quarter')}
+          ${renderInput('Сообщение о готовности — дата', 'xmlP.manual.readinessNoticeDocDate', contractorManual.readinessNoticeDocDate, 'string', 'quarter')}
+        </div>
+        <div class="inline-hint">Если срок принятия задан, лучше заполнить только одно из трёх полей: рабочие дни, календарные дни или фиксированную дату.</div>
       </div>
 
       <div class="section-block">
@@ -4286,17 +4410,18 @@ function staticXmlBinding(path) {
     'xmlP.generated.programVersion': ['Файл/@ВерсПрог'],
 
     'xmlP.constants.isGovMunicipal': ['СвАктСдПр/ОсновСтроит/@ПрГосМун'],
-    'xmlP.constants.vatCalcInTotalOnly': ['СвПродПер/СвПер/@ПрНДСВИтог'],
+    'xmlP.constants.vatCalcInTotalOnly': ['НастрФормДок/@ПрНДСВИтог'],
     'xmlP.constants.cumulativeMode': { status: 'derived', targets: ['Влияет на накопительные суммы строк и итогов XML'] },
-    'xmlP.constants.priceIndexYear': ['СвПродПер/СвПер/@ПрИндЦен'],
-    'xmlP.constants.requiresSettlementApproval': ['СвПродПер/СвПер/@ПрСведРасчСогл'],
+    'xmlP.constants.priceIndexYear': ['НастрФормДок/@ПрИндЦен'],
+    'xmlP.constants.requiresSettlementApproval': ['НастрФормДок/@ПрСведРасчСогл'],
     'xmlP.constants.diadocCompactMode': { status: 'derived', targets: ['Влияет на структуру табличной части НаимИСт/Раздел/СвВидРаб'] },
 
     'xmlP.manual.economicSubjectName': ['Документ/@НаимЭкСубСост'],
+    'xmlP.manual.agreedInfoStructureId': ['Документ/@СоглСтрДопИнф'],
     'xmlP.manual.isCorrectionAct': ['СвАктСдПр/ИспрАктСдПр (наличие узла)'],
     'xmlP.manual.correctionNumber': ['СвАктСдПр/ИспрАктСдПр/@НомИспр'],
     'xmlP.manual.correctionDate': ['СвАктСдПр/ИспрАктСдПр/@ДатаИспр'],
-    'xmlP.manual.hasEstimateChange': ['СвАктСдПр/ИзмСмет (наличие узла)'],
+    'xmlP.manual.hasEstimateChange': ['СвАктСдПр/ИзмСмет (наличие узла)', 'СвАктСдПр/ИзмСметНет (наличие узла)'],
     'xmlP.manual.estimateVersionCode': ['СвАктСдПр/ИзмСмет/@КодСмет', 'СвАктСдПр/ИдСмет/ТипИдДок/@НомерДок'],
     'xmlP.manual.supplementDocType': ['СвАктСдПр/ИзмСмет/ИдДопСогл/ТипИдДок/@НаимДок'],
     'xmlP.manual.supplementDocNumber': ['СвАктСдПр/ИзмСмет/ИдДопСогл/ТипИдДок/@НомерДок'],
@@ -4312,6 +4437,18 @@ function staticXmlBinding(path) {
     'xmlP.manual.customInfoValue': ['ИнфПолФХЖ1 → customField'],
     'xmlP.manual.contractorPostalIndex': ['СвПодр/СвСторДог/Адрес/АдрРФ/@Индекс'],
     'xmlP.manual.contractorRegionCode': ['СвПодр/СвСторДог/Адрес/АдрРФ/@КодРегион'],
+    'xmlP.manual.deliveryNoticeDate': ['СвПродПер/СвПер/@ДатПредъявЗак'],
+    'xmlP.manual.deliveryNoticeDocName': ['СвПродПер/СвПер/ИдДокПредъявЗак/ТипИдДок/@НаимДок'],
+    'xmlP.manual.deliveryNoticeDocNumber': ['СвПродПер/СвПер/ИдДокПредъявЗак/ТипИдДок/@НомерДок'],
+    'xmlP.manual.deliveryNoticeDocDate': ['СвПродПер/СвПер/ИдДокПредъявЗак/ТипИдДок/@ДатаДок'],
+    'xmlP.manual.deliveryNoticeDocId': ['СвПродПер/СвПер/ИдДокПредъявЗак/ТипИдДок/@ИдДок'],
+    'xmlP.manual.acceptanceDeadlineWorkDays': ['СвПродПер/СвПер/СрокПринРабДн'],
+    'xmlP.manual.acceptanceDeadlineCalendarDays': ['СвПродПер/СвПер/СрокПринКалендДн'],
+    'xmlP.manual.acceptanceDeadlineDate': ['СвПродПер/СвПер/СрокПринДат'],
+    'xmlP.manual.readinessNoticeDocName': ['СвПродПер/СвПер/ИдСообОГотовн/ТипИдДок/@НаимДок'],
+    'xmlP.manual.readinessNoticeDocNumber': ['СвПродПер/СвПер/ИдСообОГотовн/ТипИдДок/@НомерДок'],
+    'xmlP.manual.readinessNoticeDocDate': ['СвПродПер/СвПер/ИдСообОГотовн/ТипИдДок/@ДатаДок'],
+    'xmlP.manual.readinessNoticeDocId': ['СвПродПер/СвПер/ИдСообОГотовн/ТипИдДок/@ИдДок'],
 
     'xmlZ.manual.customerEconomicSubjectName': ['Файл Z → Документ/@НаимЭкСубСост'],
     'xmlZ.manual.customerAuthorityDocName': ['Файл Z → ДокОснПолнПодпис/ТипИдДок/@НаимДок'],
