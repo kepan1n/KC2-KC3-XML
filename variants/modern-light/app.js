@@ -1709,7 +1709,25 @@ function renderReadinessCheck(check) {
       ? ' — escalated to blocking by strict mode'
       : '';
   const suffix = `${check.message ? ` — ${escapeHtml(check.message)}` : ''}${escapeHtml(modeSuffix)}`;
-  return `<li class="issue-item ${check.status}"><strong>${escapeHtml(check.label)}:</strong> ${escapeHtml(renderedValue)}${suffix}</li>`;
+  const badges = [
+    `<span class="readiness-badge is-${check.status}">${escapeHtml(check.status === 'ok' ? 'ok' : check.status === 'error' ? 'blocking' : 'advisory')}</span>`,
+  ];
+  if (check.blockingCandidate && check.status !== 'error') {
+    badges.push('<span class="readiness-badge is-strict">strict→blocking</span>');
+  }
+  if (check.baseStatus === 'warning' && check.status === 'error') {
+    badges.push('<span class="readiness-badge is-escalated">strict escalated</span>');
+  }
+  return `
+    <li class="issue-item ${check.status}">
+      <div class="issue-item-body">
+        <div class="issue-item-copy">
+          <strong>${escapeHtml(check.label)}:</strong> ${escapeHtml(renderedValue)}${suffix}
+        </div>
+        <div class="issue-item-actions issue-item-badges">${badges.join('')}</div>
+      </div>
+    </li>
+  `;
 }
 
 function summarizeCustomerReadiness(readiness, options = {}) {
@@ -1738,13 +1756,30 @@ function renderCustomerReadinessPanel(readiness, options = {}) {
     blockingMode = false,
     advisoryEscalationCount = 0,
   } = options;
-  const summaryClass = readiness.errors.length || readiness.warnings.length ? 'inline-hint inline-hint-warning' : 'inline-hint';
+  const strictBlockingCount = readiness.checks.filter((item) => item.strictStatus === 'error').length;
+  const advisoryCount = readiness.checks.filter((item) => item.baseStatus === 'warning').length;
+  const summaryClass = readiness.errors.length
+    ? 'inline-hint inline-hint-danger'
+    : readiness.warnings.length
+      ? 'inline-hint inline-hint-warning'
+      : 'inline-hint inline-hint-success';
 
   return `
     <div class="section-block">
       <h3>${escapeHtml(title)}</h3>
       <p class="kbd-note">${escapeHtml(subtitle)}</p>
+      <div class="summary-grid readiness-summary-grid">
+        <div class="summary-card"><span>Режим</span><strong>${blockingMode ? 'blocking' : 'advisory'}</strong></div>
+        <div class="summary-card"><span>Активные блокеры</span><strong>${readiness.errors.length}</strong></div>
+        <div class="summary-card"><span>Advisory-пункты</span><strong>${advisoryCount}</strong></div>
+        <div class="summary-card"><span>Strict блокеры</span><strong>${strictBlockingCount}</strong></div>
+      </div>
       <div class="${summaryClass}">${escapeHtml(summarizeCustomerReadiness(readiness, { blockingMode, advisoryEscalationCount }))}</div>
+      <div class="readiness-mode-legend">
+        <span class="readiness-badge is-error">blocking</span>
+        <span class="readiness-badge is-warning">advisory</span>
+        <span class="readiness-badge is-strict">strict→blocking</span>
+      </div>
       <ul class="issue-list">
         ${readiness.checks.map((check) => renderReadinessCheck(check)).join('')}
       </ul>

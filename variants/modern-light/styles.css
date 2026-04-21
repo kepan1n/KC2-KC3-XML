@@ -328,6 +328,10 @@ button.secondary {
   flex: 0 0 auto;
 }
 
+.issue-item-badges {
+  justify-content: flex-end;
+}
+
 .issue-item.error {
   color: var(--danger);
 }
@@ -360,6 +364,65 @@ button.secondary {
   border-color: color-mix(in srgb, var(--warning) 35%, var(--line));
   background: color-mix(in srgb, var(--warning) 8%, var(--panel-soft));
   color: var(--warning);
+}
+
+.inline-hint-danger {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--line));
+  background: color-mix(in srgb, var(--danger) 8%, var(--panel-soft));
+  color: var(--danger);
+}
+
+.inline-hint-success {
+  border-color: color-mix(in srgb, var(--success) 28%, var(--line));
+  background: color-mix(in srgb, var(--success) 8%, var(--panel-soft));
+  color: var(--success);
+}
+
+.readiness-summary-grid {
+  margin-top: 14px;
+}
+
+.readiness-mode-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.readiness-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.readiness-badge.is-ok {
+  background: #eaf7ef;
+  border-color: rgba(34, 197, 94, 0.22);
+  color: var(--success);
+}
+
+.readiness-badge.is-warning {
+  background: #fff4e5;
+  border-color: rgba(245, 158, 11, 0.24);
+  color: var(--warning);
+}
+
+.readiness-badge.is-error,
+.readiness-badge.is-escalated {
+  background: #fff1f0;
+  border-color: rgba(180, 35, 24, 0.22);
+  color: var(--danger);
+}
+
+.readiness-badge.is-strict {
+  background: #eef4ff;
+  border-color: rgba(21, 94, 239, 0.18);
+  color: var(--accent);
 }
 
 .form-grid {
