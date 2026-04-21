@@ -44,7 +44,7 @@
   - Z time mode (`DOCX: ЧЧ:ММ:СС`)
   - XSD compat normalization (`validation-only`)
 
-- [ ] **Сделать role-aware hints для сторон**
+- [x] **Сделать role-aware hints для сторон**
   - явно объяснять текущую модель: `застройщик / заказчик / техзаказчик`
   - не прятать это в документации
 

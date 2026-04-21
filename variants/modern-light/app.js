@@ -2936,6 +2936,7 @@ function renderRequisitesPane() {
 
       <div class="section-block">
         <h3>Стороны и объект</h3>
+        <div class="inline-hint">Текущая non-gov модель ролей такая: <strong>технический заказчик</strong> сейчас уходит в основной customer/core-узел <code>СвЗак</code>, <strong>застройщик / заказчик</strong> сохраняется отдельно и в основном живёт через <code>ИнфПол...</code>, а <strong>подрядчик</strong> идёт в core-узлы подрядческого XML.</div>
         <div class="form-grid">
           ${renderInput('Заказчик / застройщик', 'documentContext.developerName', c.developerName, 'string', 'half')}
           ${renderInput('Технический заказчик', 'documentContext.techCustomerName', c.techCustomerName, 'string', 'half')}
@@ -2965,6 +2966,7 @@ function renderRequisitesPane() {
       <div class="section-block">
         <h3>Подписи и печатные роли</h3>
         <p class="kbd-note">Оставлены только роли, которые реально помогают собрать текущий single-sheet КС-2 и XML. КС-3-специфичные роли из активного сценария убраны.</p>
+        <div class="inline-hint">По подписантам сейчас логика такая: подрядчик уходит в core <code>ПодписантПодр</code>, customer/tech-customer подписи дополнительно поддерживают customer XML и structured info-блоки. Если нужно жёстко развести эти роли ещё точнее, это уже отдельная доменная доработка, а не просто cosmetic UI.</div>
         <div class="form-grid">
           ${renderInput('Подрядчик: заголовок подписи', 'documentContext.contractorSignLabel', c.contractorSignLabel, 'string', 'quarter')}
           ${renderTextarea('Подрядчик: должность', 'documentContext.contractorSignerPosition', c.contractorSignerPosition, 'half')}
@@ -3166,6 +3168,7 @@ function renderXmlPane() {
       <div class="section-block">
         <h3>xmlP: подрядчик / общий XML</h3>
         <p class="kbd-note">Здесь живут реквизиты самого подрядческого файла. Для <code>СоглСтрДопИнф</code> поле оставляй пустым, если у сторон нет отдельного согласованного профиля дополнительных структурированных полей.</p>
+        <div class="inline-hint">Этот блок отвечает именно за подрядческий P-файл: составитель XML, смета, ИНН сторон, адреса, подпись подрядчика. Реквизиты customer/tech-customer для Z лучше редактировать ниже, в блоке <code>xmlZ</code>.</div>
         <div class="form-grid">
           ${renderInput('Наименование экономического субъекта-составителя', 'xmlP.manual.economicSubjectName', contractorManual.economicSubjectName, 'string', 'half')}
           ${renderInput('СоглСтрДопИнф', 'xmlP.manual.agreedInfoStructureId', contractorManual.agreedInfoStructureId, 'string', 'half')}
@@ -3219,6 +3222,7 @@ function renderXmlPane() {
       <div class="section-block">
         <h3>xmlZ: заказчик / файл Z</h3>
         <p class="kbd-note">Эти поля относятся только к customer XML. Если оставить пустыми, генератор возьмёт fallback из общих реквизитов и legacy-совместимости.</p>
+        <div class="inline-hint">По умолчанию составителем Z-файла и основной стороной customer XML сейчас считается технический заказчик. Если он не заполнен, идут fallback-значения от заказчика / застройщика.</div>
         <div class="form-grid">
           ${renderInput('Составитель файла Z', 'xmlZ.manual.customerEconomicSubjectName', customerManual.customerEconomicSubjectName || app.state.documentContext.techCustomerName || app.state.documentContext.developerName, 'string', 'half')}
           ${renderInput('Основание подписания заказчика', 'xmlZ.manual.customerAuthorityDocName', customerManual.customerAuthorityDocName || 'Доверенность / основание подписания заказчика', 'string', 'half')}
