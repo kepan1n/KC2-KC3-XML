@@ -469,6 +469,26 @@ function handleContentClick(event) {
     return;
   }
 
+  if (action === 'set-field-status-filter') {
+    const filter = normalizeFieldStatusFilter(actionButton.dataset.filter);
+    app.state.ui.fieldStatusFilter = filter;
+    if (filter === 'ui-only' && app.state.ui.exportPrepMode) app.state.ui.exportPrepMode = false;
+    render();
+    flash(`Фильтр реквизитов: ${filter === 'all' ? 'все поля' : filter === 'core' ? 'только core' : filter === 'info' ? 'только ИнфПол' : filter === 'derived' ? 'только derived' : 'только UI-only'}.`);
+    return;
+  }
+
+  if (action === 'toggle-export-prep-mode') {
+    const next = !app.state.ui.exportPrepMode;
+    app.state.ui.exportPrepMode = next;
+    if (next && app.state.ui.fieldStatusFilter === 'ui-only') app.state.ui.fieldStatusFilter = 'all';
+    render();
+    flash(next
+      ? 'Режим подготовки к выгрузке включён: UI-only поля скрыты.'
+      : 'Режим подготовки к выгрузке выключен: снова видны все реквизиты.');
+    return;
+  }
+
   if (action === 'set-acceptance-deadline-mode') {
     const mode = normalizeAcceptanceDeadlineMode(actionButton.dataset.mode);
     app.state.ui.acceptanceDeadlineMode = mode;
@@ -486,6 +506,16 @@ function handleContentClick(event) {
     invalidateXmlPreviewCache();
     render();
     flash(`Режим срока принятия переключён: ${mode === 'workdays' ? 'рабочие дни' : mode === 'calendar' ? 'календарные дни' : 'фиксированная дата'}.`);
+    return;
+  }
+
+  if (action === 'toggle-ks2-preview-compare') {
+    const compareMode = !Boolean(app.state.ui.ks2PreviewCompareMode?.[String(sheetIndex)]);
+    app.state.ui.ks2PreviewCompareMode[String(sheetIndex)] = compareMode;
+    render();
+    flash(compareMode
+      ? 'Compare mode P/Z включён: preview показан side-by-side.'
+      : 'Compare mode P/Z выключен: вернулся обычный stacked preview.');
     return;
   }
 
@@ -1041,10 +1071,13 @@ function prepareState(raw) {
   data.ui.settlementAddMenu ??= false;
   data.ui.settlementDeleteConfirm ??= null;
   data.ui.ks2ViewMode ??= {};
+  data.ui.ks2PreviewCompareMode ??= {};
   data.ui.ks2XmlPreview ??= {};
   data.ui.ks2CustomerXmlPreview ??= {};
   data.ui.columnWidths ??= {};
   data.ui.customerReadinessBlockingMode ??= false;
+  data.ui.fieldStatusFilter = normalizeFieldStatusFilter(data.ui.fieldStatusFilter);
+  data.ui.exportPrepMode ??= false;
   data.common ??= {};
   data.documentContext ??= {};
   migrateLegacyDocumentContext(data);
@@ -2897,19 +2930,27 @@ function renderXmlPreviewLegend() {
   `;
 }
 
-function renderXmlPreviewCode(xmlText = '', scope = 'p', sheetIndex = 0, emptyMessage = 'Preview ещё не собран.') {
+function collectXmlPreviewAnnotatedLines(xmlText = '', scope = 'p', sheetIndex = 0) {
   const formatted = prettyFormatXml(xmlText);
-  if (!formatted) {
-    return `<div class="xml-preview-status">${escapeHtml(emptyMessage)}</div>`;
-  }
+  if (!formatted) return [];
   const lines = formatted.split('\n');
   const contexts = buildXmlPreviewContexts(lines);
+  return lines.map((line, index) => {
+    const baseMeta = buildXmlPreviewLineMeta(line, scope, sheetIndex);
+    const source = baseMeta ? resolveXmlPreviewLineSource(line, baseMeta, scope, sheetIndex, index, lines, contexts) : null;
+    const meta = source ? { ...baseMeta, source } : baseMeta;
+    return { line, index, meta };
+  });
+}
+
+function renderXmlPreviewCode(xmlText = '', scope = 'p', sheetIndex = 0, emptyMessage = 'Preview ещё не собран.') {
+  const annotatedLines = collectXmlPreviewAnnotatedLines(xmlText, scope, sheetIndex);
+  if (!annotatedLines.length) {
+    return `<div class="xml-preview-status">${escapeHtml(emptyMessage)}</div>`;
+  }
   return `
     <div class="xml-preview-code annotated" data-scope="${escapeAttr(scope)}" data-sheet-index="${escapeAttr(String(sheetIndex))}">
-      ${lines.map((line, index) => {
-        const baseMeta = buildXmlPreviewLineMeta(line, scope, sheetIndex);
-        const source = baseMeta ? resolveXmlPreviewLineSource(line, baseMeta, scope, sheetIndex, index, lines, contexts) : null;
-        const meta = source ? { ...baseMeta, source } : baseMeta;
+      ${annotatedLines.map(({ line, index, meta }) => {
         const rowClass = meta ? `has-note is-${meta.kind}` : 'no-note';
         const lineClass = `${meta ? `xml-line-${meta.kind}` : ''}${meta?.source ? ' is-clickable' : ''}`.trim();
         const jumpAttrs = meta?.source
@@ -2935,6 +2976,97 @@ function renderXmlPreviewCode(xmlText = '', scope = 'p', sheetIndex = 0, emptyMe
   `;
 }
 
+function buildXmlPreviewCompareData(contractorXmlText = '', customerXmlText = '', sheetIndex = 0) {
+  const previews = {
+    p: collectXmlPreviewAnnotatedLines(contractorXmlText, 'p', sheetIndex),
+    z: collectXmlPreviewAnnotatedLines(customerXmlText, 'z', sheetIndex),
+  };
+  const byPath = new Map();
+  const remember = (scope, details) => {
+    details.forEach(({ meta }) => {
+      const source = meta?.source;
+      if (!source?.path) return;
+      const key = String(source.path);
+      let entry = byPath.get(key);
+      if (!entry) {
+        const binding = resolveXmlBinding(key);
+        entry = {
+          path: key,
+          label: source.label || key,
+          scopes: new Set(),
+          kind: binding.kind,
+          scopeLabels: new Set(),
+        };
+        byPath.set(key, entry);
+      }
+      entry.scopes.add(scope);
+      entry.scopeLabels.add(scope === 'p' ? 'P' : 'Z');
+    });
+  };
+  remember('p', previews.p);
+  remember('z', previews.z);
+
+  const entries = Array.from(byPath.values()).sort((a, b) => a.label.localeCompare(b.label, 'ru'));
+  const shared = entries.filter((entry) => entry.scopes.size === 2);
+  const onlyP = entries.filter((entry) => entry.scopes.size === 1 && entry.scopes.has('p'));
+  const onlyZ = entries.filter((entry) => entry.scopes.size === 1 && entry.scopes.has('z'));
+  const derivedDiff = [...onlyP, ...onlyZ].filter((entry) => entry.kind === 'derived');
+  return { shared, onlyP, onlyZ, derivedDiff };
+}
+
+function renderXmlCompareSourceChips(title, entries = [], variant = 'shared') {
+  if (!entries.length) return '';
+  return `
+    <div class="compare-source-group is-${variant}">
+      <div class="compare-source-title">${escapeHtml(title)} <span>${entries.length}</span></div>
+      <div class="compare-source-list">
+        ${entries.slice(0, 10).map((entry) => `
+          <button class="compare-source-chip is-${variant} is-${entry.kind}" type="button" data-action="jump-to-source-field" data-source-path="${escapeAttr(entry.path)}" title="${escapeAttr(entry.label)}">
+            <span class="compare-source-chip-main">${escapeHtml(entry.label)}</span>
+            <span class="compare-source-chip-meta">${escapeHtml(entry.scopeLabels.size === 2 ? 'P+Z' : Array.from(entry.scopeLabels).join(''))} · ${escapeHtml(xmlBindingKindLabel(entry.kind))}</span>
+          </button>
+        `).join('')}
+        ${entries.length > 10 ? `<div class="compare-source-more">ещё ${entries.length - 10}</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderXmlPreviewCompareMode(contractorPreview, customerPreview, sheetIndex) {
+  const compare = buildXmlPreviewCompareData(contractorPreview?.xmlText || '', customerPreview?.xmlText || '', sheetIndex);
+  return `
+    <div class="xml-compare-block section-block">
+      <div class="summary-grid compare-summary-grid">
+        <div class="summary-card"><span>Общие source fields</span><strong>${compare.shared.length}</strong></div>
+        <div class="summary-card"><span>Только в P</span><strong>${compare.onlyP.length}</strong></div>
+        <div class="summary-card"><span>Только в Z</span><strong>${compare.onlyZ.length}</strong></div>
+        <div class="summary-card"><span>Derived differences</span><strong>${compare.derivedDiff.length}</strong></div>
+      </div>
+      <div class="inline-hint">Compare mode показывает P и Z side-by-side. Чипы ниже подсвечивают source field различий: что живёт только в подрядческом preview, только в customer preview или вычисляется как <strong>derived</strong>.</div>
+      <div class="compare-source-grid">
+        ${renderXmlCompareSourceChips('Shared', compare.shared, 'shared')}
+        ${renderXmlCompareSourceChips('Only P', compare.onlyP, 'p-only')}
+        ${renderXmlCompareSourceChips('Only Z', compare.onlyZ, 'z-only')}
+        ${renderXmlCompareSourceChips('Derived differences', compare.derivedDiff, 'derived')}
+      </div>
+      <div class="xml-preview-compare-grid">
+        <div class="xml-preview-compare-col">
+          <h3>Подрядчик (P)</h3>
+          <p class="kbd-note">${contractorPreview ? `${contractorPreview.filename || 'preview.xml'} · ${contractorPreview.valid ? 'XSD OK' : 'есть ошибки'}` : 'Preview ещё не собирался.'}</p>
+          ${renderXmlPreviewErrorList(contractorPreview)}
+          ${renderXmlPreviewCode(contractorPreview?.xmlText || '', 'p', sheetIndex, 'Нажми «Собрать заново», чтобы получить preview XML подрядчика.')}
+        </div>
+        <div class="xml-preview-compare-col">
+          <h3>Заказчик (Z)</h3>
+          <p class="kbd-note">${customerPreview ? `${customerPreview.filename || 'preview-z.xml'} · ${customerPreview.valid ? 'XSD OK' : 'есть ошибки'}` : 'Preview ещё не собирался.'}</p>
+          ${renderXmlPreviewErrorList(customerPreview)}
+          ${renderXmlPreviewCode(customerPreview?.xmlText || '', 'z', sheetIndex, 'Нажми «Собрать заново», чтобы получить preview XML заказчика.')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderRequisitesPane() {
   const c = app.state.documentContext;
   const sheet = app.state.ks2Sheets[0] || createBlankSheet(1);
@@ -2943,6 +3075,8 @@ function renderRequisitesPane() {
   const totalVat = sheetTotals.vat;
   const totalBase = Math.max(totalGross - totalVat, 0);
   const holdbacksInXml = shouldIncludeHoldbacksInXml();
+  const fieldStatusFilter = normalizeFieldStatusFilter(app.state.ui.fieldStatusFilter);
+  const exportPrepMode = Boolean(app.state.ui.exportPrepMode);
 
   return `
     <div class="panel">
@@ -2962,6 +3096,16 @@ function renderRequisitesPane() {
 
       <div class="inline-hint">${escapeHtml(app.state.ui.singleSheetModeNotice || 'Редактор работает только с одним листом КС-2 за раз.')}</div>
       <div class="inline-hint">Основной сценарий теперь такой: реквизиты документа → текущий лист КС-2 → отдельная вкладка удержаний → XML P/Z. Всё, что относится к старой multi-sheet книге, вынесено в совместимость.</div>
+      <div class="inline-actions section-block compact-section-block">
+        <button class="ghost mini toggle-chip ${fieldStatusFilter === 'all' ? 'is-active' : ''}" data-action="set-field-status-filter" data-filter="all">Все поля</button>
+        <button class="ghost mini toggle-chip ${fieldStatusFilter === 'core' ? 'is-active' : ''}" data-action="set-field-status-filter" data-filter="core">Только core</button>
+        <button class="ghost mini toggle-chip ${fieldStatusFilter === 'info' ? 'is-active' : ''}" data-action="set-field-status-filter" data-filter="info">Только ИнфПол</button>
+        <button class="ghost mini toggle-chip ${fieldStatusFilter === 'derived' ? 'is-active' : ''}" data-action="set-field-status-filter" data-filter="derived">Только derived</button>
+        <button class="ghost mini toggle-chip ${fieldStatusFilter === 'ui-only' ? 'is-active' : ''}" data-action="set-field-status-filter" data-filter="ui-only">Только UI-only</button>
+        <button class="ghost mini toggle-chip ${exportPrepMode ? 'is-active' : ''}" data-action="toggle-export-prep-mode">${exportPrepMode ? 'Подготовка к выгрузке: вкл' : 'Подготовка к выгрузке: выкл'}</button>
+      </div>
+      <div class="inline-hint">Семантическая mini-легенда теперь видна и прямо в реквизитах: можно быстро отфильтровать только <strong>core</strong>, только <strong>ИнфПол</strong>, только <strong>derived</strong> или только <strong>UI-only</strong> поля. В режиме подготовки к выгрузке скрываются чисто печатные/UI-only реквизиты.</div>
+      ${renderXmlBindingLegend()}
       ${(app.state.legacy?.extraKs2Sheets || []).length ? `
         <div class="inline-actions section-block">
           <button class="secondary" data-action="split-legacy-forms">Разложить legacy-листы в отдельные single-sheet JSON</button>
@@ -3442,6 +3586,7 @@ function renderKs2XmlPane(sheetIndex, sheet) {
   const logicBundle = buildLogicBundle();
   const contractorPreview = app.state.ui.ks2XmlPreview?.[String(sheetIndex)] || null;
   const customerPreview = app.state.ui.ks2CustomerXmlPreview?.[String(sheetIndex)] || null;
+  const compareMode = Boolean(app.state.ui.ks2PreviewCompareMode?.[String(sheetIndex)]);
   const customerReadiness = buildCustomerXmlReadiness(logicBundle.model, sheetIndex, customerPreview);
   const strictCustomerReadiness = buildCustomerXmlReadiness(logicBundle.model, sheetIndex, customerPreview, { strictMode: true });
   const blockingMode = Boolean(app.state.ui.customerReadinessBlockingMode);
@@ -3459,6 +3604,7 @@ function renderKs2XmlPane(sheetIndex, sheet) {
         </div>
         <div class="inline-actions">
           <button class="ghost mini" data-action="refresh-ks2-xml-preview-pair" data-sheet-index="${sheetIndex}">Собрать заново</button>
+          <button class="ghost mini toggle-chip ${compareMode ? 'is-active' : ''}" data-action="toggle-ks2-preview-compare" data-sheet-index="${sheetIndex}">${compareMode ? 'Compare mode P/Z: вкл' : 'Compare mode P/Z: выкл'}</button>
           <button class="ghost mini" data-action="copy-ks2-xml-preview" data-sheet-index="${sheetIndex}">Копировать P</button>
           <button class="ghost mini" data-action="copy-customer-xml-preview" data-sheet-index="${sheetIndex}">Копировать Z</button>
         </div>
@@ -3485,19 +3631,21 @@ function renderKs2XmlPane(sheetIndex, sheet) {
       <div class="xml-preview-note">Подсказки справа коротко объясняют, зачем нужен узел XML и из какого куска формы он собран. Цвет строки помогает быстро отличить шапку, табличную часть, расчёты / удержания и служебные расшифровки.</div>
       ${renderXmlPreviewLegend()}
 
-      <div class="section-block">
-        <h3>Подрядчик (P)</h3>
-        <p class="kbd-note">${contractorPreview ? `${contractorPreview.filename || 'preview.xml'} · ${contractorPreview.valid ? 'XSD OK' : 'есть ошибки'}` : 'Preview ещё не собирался.'}</p>
-        ${renderXmlPreviewErrorList(contractorPreview)}
-        ${renderXmlPreviewCode(contractorPreview?.xmlText || '', 'p', sheetIndex, 'Нажми «Собрать заново», чтобы получить preview XML подрядчика.')}
-      </div>
+      ${compareMode ? renderXmlPreviewCompareMode(contractorPreview, customerPreview, sheetIndex) : `
+        <div class="section-block">
+          <h3>Подрядчик (P)</h3>
+          <p class="kbd-note">${contractorPreview ? `${contractorPreview.filename || 'preview.xml'} · ${contractorPreview.valid ? 'XSD OK' : 'есть ошибки'}` : 'Preview ещё не собирался.'}</p>
+          ${renderXmlPreviewErrorList(contractorPreview)}
+          ${renderXmlPreviewCode(contractorPreview?.xmlText || '', 'p', sheetIndex, 'Нажми «Собрать заново», чтобы получить preview XML подрядчика.')}
+        </div>
 
-      <div class="section-block">
-        <h3>Заказчик (Z)</h3>
-        <p class="kbd-note">${customerPreview ? `${customerPreview.filename || 'preview-z.xml'} · ${customerPreview.valid ? 'XSD OK' : 'есть ошибки'}` : 'Preview ещё не собирался.'}</p>
-        ${renderXmlPreviewErrorList(customerPreview)}
-        ${renderXmlPreviewCode(customerPreview?.xmlText || '', 'z', sheetIndex, 'Нажми «Собрать заново», чтобы получить preview XML заказчика.')}
-      </div>
+        <div class="section-block">
+          <h3>Заказчик (Z)</h3>
+          <p class="kbd-note">${customerPreview ? `${customerPreview.filename || 'preview-z.xml'} · ${customerPreview.valid ? 'XSD OK' : 'есть ошибки'}` : 'Preview ещё не собирался.'}</p>
+          ${renderXmlPreviewErrorList(customerPreview)}
+          ${renderXmlPreviewCode(customerPreview?.xmlText || '', 'z', sheetIndex, 'Нажми «Собрать заново», чтобы получить preview XML заказчика.')}
+        </div>
+      `}
     </div>
   `;
 }
@@ -4382,6 +4530,20 @@ function renderXmlBindingLegend() {
   `;
 }
 
+function normalizeFieldStatusFilter(value) {
+  const normalized = String(value || 'all').trim();
+  return ['all', 'core', 'info', 'derived', 'ui-only'].includes(normalized) ? normalized : 'all';
+}
+
+function shouldRenderBoundField(path) {
+  if (!path) return true;
+  if ((app.state?.ui?.activePane || 'requisites') !== 'requisites') return true;
+  const binding = resolveXmlBinding(path);
+  if (app.state?.ui?.exportPrepMode && binding.kind === 'ui-only') return false;
+  const filter = normalizeFieldStatusFilter(app.state?.ui?.fieldStatusFilter);
+  return filter === 'all' ? true : binding.kind === filter;
+}
+
 function getLogicBundleCached() {
   return app.logicBundle || buildLogicBundle();
 }
@@ -4813,6 +4975,7 @@ function renderTableComputed(path, html, extraClass = '') {
 }
 
 function renderInput(label, path, value, valueType = 'string', size = '') {
+  if (!shouldRenderBoundField(path)) return '';
   return `
     <div class="field ${size}"${buildFieldPathAttr(path)}>
       ${renderFieldLabel(label, path)}
@@ -4822,6 +4985,7 @@ function renderInput(label, path, value, valueType = 'string', size = '') {
 }
 
 function renderTextarea(label, path, value, size = 'half') {
+  if (!shouldRenderBoundField(path)) return '';
   return `
     <div class="field ${size}"${buildFieldPathAttr(path)}>
       ${renderFieldLabel(label, path)}
@@ -4831,6 +4995,7 @@ function renderTextarea(label, path, value, size = 'half') {
 }
 
 function renderReadonly(label, value, size = '', path = '') {
+  if (!shouldRenderBoundField(path)) return '';
   return `
     <div class="field ${size}"${buildFieldPathAttr(path)}>
       ${renderFieldLabel(label, path)}
@@ -4898,8 +5063,9 @@ function renderKs2EmptyRow(sheetIndex) {
 }
 
 function renderSelect(label, path, selected, options, size = '') {
+  if (!shouldRenderBoundField(path)) return '';
   return `
-    <div class="field ${size}">
+    <div class="field ${size}"${buildFieldPathAttr(path)}>
       ${renderFieldLabel(label, path)}
       <select data-path="${path}">
         ${Object.entries(options).map(([value, text]) => `<option value="${escapeAttr(value)}" ${String(selected) === String(value) ? 'selected' : ''}>${escapeHtml(text)}</option>`).join('')}

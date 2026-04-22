@@ -280,6 +280,11 @@ async function main() {
 
     await cdp.click('[data-pane="ks2:0"]');
     await cdp.waitFor('document.getElementById("content")?.innerText?.includes("XML preview ·")', 'ks2 xml pane render');
+    await cdp.click('[data-action="toggle-ks2-preview-compare"][data-sheet-index="0"]');
+    await cdp.waitFor('document.getElementById("content")?.innerText?.includes("Compare mode показывает P и Z side-by-side")', 'ks2 compare mode render');
+    await cdp.waitFor('document.getElementById("content")?.innerText?.includes("Derived differences")', 'ks2 compare summary render');
+    await cdp.click('[data-action="toggle-ks2-preview-compare"][data-sheet-index="0"]');
+    await cdp.waitFor('document.getElementById("content")?.innerText?.includes("Подрядчик (P)") && document.getElementById("content")?.innerText?.includes("Заказчик (Z)")', 'ks2 stacked preview render');
     await cdp.click('[data-action="set-ks2-view-mode"][data-mode="form"]');
     await cdp.waitFor('document.getElementById("content")?.innerText?.includes("Название листа")', 'ks2 pane render');
     await cdp.waitFor('!document.querySelector(`[data-action="add-section-row"], [data-action="add-note-row"], [data-action="toggle-sheet-add-menu"]`)', 'ks2 bottom add controls removed');
