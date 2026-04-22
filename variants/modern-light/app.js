@@ -3032,6 +3032,17 @@ function renderXmlCompareSourceChips(title, entries = [], variant = 'shared') {
   `;
 }
 
+function renderXmlPreviewSection(title, preview, scope, sheetIndex, emptyMessage) {
+  return `
+    <div class="section-block${scope ? ` xml-preview-scope-${escapeAttr(scope)}` : ''}">
+      <h3>${escapeHtml(title)}</h3>
+      <p class="kbd-note">${preview ? `${preview.filename || (scope === 'z' ? 'preview-z.xml' : 'preview.xml')} · ${preview.valid ? 'XSD OK' : 'есть ошибки'}` : 'Preview ещё не собирался.'}</p>
+      ${renderXmlPreviewErrorList(preview)}
+      ${renderXmlPreviewCode(preview?.xmlText || '', scope, sheetIndex, emptyMessage)}
+    </div>
+  `;
+}
+
 function renderXmlPreviewCompareMode(contractorPreview, customerPreview, sheetIndex) {
   const compare = buildXmlPreviewCompareData(contractorPreview?.xmlText || '', customerPreview?.xmlText || '', sheetIndex);
   return `
@@ -3051,16 +3062,10 @@ function renderXmlPreviewCompareMode(contractorPreview, customerPreview, sheetIn
       </div>
       <div class="xml-preview-compare-grid">
         <div class="xml-preview-compare-col">
-          <h3>Подрядчик (P)</h3>
-          <p class="kbd-note">${contractorPreview ? `${contractorPreview.filename || 'preview.xml'} · ${contractorPreview.valid ? 'XSD OK' : 'есть ошибки'}` : 'Preview ещё не собирался.'}</p>
-          ${renderXmlPreviewErrorList(contractorPreview)}
-          ${renderXmlPreviewCode(contractorPreview?.xmlText || '', 'p', sheetIndex, 'Нажми «Собрать заново», чтобы получить preview XML подрядчика.')}
+          ${renderXmlPreviewSection('Подрядчик (P)', contractorPreview, 'p', sheetIndex, 'Нажми «Собрать заново», чтобы получить preview XML подрядчика.')}
         </div>
         <div class="xml-preview-compare-col">
-          <h3>Заказчик (Z)</h3>
-          <p class="kbd-note">${customerPreview ? `${customerPreview.filename || 'preview-z.xml'} · ${customerPreview.valid ? 'XSD OK' : 'есть ошибки'}` : 'Preview ещё не собирался.'}</p>
-          ${renderXmlPreviewErrorList(customerPreview)}
-          ${renderXmlPreviewCode(customerPreview?.xmlText || '', 'z', sheetIndex, 'Нажми «Собрать заново», чтобы получить preview XML заказчика.')}
+          ${renderXmlPreviewSection('Заказчик (Z)', customerPreview, 'z', sheetIndex, 'Нажми «Собрать заново», чтобы получить preview XML заказчика.')}
         </div>
       </div>
     </div>
@@ -3632,19 +3637,8 @@ function renderKs2XmlPane(sheetIndex, sheet) {
       ${renderXmlPreviewLegend()}
 
       ${compareMode ? renderXmlPreviewCompareMode(contractorPreview, customerPreview, sheetIndex) : `
-        <div class="section-block">
-          <h3>Подрядчик (P)</h3>
-          <p class="kbd-note">${contractorPreview ? `${contractorPreview.filename || 'preview.xml'} · ${contractorPreview.valid ? 'XSD OK' : 'есть ошибки'}` : 'Preview ещё не собирался.'}</p>
-          ${renderXmlPreviewErrorList(contractorPreview)}
-          ${renderXmlPreviewCode(contractorPreview?.xmlText || '', 'p', sheetIndex, 'Нажми «Собрать заново», чтобы получить preview XML подрядчика.')}
-        </div>
-
-        <div class="section-block">
-          <h3>Заказчик (Z)</h3>
-          <p class="kbd-note">${customerPreview ? `${customerPreview.filename || 'preview-z.xml'} · ${customerPreview.valid ? 'XSD OK' : 'есть ошибки'}` : 'Preview ещё не собирался.'}</p>
-          ${renderXmlPreviewErrorList(customerPreview)}
-          ${renderXmlPreviewCode(customerPreview?.xmlText || '', 'z', sheetIndex, 'Нажми «Собрать заново», чтобы получить preview XML заказчика.')}
-        </div>
+        ${renderXmlPreviewSection('Подрядчик (P)', contractorPreview, 'p', sheetIndex, 'Нажми «Собрать заново», чтобы получить preview XML подрядчика.')}
+        ${renderXmlPreviewSection('Заказчик (Z)', customerPreview, 'z', sheetIndex, 'Нажми «Собрать заново», чтобы получить preview XML заказчика.')}
       `}
     </div>
   `;
