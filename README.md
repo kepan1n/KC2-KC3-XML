@@ -81,6 +81,7 @@ Legacy multi-KS2 и старые КС-3 данные сохраняются то
 - `scripts/check_single_sheet_docs_contract_regression.py` — регрессия по README / `nalog docs/Прогресс`, чтобы проектные документы не откатывались к старому KS-3 / multi-sheet описанию
 - `scripts/check_single_sheet_fallback_validation_regression.py` — регрессия по backend fallback-логике обязательных XML manual-полей в single-sheet `P` экспорте
 - `scripts/check_customer_readiness_regression.mjs` — регрессия по `Z readiness-check`: fallback-подсветка, доверенности / МЧД, strict blocking mode и извещения по расчётам
+- `scripts/check_customer_z_time_compat_regression.py` — отдельная регрессия по конфликту `DOCX vs legacy Z-XSD`: production `Z` должен хранить время как `ЧЧ:ММ:СС`, а XSD-совместимая нормализация с `ЧЧ.ММ.СС` должна включаться только для валидации/preview
 - `scripts/check_single_sheet_autobind_regression.py` — регрессия по auto-binding: active single-sheet state и split single-sheet формы должны собирать `P + Z` без явных `ks2SheetId`
 - `scripts/check_single_sheet_fixture_minimality_regression.py` — регрессия по curated single-sheet fixtures: в активных sample/fixtures не должно оставаться legacy extra sheets, KS-3 rows и redundant `ks2SheetId`
 - `scripts/single_sheet_state_helpers.py` — общие helper-функции для очистки redundant single-sheet bindings / legacy sheet-мусора
@@ -146,6 +147,7 @@ python3 scripts/check_single_sheet_ui_contract_regression.py
 python3 scripts/check_single_sheet_docs_contract_regression.py
 python3 scripts/check_single_sheet_fallback_validation_regression.py
 node scripts/check_customer_readiness_regression.mjs
+python3 scripts/check_customer_z_time_compat_regression.py
 python3 scripts/check_single_sheet_autobind_regression.py
 python3 scripts/check_single_sheet_fixture_minimality_regression.py
 python3 scripts/check_split_single_sheet_pair_regression.py
@@ -160,6 +162,11 @@ python3 scripts/check_xml_extras_settlement_backend_regression.py
 
 Скрипт по browser smoke regression дополнительно проверяет, что:
 - `modern-light` реально открывается в headless Chrome как живая страница, а не только как шаблон / статический HTML;
+
+Скрипт по `customer Z time compatibility regression` дополнительно проверяет, что:
+- production customer XML хранит `ВрИнфЗак` и `ВремяФайлИнфПодр` в DOCX-формате `ЧЧ:ММ:СС`;
+- сырая production-версия намеренно не считается legacy-Z-XSD-ready без адаптера;
+- `z_xsd_compat.normalize_document_for_xsd(...)` переводит время в legacy-формат `ЧЧ.ММ.СС` только в нормализованной копии для локальной валидации/preview.
 - при первом рендере нет runtime exceptions, которые оставляют видимую верхнюю навигацию, но ломают основную панель;
 - верхние вкладки `Реквизиты`, `XML`, `КС-2` реально переключают контент в браузере.
 
