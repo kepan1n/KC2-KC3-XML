@@ -171,10 +171,11 @@
 | Основание подписания заказчика — наименование | `xmlZ.manual.customerAuthorityDocName` | `ДокОснПолнПодпис/ТипИдДок/@НаимДок` | уже передаётся | |
 | Основание подписания заказчика — номер | `xmlZ.manual.customerAuthorityDocNumber` | `.../@НомерДок` | уже передаётся | |
 | Основание подписания заказчика — дата | `xmlZ.manual.customerAuthorityDocDate` | `.../@ДатаДок` | уже передаётся | |
-| Код приемки | `xmlZ.manual.customerAcceptanceCode` | `Приемка/КодПрин` | уже передаётся | |
-| Текст приемки | `xmlZ.manual.customerAcceptanceText` | `Приемка/ТекстПрин` | уже передаётся | |
-| Текст уведомления о расчётах | `xmlZ.manual.customerSettlementNotice` | `СвУведРасч/ТекстУвед` | уже передаётся | |
-| Причина несогласия | `xmlZ.manual.customerSettlementDisagreementReason` | `СвУведРасч/ПричНесогл` | уже передаётся | |
+| ЭП подрядческого файла | `xmlZ.manual.contractorSignaturePayload`, `xmlZ.manual.contractorSignaturePayloads` | `ИдИнфПодр/ЭП` | уже передаётся | Без явного значения генератор использует demo-заглушку `placeholder-signature-base64`; readiness-check теперь предупреждает и в strict mode блокирует real export |
+| Код приемки | `xmlZ.manual.customerAcceptanceCode` | `СодФХЖ4/СвПрием/@КодСодОпер` | уже передаётся | |
+| Текст приемки | `xmlZ.manual.customerAcceptanceText` | `СодФХЖ4/СвПрием/@СодОпер` | уже передаётся | |
+| Текст уведомления о расчётах | `xmlZ.manual.customerSettlementNotice` | `СодФХЖ4/ИзвОРасч/@ИзвПоРасч` | уже передаётся | |
+| Причина несогласия | `xmlZ.manual.customerSettlementDisagreementReason` | `СодФХЖ4/ИзвОРасч/@ПричНесогРасч` | уже передаётся | |
 | Время формирования файла Z | `xmlZ.generated.fileTime` / contractor reference | `Документ/@ВрИнфЗак` | уже передаётся | Теперь в формате `ЧЧ:ММ:СС` по `nalog target.docx` |
 | Время файла подрядчика в Z | contractor reference | `ИдИнфПодр/@ВремяФайлИнфПодр` | уже передаётся | Тоже `ЧЧ:ММ:СС` по DOCX |
 

@@ -63,6 +63,7 @@ function hasLabel(issues, label) {
   assert.ok(hasLabel(readiness.warnings, 'Составитель файла Z'), 'must highlight fallback subject name');
   assert.ok(hasLabel(readiness.warnings, 'Основание подписания заказчика'), 'must highlight fallback authority document');
   assert.ok(hasLabel(readiness.warnings, 'Приёмка работ в Z'), 'must highlight fallback acceptance date');
+  assert.ok(hasLabel(readiness.warnings, 'ЭП подрядчика в Z'), 'must warn when Z would use placeholder contractor signature');
 }
 
 {
@@ -71,6 +72,7 @@ function hasLabel(issues, label) {
   assert.equal(strictReadiness.ready, false, 'strict readiness must turn core fallback business rules into blockers');
   assert.ok(hasLabel(strictReadiness.errors, 'Основание подписания заказчика'), 'strict readiness must block on fallback authority document');
   assert.ok(hasLabel(strictReadiness.errors, 'Приёмка работ в Z'), 'strict readiness must block on fallback acceptance date');
+  assert.ok(hasLabel(strictReadiness.errors, 'ЭП подрядчика в Z'), 'strict readiness must block placeholder contractor signature');
 }
 
 {
@@ -124,6 +126,14 @@ function hasLabel(issues, label) {
   const strictReadiness = buildCustomerXmlReadiness(model, 0, null, { strictMode: true });
   assert.ok(hasLabel(readiness.warnings, 'Извещение по расчётам Z'), 'advisory mode must warn when gov extra notice has no settlement rows');
   assert.ok(hasLabel(strictReadiness.errors, 'Извещение по расчётам Z'), 'strict mode must block when gov extra notice has no settlement rows');
+}
+
+{
+  const model = makeBaseModel();
+  model.xmlZ.manual.contractorSignaturePayload = 'real-contractor-signature-base64';
+  const readiness = buildCustomerXmlReadiness(model, 0, null);
+  assert.ok(!hasLabel(readiness.warnings, 'ЭП подрядчика в Z'), 'real explicit contractor signature must remove placeholder warning');
+  assert.ok(hasLabel(readiness.checks, 'ЭП подрядчика в Z'), 'real explicit contractor signature must still be visible as an ok check');
 }
 
 {

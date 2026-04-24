@@ -45,6 +45,25 @@ function getGeneratedXmlState(source = {}) {
   return source.xmlP?.generated || source.xml?.p?.generated || source.xml?.generated || source.xmlExtras?.generated || {};
 }
 
+function getContractorSignatureState(source = {}) {
+  const zManual = getCustomerManualState(source);
+  const pManual = source.xmlP?.manual || source.xml?.p?.manual || source.xml?.manual || {};
+  const payloads = zManual.contractorSignaturePayloads || zManual.contractorSignatures || pManual.contractorSignaturePayloads || pManual.contractorSignatures || [];
+  const payload = firstFilledValue(zManual.contractorSignaturePayload, pManual.contractorSignaturePayload);
+  return { payloads, payload };
+}
+
+function isPlaceholderContractorSignature(value) {
+  const normalized = String(value || '').trim();
+  return !normalized || normalized === 'placeholder-signature-base64';
+}
+
+function hasRealContractorSignature(signatureState = {}) {
+  const payloads = Array.isArray(signatureState.payloads) ? signatureState.payloads : [];
+  if (payloads.some((payload) => !isPlaceholderContractorSignature(payload))) return true;
+  return !isPlaceholderContractorSignature(signatureState.payload);
+}
+
 function getSettlementState(source = {}) {
   return source.xmlExtras?.settlement || source.xml?.settlement || {};
 }
@@ -329,6 +348,21 @@ export function buildCustomerXmlReadiness(source, sheetIndex = 0, preview = null
     pushCheck('warning', 'xmlZ.manual.customerAcceptanceDate', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Дата приемки для Z не заполнена явно — используется дата текущего листа КС-2 как fallback.', { strictStatus: 'error' });
   } else {
     pushCheck('ok', 'xmlZ.manual.customerAcceptanceCode', 'Приёмка работ в Z', `${acceptanceLabel} · ${acceptanceDate}`, 'Реквизиты приемки для Z выглядят заполненными.');
+  }
+
+  const contractorSignature = getContractorSignatureState(source);
+  if (!hasRealContractorSignature(contractorSignature)) {
+    pushCheck(
+      'warning',
+      'xmlZ.manual.contractorSignaturePayload',
+      'ЭП подрядчика в Z',
+      'placeholder-signature-base64',
+      'DOCX требует электронную подпись файла информации подрядчика в ИдИнфПодр/ЭП. Сейчас Z будет собран с demo-заглушкой, что допустимо для preview, но не для реальной выгрузки.',
+      { strictStatus: 'error' },
+    );
+  } else {
+    const signatureCount = Array.isArray(contractorSignature.payloads) && contractorSignature.payloads.length ? contractorSignature.payloads.length : 1;
+    pushCheck('ok', 'xmlZ.manual.contractorSignaturePayload', 'ЭП подрядчика в Z', `${signatureCount} шт.`, 'Подпись связанного P-файла для ИдИнфПодр/ЭП заполнена явно.');
   }
 
   const settlementNotice = firstFilledValue(manual.customerSettlementNotice);

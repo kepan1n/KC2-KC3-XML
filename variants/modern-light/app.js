@@ -2883,6 +2883,12 @@ function resolveXmlPreviewLineSource(line, meta, scope = 'p', sheetIndex = 0, li
         { path: 'xmlP.generated.fileId', label: 'Идентификатор файла P', matchValue: attrs.ИдФайлИнфПодр, priority: 20 },
       ]);
     case 'ЭП':
+      if (scope === 'z' && parents.includes('ИдИнфПодр')) {
+        return chooseXmlPreviewSource([
+          { path: 'xmlZ.manual.contractorSignaturePayload', label: 'ЭП подрядчика в Z', matchValue: value, priority: 30 },
+          { path: 'xmlZ.manual.contractorSignaturePayloads', label: 'ЭП подрядчика в Z', priority: 20 },
+        ]);
+      }
       return scope === 'z'
         ? chooseXmlPreviewSource([
           { path: 'xmlZ.manual.customerSignatureStorageId', label: 'Идентификатор хранения подписи Z', priority: 20 },
@@ -3415,6 +3421,7 @@ function renderXmlPane() {
           ${renderSelect('Статус подписанта Z', 'xmlZ.manual.customerSignerStatus', customerSignerStatus, { '1': '1 — без доверенности', '2': '2 — доверенность в ЭФ', '3': '3 — доверенность на бумаге' }, 'quarter')}
           ${renderSelect('Тип подписи Z', 'xmlZ.manual.customerSignatureType', customerManual.customerSignatureType || contractorManual.signatureType || '1', { '1': '1 — УКЭП', '2': '2 — ПЭП', '3': '3 — УНЭП' }, 'quarter')}
           ${renderInput('Идентификатор хранения подписи Z', 'xmlZ.manual.customerSignatureStorageId', customerManual.customerSignatureStorageId, 'string', 'half')}
+          ${renderTextarea('ЭП файла подрядчика для Z', 'xmlZ.manual.contractorSignaturePayload', customerManual.contractorSignaturePayload || contractorManual.contractorSignaturePayload, 'half')}
           ${customerSignerStatus === '2' ? renderInput('GUID / ID МЧД заказчика', 'xmlZ.manual.customerSignerPowerId', customerManual.customerSignerPowerId, 'string', 'half') : ''}
           ${customerSignerStatus === '2' ? renderInput('Внутренний номер МЧД', 'xmlZ.manual.customerSignerPowerInternalNumber', customerManual.customerSignerPowerInternalNumber || customerManual.customerAuthorityDocNumber || app.state.documentContext.contractNumber, 'string', 'quarter') : ''}
           ${customerSignerStatus === '2' ? renderInput('Дата МЧД', 'xmlZ.manual.customerSignerPowerDate', customerManual.customerSignerPowerDate || customerManual.customerAuthorityDocDate || app.state.documentContext.contractDate, 'string', 'quarter') : ''}
@@ -4763,10 +4770,12 @@ function staticXmlBinding(path) {
     'xmlZ.manual.customerSignerStatus': ['Файл Z → Подписант/@СтатПодп'],
     'xmlZ.manual.customerSignatureType': ['Файл Z → Подписант/@ТипПодпис'],
     'xmlZ.manual.customerSignatureStorageId': ['Файл Z → идентификатор хранения подписи / доверенности'],
-    'xmlZ.manual.customerAcceptanceCode': ['Файл Z → Приемка/КодПрин'],
-    'xmlZ.manual.customerAcceptanceText': ['Файл Z → Приемка/ТекстПрин'],
-    'xmlZ.manual.customerSettlementNotice': ['Файл Z → СвУведРасч/ТекстУвед'],
-    'xmlZ.manual.customerSettlementDisagreementReason': ['Файл Z → СвУведРасч/ПричНесогл'],
+    'xmlZ.manual.contractorSignaturePayload': ['Файл Z → ИдИнфПодр/ЭП'],
+    'xmlZ.manual.contractorSignaturePayloads': ['Файл Z → ИдИнфПодр/ЭП'],
+    'xmlZ.manual.customerAcceptanceCode': ['Файл Z → СодФХЖ4/СвПрием/@КодСодОпер'],
+    'xmlZ.manual.customerAcceptanceText': ['Файл Z → СодФХЖ4/СвПрием/@СодОпер'],
+    'xmlZ.manual.customerSettlementNotice': ['Файл Z → СодФХЖ4/ИзвОРасч/@ИзвПоРасч'],
+    'xmlZ.manual.customerSettlementDisagreementReason': ['Файл Z → СодФХЖ4/ИзвОРасч/@ПричНесогРасч'],
   };
   const entry = bindings[path];
   if (!entry) return null;
